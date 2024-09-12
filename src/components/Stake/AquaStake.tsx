@@ -23,6 +23,8 @@ function AquaStake() {
   const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
     useState<boolean>(false);
   const [solDepositAmount, setSolDepositAmount] = useState<number | null>();
+  const [isDepositingSol, setIsDepositingSol] = useState<boolean>(false);
+  const [isReservingRedeem, setIsReservingRedeem] = useState<boolean>(false);
 
   const handleSetMaxDeposit = () => {};
 
@@ -114,13 +116,7 @@ function AquaStake() {
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
-                      <div>
-                        {/* {`Avail SOL Balance:  1000
-                      ${(
-                        solBalance / LAMPORTS_PER_SOL
-                      ).toLocaleString()} SOL`} */}
-                        1000 AQUA
-                      </div>
+                      <div>{`Avail SOL Balance:  1000 SOL`}</div>
 
                       <InputBase
                         sx={{
@@ -157,7 +153,7 @@ function AquaStake() {
                         className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
                         // onClick={handleDepositSol}
                       >
-                        {/* {!isDepositingSol ? (
+                        {!isDepositingSol ? (
                           <span>Mint</span>
                         ) : (
                           <div className="flex justify-center items-center gap-[10px]">
@@ -173,7 +169,7 @@ function AquaStake() {
                               visible={true}
                             />
                           </div>
-                        )} */}
+                        )}
                       </button>
                     </div>
 
@@ -203,7 +199,7 @@ function AquaStake() {
                           </InputAdornment>
                         }
                         type="number"
-                        placeholder="0.00"
+                        placeholder="10.00"
                         // value={
                         //   reserveRedeemAmount != null ? reserveRedeemAmount : ""
                         // }
@@ -220,7 +216,7 @@ function AquaStake() {
                         className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
                         // onClick={handleReserveRedeem}
                       >
-                        {/* {!isReservingRedeem ? (
+                        {!isReservingRedeem ? (
                           <span>Redeem</span>
                         ) : (
                           <div className="flex justify-center items-center gap-[10px]">
@@ -236,7 +232,7 @@ function AquaStake() {
                               visible={true}
                             />
                           </div>
-                        )} */}
+                        )}
                       </button>
                     </div>
                   </div>
