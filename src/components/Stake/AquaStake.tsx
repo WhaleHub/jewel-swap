@@ -17,6 +17,8 @@ import {
   KeyboardArrowDown as KeyboardArrowDownIcon,
   KeyboardArrowUp as KeyboardArrowUpIcon,
 } from "@mui/icons-material";
+import { useSelector } from "react-redux";
+import { AccountService } from "../../utils/account.service";
 
 function AquaStake() {
   const [epochInfo, setEpochInfo] = useState<IEpochInfo>();
@@ -26,18 +28,17 @@ function AquaStake() {
   const [isDepositingSol, setIsDepositingSol] = useState<boolean>(false);
   const [isReservingRedeem, setIsReservingRedeem] = useState<boolean>(false);
 
+  const store = useSelector<{ userRecords: AccountService }>((state) => state);
+
+  console.log(store, "safsd");
+
   const handleSetMaxDeposit = () => {};
 
   return (
     <>
       <div className="flex flex-col gap-[7px] w-full">
         <div className="text-[14px]">JWLSOL is a SOL-pegged stablecoin.</div>
-        <div className="text-[14px]">
-          Mint SOL for JWLSOL 1:1 which will be sent for validator staking when
-          able to. A dynamic % will be sent for LP creation. Stake JWLSOL for
-          SJWLSOL which will accrue staking yield. You can now swap SOL-JWLSOL
-          at Orca.
-        </div>
+        <div className="text-[14px]">description</div>
       </div>
 
       <div className="flex flex-col gap-[21px] w-full mt-[21px]">
@@ -55,13 +56,14 @@ function AquaStake() {
                     <div className="flex justify-center items-center w-[50px] h-[50px] mx-[7px]">
                       <img src={aquaLogo} alt="sol-logo" className="w-full" />
                     </div>
-                    <div>SOL</div>
+                    <div>AQUA</div>
                   </div>
                 </div>
 
                 <div className="col-span-12 md:col-span-2 flex flex-col justify-center md:px-[10.5px]">
                   <div>TVL</div>
                   <div>
+                    1000
                     {/* {`${(
                     jwlsolSupply / LAMPORTS_PER_SOL
                   ).toLocaleString()} JWLSOL`} */}
@@ -116,7 +118,7 @@ function AquaStake() {
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
-                      <div>{`Avail SOL Balance:  1000 SOL`}</div>
+                      <div>{`Avail AQUA Balance:  1000 SOL`}</div>
 
                       <InputBase
                         sx={{
