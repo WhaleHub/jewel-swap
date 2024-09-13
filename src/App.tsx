@@ -13,11 +13,10 @@ import AppLayout from "./components/AppLayout";
 import Stake from "./pages/Stake";
 import Gauge from "./pages/Gauge";
 import Admin from "./pages/Admin";
-import { StellarService } from "./services/stellar.service";
-import { AccountService } from "./utils/account.service";
 import { Provider } from "react-redux";
-import { makeStore } from "./lib/store";
-import { storeAccountBalance } from "./lib/slices/userSlice";
+import { makeStore, persistor } from "./lib/store";
+import { PersistGate } from "redux-persist/integration/react";
+import MainProvider from "./providers/MainProvider";
 
 const theme = createTheme({
   palette: {
@@ -31,43 +30,43 @@ const theme = createTheme({
 const network = process.env.REACT_APP_NETWORK || "devnet";
 
 function App() {
+  const store = makeStore();
   const endpoint = useMemo(() => clusterApiUrl(network as Cluster), [network]);
   const wallets = useMemo(() => [new PhantomWalletAdapter()], [network]);
 
-  useEffect(() => {
-    new StellarService()
-      .loadAccount("GDMFFHVJQZSDXM4SRU2W6KFLWV62BKXNNJVC4GT25NMQK2LENFUVO44I")
-      .then((account) => {
-        const wrappedAccount = new AccountService(account);
-        console.log(wrappedAccount);
-        // makeStore().dispatch(storeAccountRecords(wrappedAccount));
-        makeStore().dispatch(storeAccountBalance([""]));
-      });
-  }, []);
-
   return (
     <div>
-      <Provider store={makeStore()}>
-        <ConnectionProvider endpoint={endpoint}>
-          <WalletProvider wallets={wallets} autoConnect>
-            <WalletModalProvider>
-              <ThemeProvider theme={theme}>
-                <BrowserRouter>
-                  <Routes>
-                    <Route path="*" element={<Navigate to="/stake/aqua" />} />
-                    <Route path="/" element={<AppLayout />}>
-                      <Route path="/" element={<Navigate to="/stake/aqua" />} />
-                      <Route path="/stake/:tokenId" element={<Stake />} />
-                      <Route path="/gauge" element={<Gauge />} />
-                      <Route path="/admin" element={<Admin />} />
-                    </Route>
-                  </Routes>
-                </BrowserRouter>
-              </ThemeProvider>
-            </WalletModalProvider>
-            <ToastContainer autoClose={3000} />
-          </WalletProvider>
-        </ConnectionProvider>
+      <Provider store={store}>
+        <PersistGate loading={null} persistor={persistor}>
+          <MainProvider>
+            <ConnectionProvider endpoint={endpoint}>
+              <WalletProvider wallets={wallets} autoConnect>
+                <WalletModalProvider>
+                  <ThemeProvider theme={theme}>
+                    <BrowserRouter>
+                      <Routes>
+                        <Route
+                          path="*"
+                          element={<Navigate to="/stake/aqua" />}
+                        />
+                        <Route path="/" element={<AppLayout />}>
+                          <Route
+                            path="/"
+                            element={<Navigate to="/stake/aqua" />}
+                          />
+                          <Route path="/stake/:tokenId" element={<Stake />} />
+                          <Route path="/gauge" element={<Gauge />} />
+                          <Route path="/admin" element={<Admin />} />
+                        </Route>
+                      </Routes>
+                    </BrowserRouter>
+                  </ThemeProvider>
+                </WalletModalProvider>
+                <ToastContainer autoClose={3000} />
+              </WalletProvider>
+            </ConnectionProvider>
+          </MainProvider>
+        </PersistGate>
       </Provider>
     </div>
   );

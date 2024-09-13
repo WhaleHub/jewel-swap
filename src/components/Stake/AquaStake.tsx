@@ -1,16 +1,14 @@
+import React, { useState } from "react";
 import {
   Accordion,
   AccordionDetails,
   AccordionSummary,
   InputAdornment,
   InputBase,
-  LinearProgress,
 } from "@mui/material";
-import React, { useState } from "react";
-import Swiper from "react-id-swiper";
+import { toast } from "react-toastify";
 import { convertSecondsToDateTime } from "../../utils";
 import { IEpochInfo } from "../../interfaces";
-import { wlValidators } from "../../data";
 import aquaLogo from "../../assets/images/aqua_logo.png";
 import { TailSpin } from "react-loader-spinner";
 import {
@@ -18,21 +16,69 @@ import {
   KeyboardArrowUp as KeyboardArrowUpIcon,
 } from "@mui/icons-material";
 import { useSelector } from "react-redux";
-import { AccountService } from "../../utils/account.service";
+import { RootState } from "../../lib/store";
+import {
+  allowAllModules,
+  FREIGHTER_ID,
+  StellarWalletsKit,
+  WalletNetwork,
+} from "@creit.tech/stellar-wallets-kit";
+import { MIN_DEPOSIT_AMOUNT } from "../../config";
 
 function AquaStake() {
   const [epochInfo, setEpochInfo] = useState<IEpochInfo>();
   const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
     useState<boolean>(false);
-  const [solDepositAmount, setSolDepositAmount] = useState<number | null>();
-  const [isDepositingSol, setIsDepositingSol] = useState<boolean>(false);
+  const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
+  const [isDepositingAqua, setIsDepositingAqua] = useState<boolean>(false);
   const [isReservingRedeem, setIsReservingRedeem] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
-  const store = useSelector<{ userRecords: AccountService }>((state) => state);
+  const user = useSelector((state: RootState) => state.user);
+  const aquaRecord = user.userRecords?.balances?.find(
+    (balance) => balance.asset_code === "AQUA"
+  );
 
-  console.log(store, "safsd");
+  const userAquaBalance = aquaRecord?.balance;
+  //TODO: get user tracker token
 
-  const handleSetMaxDeposit = () => {};
+  const kit: StellarWalletsKit = new StellarWalletsKit({
+    network: WalletNetwork.PUBLIC,
+    selectedWalletId: FREIGHTER_ID,
+    modules: allowAllModules(),
+  });
+
+  const handleSetMaxDeposit = () => {
+    setAquaDepositAmount(Number(userAquaBalance));
+  };
+
+  const handleDepositAqua = async () => {
+    const wallet = await kit.getAddress();
+
+    if (!wallet.address) {
+      return toast.warn("Please connect wallet.");
+    }
+
+    if (!user) {
+      return toast.warn("Global state not initialized");
+    }
+
+    if (!aquaDepositAmount) {
+      return toast.warn("Please input amount to stake.");
+    }
+
+    if (aquaDepositAmount < MIN_DEPOSIT_AMOUNT) {
+      return toast.warn(
+        `Deposit amount should be higher than ${MIN_DEPOSIT_AMOUNT}.`
+      );
+    }
+
+    setIsProcessing(true);
+    setIsDepositingAqua(true);
+
+    try {
+    } catch (err) {}
+  };
 
   return (
     <>
@@ -118,7 +164,9 @@ function AquaStake() {
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
-                      <div>{`Avail AQUA Balance:  1000 SOL`}</div>
+                      <div>{`Avail AQUA Balance: ${Number(
+                        userAquaBalance
+                      )?.toFixed(2)} AQUA`}</div>
 
                       <InputBase
                         sx={{
@@ -140,22 +188,24 @@ function AquaStake() {
                         }
                         type="number"
                         placeholder="0.00"
-                        // disabled={isProcessing || isDepositingSol}
-                        // value={solDepositAmount != null ? solDepositAmount : ""}
+                        disabled={isProcessing || isDepositingAqua}
+                        value={
+                          aquaDepositAmount != null ? aquaDepositAmount : ""
+                        }
                         className="mt-[3.5px]"
                         onChange={(e) =>
-                          setSolDepositAmount(
+                          setAquaDepositAmount(
                             e.target.value ? Number(e.target.value) : null
                           )
                         }
                       />
 
                       <button
-                        // disabled={isProcessing || isDepositingSol}
+                        disabled={isProcessing || isDepositingAqua}
                         className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
-                        // onClick={handleDepositSol}
+                        onClick={handleDepositAqua}
                       >
-                        {!isDepositingSol ? (
+                        {!isDepositingAqua ? (
                           <span>Mint</span>
                         ) : (
                           <div className="flex justify-center items-center gap-[10px]">

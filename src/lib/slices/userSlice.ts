@@ -3,6 +3,7 @@ import axios from "axios";
 import { BACKEND_API } from "../../utils/constants";
 import { CustomError } from "../../utils/interfaces";
 import { AccountService } from "../../utils/account.service";
+import { AccountBalance } from "@mui/icons-material";
 
 interface Asset {
   code: string;
@@ -29,11 +30,17 @@ interface AccountBalance {
   asset_issuer: string;
 }
 
-const initialState = {} as {
-  userRecords: {
-    balances: AccountBalance[];
-  };
-};
+interface UserRecords {
+  balances: AccountBalance[] | null;
+}
+
+export interface User {
+  userRecords: UserRecords;
+}
+
+const initialState = {
+  userRecords: { balances: null },
+} as User;
 
 export const mint = createAsyncThunk(
   "lock/mint",

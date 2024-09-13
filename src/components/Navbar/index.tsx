@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import React from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useWallet } from "@solana/wallet-adapter-react";
 import { adminWallets } from "../../config";
 import logo from "../../assets/images/logo.png";
 import {
@@ -14,28 +14,19 @@ import { isAllowed, setAllowed } from "@stellar/freighter-api";
 const Navbar = () => {
   const [address, setAddress] = useState<string>("");
 
-  const kit: StellarWalletsKit = new StellarWalletsKit({
-    network: WalletNetwork.PUBLIC,
-    selectedWalletId: FREIGHTER_ID,
-    modules: allowAllModules(),
-  });
-
   const connectFreighterWallet = async () => {
     await setAllowed();
     await isAllowed();
-    await kit.getAddress();
-  };
 
-  const getWalletAddress = async () => {
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId: FREIGHTER_ID,
+      modules: allowAllModules(),
+    });
+
     const { address } = await kit.getAddress();
     setAddress(address);
   };
-
-  useEffect(() => {
-    getWalletAddress();
-  }, []);
-
-  console.log(address);
 
   return (
     <nav className="fixed top-0 right-0 z-30 min-h-[81.5px] w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[5px] transition-all duration-300">
