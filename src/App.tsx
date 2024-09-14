@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useMemo } from "react";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import {
@@ -14,7 +14,7 @@ import Stake from "./pages/Stake";
 import Gauge from "./pages/Gauge";
 import Admin from "./pages/Admin";
 import { Provider } from "react-redux";
-import { makeStore, persistor } from "./lib/store";
+import { persistor, store } from "./lib/store";
 import { PersistGate } from "redux-persist/integration/react";
 import MainProvider from "./providers/MainProvider";
 
@@ -30,7 +30,6 @@ const theme = createTheme({
 const network = process.env.REACT_APP_NETWORK || "devnet";
 
 function App() {
-  const store = makeStore();
   const endpoint = useMemo(() => clusterApiUrl(network as Cluster), [network]);
   const wallets = useMemo(() => [new PhantomWalletAdapter()], [network]);
 

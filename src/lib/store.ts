@@ -1,27 +1,35 @@
-import { configureStore } from "@reduxjs/toolkit";
-import { persistStore, persistReducer } from "redux-persist";
-import storage from "redux-persist/lib/storage"; // Defaults to localStorage for web
-import { userSlice } from "./slices/userSlice";
+import { Action, configureStore, ThunkAction } from "@reduxjs/toolkit";
+import { persistStore, persistReducer, PERSIST, PURGE } from "redux-persist";
+import storage from "redux-persist/lib/storage";
+import rootReducer from "./rootReducer";
 
-// Configure persistReducer
 const persistConfig = {
   key: "root",
   storage,
 };
 
-const persistedReducer = persistReducer(persistConfig, userSlice.reducer);
+const persistedReducer = persistReducer(persistConfig, rootReducer);
 
-export const makeStore = () => {
-  return configureStore({
-    reducer: {
-      user: persistedReducer,
-    },
-  });
-};
+export const store = configureStore({
+  reducer: persistedReducer,
+  devTools: process.env.NODE_ENV !== "production",
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware({
+      immutableCheck: { warnAfter: 128 },
+      thunk: true,
+      serializableCheck: {
+        ignoredActions: [PERSIST, PURGE],
+        warnAfter: 128,
+      },
+    }).concat([]),
+});
 
-export type AppStore = ReturnType<typeof makeStore>;
-export type RootState = ReturnType<AppStore["getState"]>;
-export type AppDispatch = AppStore["dispatch"];
-
-// Persist store
-export const persistor = persistStore(makeStore());
+export const persistor = persistStore(store);
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+export type AppThunk<ReturnType = void> = ThunkAction<
+  ReturnType,
+  RootState,
+  unknown,
+  Action<string>
+>;

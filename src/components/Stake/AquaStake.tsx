@@ -24,8 +24,45 @@ import {
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
+import { AccountService } from "../../utils/account.service";
+import { StellarService } from "../../services/stellar.service";
+import {
+  whaleHubIssuerPublicKey,
+  whaleHubSignerPublicKey,
+} from "../../utils/constants";
+import {
+  Asset,
+  BASE_FEE,
+  Networks,
+  Operation,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
+import { useAppDispatch } from "../../lib/hooks";
+import { mint } from "../../lib/slices/userSlice";
+
+const aquaAssetCode = "AQUA";
+const aquaAssetIssuer =
+  "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA";
+
+const whlAssetCode = "WHLAQUA";
+const whlAquaIssuer =
+  "GCX6LOZ6ZEXBHLTPOPP2THN74K33LMT4HKSPDTWSLVCF4EWRGXOS7D3V";
+
+interface Balance {
+  asset_type:
+    | "native"
+    | "credit_alphanum4"
+    | "credit_alphanum12"
+    | "liquidity_pool_shares";
+  asset_code?: string;
+  asset_issuer?: string;
+  balance: string;
+}
 
 function AquaStake() {
+  const dispatch = useAppDispatch();
+  const user = useSelector((state: RootState) => state.user);
+
   const [epochInfo, setEpochInfo] = useState<IEpochInfo>();
   const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
     useState<boolean>(false);
@@ -34,7 +71,7 @@ function AquaStake() {
   const [isReservingRedeem, setIsReservingRedeem] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
-  const user = useSelector((state: RootState) => state.user);
+  //get user aqua record
   const aquaRecord = user.userRecords?.balances?.find(
     (balance) => balance.asset_code === "AQUA"
   );
@@ -77,7 +114,107 @@ function AquaStake() {
     setIsDepositingAqua(true);
 
     try {
-    } catch (err) {}
+      // Retrieve the wallet address from the Stellar Kit
+      const { address } = await kit.getAddress();
+      const stellarService = new StellarService();
+
+      const senderAccount = await stellarService.loadAccount(address);
+
+      // Load the sponsor (whaleHub) account details from the Stellar network
+      await stellarService.loadAccount(whaleHubSignerPublicKey);
+      await stellarService.loadAccount(whaleHubIssuerPublicKey);
+
+      // Define the custom asset using the provided code and issuer
+      const customAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
+
+      const stakeAmount = aquaDepositAmount * 0.7;
+      const treasuryAmount = aquaDepositAmount * 0.3;
+
+      // Create the payment operation to transfer the custom asset to DAPP
+      const paymentOperation = Operation.payment({
+        destination: whaleHubSignerPublicKey,
+        asset: customAsset,
+        amount: `${stakeAmount}`,
+      });
+
+      // Create the payment operation to transfer the custom asset to treasury address
+      const paymentOperation2 = Operation.payment({
+        destination: whaleHubIssuerPublicKey,
+        asset: customAsset,
+        amount: `${treasuryAmount}`,
+      });
+
+      // Build transaction
+      const transactionBuilder = new TransactionBuilder(senderAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.PUBLIC,
+      });
+
+      let trustlineOperationAdded = false;
+      const existingTrustlines = senderAccount.balances.map(
+        (balance: Balance) => balance.asset_code
+      );
+
+      transactionBuilder
+        .addOperation(
+          Operation.changeTrust({
+            asset: customAsset,
+            limit: "100000000",
+            source: whaleHubIssuerPublicKey,
+          })
+        )
+        .addOperation(
+          Operation.changeTrust({
+            asset: customAsset,
+            limit: "100000000",
+            source: whaleHubIssuerPublicKey,
+          })
+        );
+
+      // Ensure there is a trustline for the WHLAQUA asset on the sender account
+      if (!existingTrustlines.includes("WHLAQUA")) {
+        transactionBuilder.addOperation(
+          Operation.changeTrust({
+            asset: new Asset(whlAssetCode, whlAquaIssuer),
+            limit: "100000000",
+            source: address,
+          })
+        );
+        trustlineOperationAdded = true;
+      }
+
+      // Add the payment operation and set the timeout
+      transactionBuilder
+        .addOperation(paymentOperation)
+        .addOperation(paymentOperation2)
+        .setTimeout(180);
+
+      // Build the transaction
+      const transaction = transactionBuilder.build();
+
+      // Convert the transaction to XDR format for signing
+      const transactionXDR = transaction.toXDR();
+
+      // Sign the transaction using the Stellar Wallets Kit
+      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
+        address,
+        networkPassphrase: WalletNetwork.PUBLIC,
+      });
+
+      dispatch(
+        mint({
+          assetCode: aquaAssetCode,
+          assetIssuer: aquaAssetIssuer,
+          amount: stakeAmount,
+          treasuryAmount,
+          signedTxXdr,
+          senderPublicKey: address,
+        })
+      );
+    } catch (err) {
+      setIsProcessing(true);
+      setIsDepositingAqua(true);
+    }
   };
 
   return (

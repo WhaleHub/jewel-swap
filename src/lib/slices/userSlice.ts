@@ -49,13 +49,13 @@ export const mint = createAsyncThunk(
       assetCode: string;
       assetIssuer: string;
       amount: number;
-      timeline: string;
       signedTxXdr: string;
       senderPublicKey: string;
       treasuryAmount: number;
     },
     { rejectWithValue }
   ) => {
+    console.log(BACKEND_API);
     try {
       const { data } = await axios.post(`${BACKEND_API}/token/stake`, values);
       return data;
