@@ -48,10 +48,10 @@ export const mint = createAsyncThunk(
     values: {
       assetCode: string;
       assetIssuer: string;
-      amount: number;
+      amount: string;
       signedTxXdr: string;
       senderPublicKey: string;
-      treasuryAmount: number;
+      treasuryAmount: string;
     },
     { rejectWithValue }
   ) => {

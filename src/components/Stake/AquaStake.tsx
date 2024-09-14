@@ -70,14 +70,21 @@ function AquaStake() {
   const [isDepositingAqua, setIsDepositingAqua] = useState<boolean>(false);
   const [isReservingRedeem, setIsReservingRedeem] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [reserveRedeemAmount, setReserveRedeemAmount] = useState<
+    number | null
+  >();
 
   //get user aqua record
-  const aquaRecord = user.userRecords?.balances?.find(
+  const aquaRecord = user?.userRecords?.balances?.find(
     (balance) => balance.asset_code === "AQUA"
   );
 
+  const whlAquaRecord = user?.userRecords?.balances?.find(
+    (balance) => balance.asset_code === "WHLAQUA"
+  );
+
   const userAquaBalance = aquaRecord?.balance;
-  //TODO: get user tracker token
+  const whlAquaBalance = whlAquaRecord?.balance;
 
   const kit: StellarWalletsKit = new StellarWalletsKit({
     network: WalletNetwork.PUBLIC,
@@ -110,8 +117,8 @@ function AquaStake() {
       );
     }
 
-    setIsProcessing(true);
-    setIsDepositingAqua(true);
+    // setIsProcessing(true);
+    // setIsDepositingAqua(true);
 
     try {
       // Retrieve the wallet address from the Stellar Kit
@@ -127,8 +134,8 @@ function AquaStake() {
       // Define the custom asset using the provided code and issuer
       const customAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
 
-      const stakeAmount = aquaDepositAmount * 0.7;
-      const treasuryAmount = aquaDepositAmount * 0.3;
+      const stakeAmount = (aquaDepositAmount * 0.7).toFixed(7);
+      const treasuryAmount = (aquaDepositAmount * 0.3).toFixed(7);
 
       // Create the payment operation to transfer the custom asset to DAPP
       const paymentOperation = Operation.payment({
@@ -362,8 +369,10 @@ function AquaStake() {
                       </button>
                     </div>
 
-                    <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
-                      <div>{`Avail JWLSOL Balance: 2000 JWLAQUA`}</div>
+                    <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px] text-sm">
+                      <div>{`Avail WHLAQUA Balance: ${Number(
+                        whlAquaBalance
+                      ).toFixed(2)} WHLAQUA`}</div>
 
                       <InputBase
                         sx={{
@@ -378,26 +387,24 @@ function AquaStake() {
                           <InputAdornment
                             position="end"
                             sx={{ cursor: "pointer" }}
-                            // onClick={() =>
-                            //   setReserveRedeemAmount(
-                            //     jwlsolBalance / LAMPORTS_PER_SOL
-                            //   )
-                            // }
+                            onClick={() =>
+                              setReserveRedeemAmount(Number(whlAquaBalance))
+                            }
                           >
                             Max
                           </InputAdornment>
                         }
                         type="number"
                         placeholder="10.00"
-                        // value={
-                        //   reserveRedeemAmount != null ? reserveRedeemAmount : ""
-                        // }
+                        value={
+                          reserveRedeemAmount != null ? reserveRedeemAmount : ""
+                        }
                         className="mt-[3.5px]"
-                        // onChange={(e) =>
-                        //   setReserveRedeemAmount(
-                        //     e.target.value ? Number(e.target.value) : null
-                        //   )
-                        // }
+                        onChange={(e) =>
+                          setReserveRedeemAmount(
+                            e.target.value ? Number(e.target.value) : null
+                          )
+                        }
                       />
 
                       <button
