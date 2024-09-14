@@ -14,7 +14,7 @@ import Stake from "./pages/Stake";
 import Gauge from "./pages/Gauge";
 import Admin from "./pages/Admin";
 import { Provider } from "react-redux";
-import { persistor, store } from "./lib/store";
+import { makeStore, persistor } from "./lib/store";
 import { PersistGate } from "redux-persist/integration/react";
 import MainProvider from "./providers/MainProvider";
 
@@ -35,7 +35,7 @@ function App() {
 
   return (
     <div>
-      <Provider store={store}>
+      <Provider store={makeStore()}>
         <PersistGate loading={null} persistor={persistor}>
           <MainProvider>
             <ConnectionProvider endpoint={endpoint}>
