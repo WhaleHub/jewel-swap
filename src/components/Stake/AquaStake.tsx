@@ -38,7 +38,7 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { useAppDispatch } from "../../lib/hooks";
-import { mint } from "../../lib/slices/userSlice";
+import { mint, provideLiquidity } from "../../lib/slices/userSlice";
 
 const aquaAssetCode = "AQUA";
 const aquaAssetIssuer =
@@ -70,6 +70,8 @@ function AquaStake() {
   const [isDepositingAqua, setIsDepositingAqua] = useState<boolean>(false);
   const [isReservingRedeem, setIsReservingRedeem] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [lqXlmAmount, setXlmAmount] = useState<number | null>();
+  const [lqAquaAmount, setLqAquaAmount] = useState<number | null>();
   const [reserveRedeemAmount, setReserveRedeemAmount] = useState<
     number | null
   >();
@@ -83,8 +85,13 @@ function AquaStake() {
     (balance) => balance.asset_code === "WHLAQUA"
   );
 
+  const xlmRecord = user?.userRecords?.balances?.find(
+    (balance: any) => balance.asset_type === "native"
+  );
+
   const userAquaBalance = aquaRecord?.balance;
   const whlAquaBalance = whlAquaRecord?.balance;
+  const xlmBalance = xlmRecord?.balance;
 
   const kit: StellarWalletsKit = new StellarWalletsKit({
     network: WalletNetwork.PUBLIC,
@@ -94,6 +101,10 @@ function AquaStake() {
 
   const handleSetMaxDeposit = () => {
     setAquaDepositAmount(Number(userAquaBalance));
+  };
+
+  const handleSetXLMMaxDeposit = () => {
+    setXlmAmount(Number(xlmBalance));
   };
 
   const handleDepositAqua = async () => {
@@ -117,8 +128,8 @@ function AquaStake() {
       );
     }
 
-    // setIsProcessing(true);
-    // setIsDepositingAqua(true);
+    setIsProcessing(true);
+    setIsDepositingAqua(true);
 
     try {
       // Retrieve the wallet address from the Stellar Kit
@@ -218,10 +229,104 @@ function AquaStake() {
           senderPublicKey: address,
         })
       );
+
+      setIsProcessing(false);
+      setIsDepositingAqua(false);
     } catch (err) {
-      setIsProcessing(true);
-      setIsDepositingAqua(true);
+      setIsProcessing(false);
+      setIsDepositingAqua(false);
     }
+  };
+
+  const handleProvideLiquidity = async () => {
+    const wallet = await kit.getAddress();
+
+    if (!wallet.address) {
+      return toast.warn("Please connect wallet.");
+    }
+
+    if (!user) {
+      return toast.warn("Global state not initialized");
+    }
+
+    if (!lqXlmAmount) {
+      return toast.warn("Please input XLM amount to stake.");
+    }
+
+    if (!lqAquaAmount) {
+      return toast.warn("Please input AQUA amount to stake.");
+    }
+
+    try {
+      // Retrieve the wallet address from the Stellar Kit
+      const stellarService = new StellarService();
+      const senderAccount = await stellarService.loadAccount(wallet.address);
+
+      // Load the sponsor (whaleHub) account details from the Stellar network
+      await stellarService.loadAccount(whaleHubSignerPublicKey);
+      await stellarService.loadAccount(whaleHubIssuerPublicKey);
+
+      const aquaAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
+
+      const xlmStakeAmount = lqXlmAmount.toFixed(7);
+      const aquaStakeAmount = lqAquaAmount.toFixed(7);
+
+      // Create the payment operation to transfer the custom asset to DAPP
+      const paymentOperation1 = Operation.payment({
+        destination: whaleHubSignerPublicKey,
+        asset: aquaAsset,
+        amount: `${xlmStakeAmount}`,
+      });
+
+      // Create the payment operation to transfer the custom asset to treasury address
+      const paymentOperation2 = Operation.payment({
+        destination: whaleHubSignerPublicKey,
+        asset: Asset.native(),
+        amount: `${aquaStakeAmount}`,
+      });
+
+      // Build transaction
+      const transactionBuilder = new TransactionBuilder(senderAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.PUBLIC,
+      })
+        .addOperation(
+          Operation.changeTrust({
+            asset: aquaAsset,
+            limit: "100000000",
+            source: whaleHubIssuerPublicKey,
+          })
+        )
+        .addOperation(paymentOperation1)
+        .addOperation(paymentOperation2)
+        .setTimeout(30)
+        .build();
+
+      // Convert the transaction to XDR format for signing
+      const transactionXDR = transactionBuilder.toXDR();
+
+      const address = wallet.address;
+
+      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
+        address,
+        networkPassphrase: WalletNetwork.PUBLIC,
+      });
+
+      dispatch(
+        provideLiquidity({
+          asset1: {
+            ...Asset.native(),
+            amount: xlmStakeAmount,
+          },
+          asset2: {
+            ...aquaAsset,
+            amount: aquaStakeAmount,
+          },
+          signedTxXdr,
+          senderPublicKey: address,
+        })
+      );
+    } catch (err) {}
   };
 
   return (
@@ -466,7 +571,7 @@ function AquaStake() {
                           {/* {userInfoAccountInfo &&
                           (userInfoAccountInfo.reservedRedeemAmount.toNumber() >
                             0 ||
-                            userInfoAccountInfo.approvedRedeemAmount.toNumber() >
+                          userInfoAccountInfo.approvedRedeemAmount.toNumber() >
                               0)
                             ? userInfoAccountInfo.lastRedeemReservedEpoch.toNumber() +
                               UNBOINDING_PERIOD +
@@ -500,6 +605,92 @@ function AquaStake() {
                       If you have already requested JWLSOL to be redeemed, the
                       new redeem attempts will increase the unbonding epoch -
                       you will need to wait for the unbonding period again.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* stake section */}
+
+              <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
+                <div className="col-span-12 md:col-span-6">
+                  <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
+                    <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
+                      <div>{`XLM ${Number(xlmBalance)?.toFixed(2)}`}</div>
+
+                      <InputBase
+                        sx={{
+                          flex: 1,
+                          border: "1px",
+                          borderStyle: "solid",
+                          borderRadius: "5px",
+                          borderColor: "gray",
+                          padding: "2px 5px",
+                        }}
+                        endAdornment={
+                          <InputAdornment
+                            position="end"
+                            sx={{ cursor: "pointer" }}
+                            onClick={handleSetXLMMaxDeposit}
+                          >
+                            Max
+                          </InputAdornment>
+                        }
+                        type="number"
+                        placeholder="0.00"
+                        disabled={isProcessing || isDepositingAqua}
+                        value={lqXlmAmount != null ? lqXlmAmount : ""}
+                        className="mt-[3.5px]"
+                        onChange={(e) =>
+                          setXlmAmount(
+                            e.target.value ? Number(e.target.value) : null
+                          )
+                        }
+                      />
+                    </div>
+
+                    <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px] text-sm">
+                      <div>{`Avail AQUA Balance: ${Number(
+                        userAquaBalance
+                      ).toFixed(2)} AQUA`}</div>
+
+                      <InputBase
+                        sx={{
+                          flex: 1,
+                          border: "1px",
+                          borderStyle: "solid",
+                          borderRadius: "5px",
+                          borderColor: "gray",
+                          padding: "2px 5px",
+                        }}
+                        endAdornment={
+                          <InputAdornment
+                            position="end"
+                            sx={{ cursor: "pointer" }}
+                            onClick={() =>
+                              setLqAquaAmount(Number(userAquaBalance))
+                            }
+                          >
+                            Max
+                          </InputAdornment>
+                        }
+                        type="number"
+                        placeholder="10.00"
+                        value={lqAquaAmount != null ? lqAquaAmount : ""}
+                        className="mt-[3.5px]"
+                        onChange={(e) =>
+                          setLqAquaAmount(
+                            e.target.value ? Number(e.target.value) : null
+                          )
+                        }
+                      />
+
+                      <button
+                        className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
+                        onClick={handleProvideLiquidity}
+                      >
+                        <span>Provide Liquidity</span>
+                      </button>
                     </div>
                   </div>
                 </div>

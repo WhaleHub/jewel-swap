@@ -26,6 +26,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
     dispatch(storeAccountBalance(wrappedAccount.balances));
+    // dispatch(getAccountInfo(address));
   };
 
   useEffect(() => {

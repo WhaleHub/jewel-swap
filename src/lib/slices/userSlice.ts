@@ -55,9 +55,54 @@ export const mint = createAsyncThunk(
     },
     { rejectWithValue }
   ) => {
-    console.log(BACKEND_API);
     try {
       const { data } = await axios.post(`${BACKEND_API}/token/stake`, values);
+      return data;
+    } catch (error: any) {
+      const customError: CustomError = error;
+
+      if (customError.response && customError.response.data.error.message) {
+        return rejectWithValue(customError.response.data.error.message);
+      }
+
+      throw new Error(customError.message || "An unknown error occurred");
+    }
+  }
+);
+
+export const reedeemJWLAQUA = createAsyncThunk(
+  "user/redeem",
+  async (
+    values: {
+      assetCode: string;
+      assetIssuer: string;
+      amount: string;
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const { data } = await axios.post(`${BACKEND_API}/token/redeem`, values);
+      return data;
+    } catch (error: any) {
+      const customError: CustomError = error;
+
+      if (customError.response && customError.response.data.error.message) {
+        return rejectWithValue(customError.response.data.error.message);
+      }
+
+      throw new Error(customError.message || "An unknown error occurred");
+    }
+  }
+);
+
+export const getAccountInfo = createAsyncThunk(
+  "user/info",
+  async (account: string, { rejectWithValue }) => {
+    console.log(BACKEND_API);
+    try {
+      const { data } = await axios.get(
+        `${BACKEND_API}/token/user?userPublicKey=${account}`
+      );
       return data;
     } catch (error: any) {
       const customError: CustomError = error;
@@ -109,6 +154,43 @@ export const addLP = createAsyncThunk(
   }
 );
 
+export const provideLiquidity = createAsyncThunk(
+  "liquidity/provide",
+  async (
+    values: {
+      asset1: {
+        code: string;
+        issuer: string;
+        amount: string;
+      };
+      asset2: {
+        code: string;
+        issuer: string;
+        amount: string;
+      };
+      signedTxXdr: string;
+      senderPublicKey: string;
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const { data } = await axios.post(
+        `${BACKEND_API}/token/add-liquidity`,
+        values
+      );
+      return data;
+    } catch (error: any) {
+      const customError: CustomError = error;
+
+      if (customError.response && customError.response.data.error.message) {
+        return rejectWithValue(customError.response.data.error.message);
+      }
+
+      throw new Error(customError.message || "An unknown error occurred");
+    }
+  }
+);
+
 export const userSlice = createSlice({
   name: "user",
   initialState,
@@ -129,6 +211,20 @@ export const userSlice = createSlice({
     });
 
     builder.addCase(storeAccountBalance.rejected, (state, action) => {});
+
+    //get user account details from db
+    builder.addCase(getAccountInfo.pending, (state) => {});
+
+    builder.addCase(getAccountInfo.fulfilled, (state, { payload }) => {});
+
+    builder.addCase(getAccountInfo.rejected, (state, action) => {});
+
+    //redeeme acqua
+    builder.addCase(reedeemJWLAQUA.pending, (state) => {});
+
+    builder.addCase(reedeemJWLAQUA.fulfilled, (state, { payload }) => {});
+
+    builder.addCase(reedeemJWLAQUA.rejected, (state, action) => {});
   },
 });
 
