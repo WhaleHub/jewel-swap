@@ -38,7 +38,13 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { useAppDispatch } from "../../lib/hooks";
-import { mint, provideLiquidity } from "../../lib/slices/userSlice";
+import {
+  mint,
+  provideLiquidity,
+  withdrawReward,
+} from "../../lib/slices/userSlice";
+import { summarizeAssets } from "../../lib/helpers";
+import { DepositType } from "../../enums";
 
 const aquaAssetCode = "AQUA";
 const aquaAssetIssuer =
@@ -59,9 +65,17 @@ interface Balance {
   balance: string;
 }
 
+interface SummarizedAssets {
+  [key: string]: {
+    assetCode: string;
+    totalAmount: string;
+  };
+}
+
 function AquaStake() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
+  const appRecords = useSelector((state: RootState) => state.app);
 
   const [epochInfo, setEpochInfo] = useState<IEpochInfo>();
   const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
@@ -92,6 +106,20 @@ function AquaStake() {
   const userAquaBalance = aquaRecord?.balance;
   const whlAquaBalance = whlAquaRecord?.balance;
   const xlmBalance = xlmRecord?.balance;
+
+  //lp account records
+  const accountLps = user?.userRecords?.account?.pools?.filter(
+    (pool) => pool.depositType === DepositType.LIQUIDITY_PROVISION
+  );
+
+  // const poolBalances = summarizeAssets(userLps);
+
+  //pools
+  const userLpProvisions = user?.userRecords?.account?.lpBalances;
+  const userPoolBalances = summarizeAssets(userLpProvisions);
+  const appLpBalances = summarizeAssets(appRecords?.lp_balances);
+
+  console.log(appLpBalances);
 
   const kit: StellarWalletsKit = new StellarWalletsKit({
     network: WalletNetwork.PUBLIC,
@@ -327,6 +355,38 @@ function AquaStake() {
         })
       );
     } catch (err) {}
+  };
+
+  //TODO: UPDATE INTERFACE
+  function getTotalPoolValue(assets: any) {
+    let totalValue = 0;
+    for (const asset in assets) {
+      totalValue += parseFloat(assets[asset].totalAmount);
+    }
+    return totalValue;
+  }
+
+  const withdrawLPReward = async () => {
+    const totalPoolValue = getTotalPoolValue(appLpBalances);
+    const userTotalPoolValue = getTotalPoolValue(userPoolBalances);
+
+    if (userTotalPoolValue <= 0) {
+      return toast.warn("You don't have any claims");
+    }
+
+    console.log(userPoolBalances);
+
+    // Calculate User A's overall contribution percentage
+    const userPoolPercentage = (userTotalPoolValue / totalPoolValue) * 100;
+    const wallet = await kit.getAddress();
+
+    dispatch(
+      withdrawReward({
+        summerizedAssets: userPoolBalances,
+        senderPublicKey: wallet.address,
+        userPoolPercentage,
+      })
+    );
   };
 
   return (
@@ -610,8 +670,7 @@ function AquaStake() {
                 </div>
               </div>
 
-              {/* stake section */}
-
+              {/* lp section */}
               <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
@@ -648,7 +707,6 @@ function AquaStake() {
                         }
                       />
                     </div>
-
                     <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px] text-sm">
                       <div>{`Avail AQUA Balance: ${Number(
                         userAquaBalance
@@ -690,6 +748,38 @@ function AquaStake() {
                         onClick={handleProvideLiquidity}
                       >
                         <span>Provide Liquidity</span>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-4">
+                      {userPoolBalances &&
+                        Object.values(userPoolBalances).map(
+                          (asset: any, index) => (
+                            <div
+                              key={index}
+                              className="col-span-12 md:col-span-6 flex flex-col mt-5"
+                            >
+                              <div className="col-span-12 bg-white shadow-md p-4 rounded-md">
+                                <p className="text-sm font-bold text-gray-800">
+                                  {asset.assetCode}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Total Amount: {asset.totalAmount}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-12 gap-4 mt-5">
+                    <div className="col-span-12 flex justify-center">
+                      <button
+                        onClick={withdrawLPReward}
+                        className="flex justify-center items-center px-6 py-2 btn-primary2"
+                      >
+                        <span>Redeem</span>
                       </button>
                     </div>
                   </div>

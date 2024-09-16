@@ -7,7 +7,8 @@ import {
 } from "@creit.tech/stellar-wallets-kit";
 import { StellarService } from "../services/stellar.service";
 import { useAppDispatch } from "../lib/hooks";
-import { storeAccountBalance } from "../lib/slices/userSlice";
+import { getAccountInfo, storeAccountBalance } from "../lib/slices/userSlice";
+import { getAppData } from "../lib/slices/appSlice";
 
 interface MainProviderProps {
   children: ReactNode;
@@ -25,8 +26,9 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     const { address } = await kit.getAddress();
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
+    dispatch(getAppData());
     dispatch(storeAccountBalance(wrappedAccount.balances));
-    // dispatch(getAccountInfo(address));
+    dispatch(getAccountInfo(address));
   };
 
   useEffect(() => {

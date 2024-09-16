@@ -4,35 +4,11 @@ import { BACKEND_API } from "../../utils/constants";
 import { CustomError } from "../../utils/interfaces";
 import { AccountService } from "../../utils/account.service";
 import { AccountBalance } from "@mui/icons-material";
-
-interface Asset {
-  code: string;
-  issuer?: string;
-}
-
-interface TransactionData {
-  signedTxXdr: string;
-  assetA: Asset;
-  assetB: Asset;
-}
-
-interface AccountBalance {
-  balance: string;
-  limit: string;
-  buying_liabilities: string;
-  selling_liabilities: string;
-  sponsor: string;
-  last_modified_ledger: number;
-  is_authorized: boolean;
-  is_authorized_to_maintain_liabilities: boolean;
-  asset_type: "credit_alphanum12";
-  asset_code: string;
-  asset_issuer: string;
-}
-
-interface UserRecords {
-  balances: AccountBalance[] | null;
-}
+import {
+  SummarizedAssets,
+  TransactionData,
+  UserRecords,
+} from "../../interfaces";
 
 export interface User {
   userRecords: UserRecords;
@@ -98,7 +74,6 @@ export const reedeemJWLAQUA = createAsyncThunk(
 export const getAccountInfo = createAsyncThunk(
   "user/info",
   async (account: string, { rejectWithValue }) => {
-    console.log(BACKEND_API);
     try {
       const { data } = await axios.get(
         `${BACKEND_API}/token/user?userPublicKey=${account}`
@@ -191,6 +166,34 @@ export const provideLiquidity = createAsyncThunk(
   }
 );
 
+export const withdrawReward = createAsyncThunk(
+  "liquidity/withdraw",
+  async (
+    values: {
+      senderPublicKey: string;
+      userPoolPercentage: number;
+      summerizedAssets: SummarizedAssets | null;
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const { data } = await axios.post(
+        `${BACKEND_API}/token/remove-liquidity`,
+        values
+      );
+      return data;
+    } catch (error: any) {
+      const customError: CustomError = error;
+
+      if (customError.response && customError.response.data.error.message) {
+        return rejectWithValue(customError.response.data.error.message);
+      }
+
+      throw new Error(customError.message || "An unknown error occurred");
+    }
+  }
+);
+
 export const userSlice = createSlice({
   name: "user",
   initialState,
@@ -215,7 +218,9 @@ export const userSlice = createSlice({
     //get user account details from db
     builder.addCase(getAccountInfo.pending, (state) => {});
 
-    builder.addCase(getAccountInfo.fulfilled, (state, { payload }) => {});
+    builder.addCase(getAccountInfo.fulfilled, (state, { payload }) => {
+      state.userRecords.account = payload;
+    });
 
     builder.addCase(getAccountInfo.rejected, (state, action) => {});
 
