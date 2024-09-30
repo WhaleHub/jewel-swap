@@ -26,6 +26,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     const { address } = await kit.getAddress();
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
+
     dispatch(getAppData());
     dispatch(storeAccountBalance(wrappedAccount.balances));
     dispatch(getAccountInfo(address));

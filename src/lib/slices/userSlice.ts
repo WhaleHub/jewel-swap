@@ -32,7 +32,7 @@ export const mint = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const { data } = await axios.post(`${BACKEND_API}/token/stake`, values);
+      const { data } = await axios.post(`${BACKEND_API}/token/lock`, values);
       return data;
     } catch (error: any) {
       const customError: CustomError = error;
@@ -166,7 +166,7 @@ export const provideLiquidity = createAsyncThunk(
   }
 );
 
-export const withdrawReward = createAsyncThunk(
+export const withdrawLP = createAsyncThunk(
   "liquidity/withdraw",
   async (
     values: {
@@ -179,6 +179,34 @@ export const withdrawReward = createAsyncThunk(
     try {
       const { data } = await axios.post(
         `${BACKEND_API}/token/remove-liquidity`,
+        values
+      );
+      return data;
+    } catch (error: any) {
+      const customError: CustomError = error;
+
+      if (customError.response && customError.response.data.error.message) {
+        return rejectWithValue(customError.response.data.error.message);
+      }
+
+      throw new Error(customError.message || "An unknown error occurred");
+    }
+  }
+);
+
+export const redeemLPReward = createAsyncThunk(
+  "liquidity/withdraw",
+  async (
+    values: {
+      senderPublicKey: string;
+      userPoolPercentage: number;
+      summerizedAssets: SummarizedAssets | null;
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const { data } = await axios.post(
+        `${BACKEND_API}/token/redeem-reward`,
         values
       );
       return data;
