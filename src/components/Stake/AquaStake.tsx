@@ -26,7 +26,11 @@ import {
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
 import { AccountService } from "../../utils/account.service";
 import { StellarService } from "../../services/stellar.service";
-import { blubIssuerPublicKey, treasureAddress } from "../../utils/constants";
+import {
+  blubIssuerPublicKey,
+  lpSignerPublicKey,
+  treasureAddress,
+} from "../../utils/constants";
 import {
   Asset,
   BASE_FEE,
@@ -82,6 +86,7 @@ function AquaStake() {
   const [isDepositingAqua, setIsDepositingAqua] = useState<boolean>(false);
   const [isReservingRedeem, setIsReservingRedeem] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [isProviding, setProviding] = useState<boolean>(false);
   const [lqXlmAmount, setXlmAmount] = useState<number | null>();
   const [lqAquaAmount, setLqAquaAmount] = useState<number | null>();
   const [reserveRedeemAmount, setReserveRedeemAmount] = useState<
@@ -280,6 +285,7 @@ function AquaStake() {
 
   const handleProvideLiquidity = async () => {
     const wallet = await kit.getAddress();
+    setProviding(true);
 
     if (!wallet.address) {
       return toast.warn("Please connect wallet.");
@@ -304,21 +310,19 @@ function AquaStake() {
 
       // Load the sponsor (whaleHub) account details from the Stellar network
       await stellarService.loadAccount(blubIssuerPublicKey);
-      await stellarService.loadAccount(blubIssuerPublicKey);
 
       const aquaAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
 
       const xlmStakeAmount = lqXlmAmount.toFixed(7);
       const aquaStakeAmount = lqAquaAmount.toFixed(7);
 
-      // Create the payment operation to transfer the custom asset to DAPP
+      //transfer asset to server wallet
       const paymentOperation1 = Operation.payment({
         destination: blubIssuerPublicKey,
         asset: aquaAsset,
         amount: `${xlmStakeAmount}`,
       });
 
-      // Create the payment operation to transfer the custom asset to treasury address
       const paymentOperation2 = Operation.payment({
         destination: blubIssuerPublicKey,
         asset: Asset.native(),
@@ -366,7 +370,10 @@ function AquaStake() {
           senderPublicKey: address,
         })
       );
-    } catch (err) {}
+      setProviding(false);
+    } catch (err) {
+      setProviding(false);
+    }
   };
 
   //TODO: UPDATE INTERFACE
@@ -567,7 +574,7 @@ function AquaStake() {
                       </button>
                     </div>
 
-                    <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px] text-sm">
+                    {/* <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px] text-sm">
                       <div>{`Avail WHLAQUA Balance: ${Number(
                         whlAquaBalance
                       ).toFixed(2)} WHLAQUA`}</div>
@@ -628,7 +635,7 @@ function AquaStake() {
                           </div>
                         )}
                       </button>
-                    </div>
+                    </div> */}
                   </div>
                 </div>
 
@@ -780,7 +787,23 @@ function AquaStake() {
                         className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
                         onClick={handleProvideLiquidity}
                       >
-                        <span>Provide Liquidity</span>
+                        {!isProviding ? (
+                          <span>Provide Liquidity</span>
+                        ) : (
+                          <div className="flex justify-center items-center gap-[10px]">
+                            <span className="text-white">Processing...</span>
+                            <TailSpin
+                              height="18"
+                              width="18"
+                              color="#ffffff"
+                              ariaLabel="tail-spin-loading"
+                              radius="1"
+                              wrapperStyle={{}}
+                              wrapperClass=""
+                              visible={true}
+                            />
+                          </div>
+                        )}
                       </button>
                     </div>
 
@@ -806,7 +829,7 @@ function AquaStake() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-12 gap-4 mt-5">
+                  {/* <div className="grid grid-cols-12 gap-4 mt-5">
                     <div className="col-span-6 flex justify-center">
                       <button
                         onClick={withdrawLprovision}
@@ -824,7 +847,7 @@ function AquaStake() {
                         <span>Redeem Reward</span>
                       </button>
                     </div>
-                  </div>
+                  </div> */}
                 </div>
               </div>
             </AccordionDetails>
