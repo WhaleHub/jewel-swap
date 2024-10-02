@@ -1,9 +1,7 @@
-import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import axios from "axios";
 import { BACKEND_API } from "../../utils/constants";
 import { CustomError } from "../../utils/interfaces";
-import { AccountService } from "../../utils/account.service";
-import { AccountBalance } from "@mui/icons-material";
 import {
   SummarizedAssets,
   TransactionData,
@@ -12,10 +10,20 @@ import {
 
 export interface User {
   userRecords: UserRecords;
+  walletConnected: boolean;
+  walletSelectionOpen: boolean;
+  userWalletAddress: string | null;
+  connectingWallet: boolean;
+  walletName: string | null;
 }
 
 const initialState = {
   userRecords: { balances: null },
+  walletConnected: false,
+  walletSelectionOpen: false,
+  userWalletAddress: null,
+  connectingWallet: false,
+  walletName: null,
 } as User;
 
 export const mint = createAsyncThunk(
@@ -27,37 +35,11 @@ export const mint = createAsyncThunk(
       amount: string;
       signedTxXdr: string;
       senderPublicKey: string;
-      treasuryAmount: string;
     },
     { rejectWithValue }
   ) => {
     try {
       const { data } = await axios.post(`${BACKEND_API}/token/lock`, values);
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
-  }
-);
-
-export const reedeemJWLAQUA = createAsyncThunk(
-  "user/redeem",
-  async (
-    values: {
-      assetCode: string;
-      assetIssuer: string;
-      amount: string;
-    },
-    { rejectWithValue }
-  ) => {
-    try {
-      const { data } = await axios.post(`${BACKEND_API}/token/redeem`, values);
       return data;
     } catch (error: any) {
       const customError: CustomError = error;
@@ -225,7 +207,24 @@ export const redeemLPReward = createAsyncThunk(
 export const userSlice = createSlice({
   name: "user",
   initialState,
-  reducers: {},
+  reducers: {
+    walletSelectionAction: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      walletSelectionOpen: payload,
+    }),
+    setUserWalletAddress: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      userWalletAddress: payload,
+    }),
+    setConnectingWallet: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      connectingWallet: payload,
+    }),
+    setWalletConnectName: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      walletName: payload,
+    }),
+  },
   extraReducers(builder) {
     //mint
     builder.addCase(mint.pending, (state) => {});
@@ -251,14 +250,12 @@ export const userSlice = createSlice({
     });
 
     builder.addCase(getAccountInfo.rejected, (state, action) => {});
-
-    //redeeme acqua
-    builder.addCase(reedeemJWLAQUA.pending, (state) => {});
-
-    builder.addCase(reedeemJWLAQUA.fulfilled, (state, { payload }) => {});
-
-    builder.addCase(reedeemJWLAQUA.rejected, (state, action) => {});
   },
 });
 
-export const {} = userSlice.actions;
+export const {
+  walletSelectionAction,
+  setUserWalletAddress,
+  setConnectingWallet,
+  setWalletConnectName,
+} = userSlice.actions;

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -7,8 +7,6 @@ import {
   InputBase,
 } from "@mui/material";
 import { toast } from "react-toastify";
-import { convertSecondsToDateTime } from "../../utils";
-import { IEpochInfo } from "../../interfaces";
 import aquaLogo from "../../assets/images/aqua_logo.png";
 import { TailSpin } from "react-loader-spinner";
 import {
@@ -24,13 +22,8 @@ import {
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
-import { AccountService } from "../../utils/account.service";
 import { StellarService } from "../../services/stellar.service";
-import {
-  blubIssuerPublicKey,
-  lpSignerPublicKey,
-  treasureAddress,
-} from "../../utils/constants";
+import { blubIssuerPublicKey, treasureAddress } from "../../utils/constants";
 import {
   Asset,
   BASE_FEE,
@@ -39,12 +32,7 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { useAppDispatch } from "../../lib/hooks";
-import {
-  mint,
-  provideLiquidity,
-  redeemLPReward,
-  withdrawLP,
-} from "../../lib/slices/userSlice";
+import { mint, provideLiquidity } from "../../lib/slices/userSlice";
 import { summarizeAssets } from "../../lib/helpers";
 import { DepositType } from "../../enums";
 
@@ -67,31 +55,18 @@ interface Balance {
   balance: string;
 }
 
-interface SummarizedAssets {
-  [key: string]: {
-    assetCode: string;
-    totalAmount: string;
-  };
-}
-
 function AquaStake() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const appRecords = useSelector((state: RootState) => state.app);
-
-  const [epochInfo, setEpochInfo] = useState<IEpochInfo>();
   const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
     useState<boolean>(false);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
   const [isDepositingAqua, setIsDepositingAqua] = useState<boolean>(false);
-  const [isReservingRedeem, setIsReservingRedeem] = useState<boolean>(false);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isProviding, setProviding] = useState<boolean>(false);
   const [lqXlmAmount, setXlmAmount] = useState<number | null>();
   const [lqAquaAmount, setLqAquaAmount] = useState<number | null>();
-  const [reserveRedeemAmount, setReserveRedeemAmount] = useState<
-    number | null
-  >();
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
@@ -115,11 +90,11 @@ function AquaStake() {
     (pool) => pool.depositType === DepositType.LIQUIDITY_PROVISION
   );
 
-  // const poolBalances = summarizeAssets(userLps);
-
   //pools
   const userLpProvisions = user?.userRecords?.account?.lpBalances;
   const userPoolBalances = summarizeAssets(userLpProvisions);
+
+  //user balances
   const appLpBalances = summarizeAssets(appRecords?.lp_balances);
 
   const kit: StellarWalletsKit = new StellarWalletsKit({
@@ -136,7 +111,7 @@ function AquaStake() {
     setXlmAmount(Number(xlmBalance));
   };
 
-  const handleDepositAqua = async () => {
+  const handleLockAqua = async () => {
     const wallet = await kit.getAddress();
 
     if (!wallet.address) {
@@ -166,7 +141,7 @@ function AquaStake() {
       const stellarService = new StellarService();
 
       const senderAccount = await stellarService.loadAccount(address);
-      const treasureAccount = await stellarService.loadAccount(treasureAddress);
+      // const treasureAccount = await stellarService.loadAccount(treasureAddress);
 
       // Load the sponsor (whaleHub) account details from the Stellar network
       await stellarService.loadAccount(treasureAddress);
@@ -175,8 +150,8 @@ function AquaStake() {
       // Define the custom asset using the provided code and issuer
       const customAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
 
-      const stakeAmount = (aquaDepositAmount * 0.7).toFixed(7);
-      const treasuryAmount = (aquaDepositAmount * 0.3).toFixed(7);
+      const stakeAmount = aquaDepositAmount.toFixed(7);
+      // const treasuryAmount = (aquaDepositAmount * 0.3).toFixed(7);
 
       // Create the payment operation to transfer the custom asset to DAPP
       const paymentOperation = Operation.payment({
@@ -185,54 +160,34 @@ function AquaStake() {
         amount: `${stakeAmount}`,
       });
 
-      // Create the payment operation to transfer the custom asset to treasury address
-      const paymentOperation2 = Operation.payment({
-        destination: treasureAddress,
-        asset: customAsset,
-        amount: `${treasuryAmount}`,
-      });
-
       // Build transaction
       const transactionBuilder = new TransactionBuilder(senderAccount, {
         fee: BASE_FEE,
         networkPassphrase: Networks.PUBLIC,
       });
 
-      let trustlineOperationAdded = false;
       const existingTrustlines = senderAccount.balances.map(
         (balance: Balance) => balance.asset_code
       );
 
-      const treasureAccountTrustlines = treasureAccount.balances.map(
-        (balance: Balance) => balance.asset_code
-      );
+      console.log(existingTrustlines);
+      return;
 
-      transactionBuilder
-        .addOperation(
-          Operation.changeTrust({
-            asset: customAsset,
-            limit: "100000000",
-            source: blubIssuerPublicKey,
-          })
-        )
-        .addOperation(
-          Operation.changeTrust({
-            asset: customAsset,
-            limit: "100000000",
-            source: blubIssuerPublicKey,
-          })
-        );
-
-      if (!treasureAccountTrustlines.includes("AQUA")) {
-        transactionBuilder.addOperation(
-          Operation.changeTrust({
-            asset: new Asset(aquaAssetCode, aquaAssetIssuer),
-            limit: "100000000",
-            source: treasureAddress,
-          })
-        );
-        trustlineOperationAdded = true;
-      }
+      // transactionBuilder
+      //   .addOperation(
+      //     Operation.changeTrust({
+      //       asset: customAsset,
+      //       limit: "100000000",
+      //       source: blubIssuerPublicKey,
+      //     })
+      //   )
+      //   .addOperation(
+      //     Operation.changeTrust({
+      //       asset: customAsset,
+      //       limit: "100000000",
+      //       source: blubIssuerPublicKey,
+      //     })
+      //   );
 
       if (!existingTrustlines.includes("WHLAQUA")) {
         transactionBuilder.addOperation(
@@ -242,14 +197,10 @@ function AquaStake() {
             source: address,
           })
         );
-        trustlineOperationAdded = true;
       }
 
       // Add the payment operation and set the timeout
-      transactionBuilder
-        .addOperation(paymentOperation)
-        .addOperation(paymentOperation2)
-        .setTimeout(180);
+      transactionBuilder.addOperation(paymentOperation).setTimeout(180);
 
       // Build the transaction
       const transaction = transactionBuilder.build();
@@ -268,14 +219,10 @@ function AquaStake() {
           assetCode: aquaAssetCode,
           assetIssuer: aquaAssetIssuer,
           amount: stakeAmount,
-          treasuryAmount,
           signedTxXdr,
           senderPublicKey: address,
         })
       );
-
-      setIsProcessing(false);
-      setIsDepositingAqua(false);
     } catch (err) {
       console.log(err);
       setIsProcessing(false);
@@ -385,49 +332,14 @@ function AquaStake() {
     return totalValue;
   }
 
-  const withdrawLprovision = async () => {
-    const totalPoolValue = getTotalPoolValue(appLpBalances);
-    const userTotalPoolValue = getTotalPoolValue(userPoolBalances);
-
-    if (userTotalPoolValue <= 0) {
-      return toast.warn("You don't have any claims");
-    }
-
-    console.log(userPoolBalances);
-
-    // Calculate User A's overall contribution percentage
-    const userPoolPercentage = (userTotalPoolValue / totalPoolValue) * 100;
-    const wallet = await kit.getAddress();
-
-    dispatch(
-      withdrawLP({
-        summerizedAssets: userPoolBalances,
-        senderPublicKey: wallet.address,
-        userPoolPercentage,
-      })
-    );
+  const getWalletBalances = async () => {
+    const userWallet = user?.userWalletAddress;
+    console.log(userWallet);
   };
 
-  const RedeemReward = async () => {
-    const totalPoolValue = getTotalPoolValue(appLpBalances);
-    const userTotalPoolValue = getTotalPoolValue(userPoolBalances);
-
-    if (userTotalPoolValue <= 0) {
-      return toast.warn("You don't have any claims");
-    }
-
-    // Calculate User A's overall contribution percentage
-    const userPoolPercentage = (userTotalPoolValue / totalPoolValue) * 100;
-    const wallet = await kit.getAddress();
-
-    dispatch(
-      redeemLPReward({
-        userPoolPercentage,
-        summerizedAssets: userPoolBalances,
-        senderPublicKey: wallet.address,
-      })
-    );
-  };
+  useEffect(() => {
+    getWalletBalances();
+  }, []);
 
   return (
     <>
@@ -552,7 +464,7 @@ function AquaStake() {
                       <button
                         disabled={isProcessing || isDepositingAqua}
                         className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
-                        onClick={handleDepositAqua}
+                        onClick={handleLockAqua}
                       >
                         {!isDepositingAqua ? (
                           <span>Mint</span>
