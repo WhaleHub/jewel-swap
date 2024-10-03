@@ -38,7 +38,6 @@ import {
 } from "@stellar/stellar-sdk";
 import { useAppDispatch } from "../../lib/hooks";
 import {
-  fetchingWalletInfo,
   getAccountInfo,
   lockingAqua,
   mint,
@@ -49,7 +48,6 @@ import {
 } from "../../lib/slices/userSlice";
 import { summarizeAssets } from "../../lib/helpers";
 import { DepositType } from "../../enums";
-import { getAppData } from "../../lib/slices/appSlice";
 
 const aquaAssetCode = "AQUA";
 const aquaAssetIssuer =
