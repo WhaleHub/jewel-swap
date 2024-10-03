@@ -17,17 +17,12 @@ export interface User {
   walletName: string | null;
   fetchingWalletInfo: boolean;
   lockingAqua: boolean;
+  providingLp: boolean;
+  providedLp: boolean;
   lockedAqua: boolean;
 }
 
-const initialState = {
-  userRecords: { balances: null },
-  walletConnected: false,
-  walletSelectionOpen: false,
-  userWalletAddress: null,
-  connectingWallet: false,
-  walletName: null,
-} as User;
+const initialState = {} as User;
 
 export const mint = createAsyncThunk(
   "lock/mint",
@@ -235,9 +230,14 @@ export const userSlice = createSlice({
       ...state,
       lockingAqua: payload,
     }),
+    providingLp: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      providingLp: payload,
+    }),
     resetStateValues: (state) => ({
       ...state,
       lockedAqua: false,
+      providedLp: false,
     }),
     logOut: (state) => ({
       ...state,
@@ -285,12 +285,13 @@ export const userSlice = createSlice({
 });
 
 export const {
-  walletSelectionAction,
-  setUserWalletAddress,
-  setConnectingWallet,
-  setWalletConnectName,
   logOut,
-  fetchingWalletInfo,
+  providingLp,
   lockingAqua,
   resetStateValues,
+  fetchingWalletInfo,
+  setConnectingWallet,
+  setWalletConnectName,
+  setUserWalletAddress,
+  walletSelectionAction,
 } = userSlice.actions;
