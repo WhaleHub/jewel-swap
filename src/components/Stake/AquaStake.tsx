@@ -38,13 +38,18 @@ import {
 } from "@stellar/stellar-sdk";
 import { useAppDispatch } from "../../lib/hooks";
 import {
+  fetchingWalletInfo,
+  getAccountInfo,
   lockingAqua,
   mint,
   provideLiquidity,
+  providingLp,
   resetStateValues,
+  storeAccountBalance,
 } from "../../lib/slices/userSlice";
 import { summarizeAssets } from "../../lib/helpers";
 import { DepositType } from "../../enums";
+import { getAppData } from "../../lib/slices/appSlice";
 
 const aquaAssetCode = "AQUA";
 const aquaAssetIssuer =
@@ -72,9 +77,8 @@ function AquaStake() {
   const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
     useState<boolean>(false);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
-  const [isProviding, setProviding] = useState<boolean>(false);
-  const [lqBlubAmount, setBlubAmount] = useState<number | null>();
-  const [lqAquaAmount, setLqAquaAmount] = useState<number | null>();
+  const [lpBlubAmount, setLPBlubDepositAmount] = useState<number | null>();
+  const [lpAquaAmount, setLpAquaDepositAmount] = useState<number | null>();
 
   // const appLpBalances = summarizeAssets(appRecords?.lp_balances);
   // const totalValueLocked = sumAssets(appRecords?.pools);
@@ -88,13 +92,9 @@ function AquaStake() {
     (balance) => balance.asset_code === "WHLAQUA"
   );
 
-  const xlmRecord = user?.userRecords?.balances?.find(
-    (balance: any) => balance.asset_type === "native"
-  );
-
   const userAquaBalance = aquaRecord?.balance;
   const whlAquaBalance = whlAquaRecord?.balance;
-  const blubBalance = xlmRecord?.balance;
+  const blubBalance = whlAquaRecord?.balance;
 
   //lp account records
   const accountLps = user?.userRecords?.account?.pools?.filter(
@@ -118,7 +118,7 @@ function AquaStake() {
   };
 
   const handleSetBlubMaxDeposit = () => {
-    setBlubAmount(Number(blubBalance));
+    setLPBlubDepositAmount(Number(blubBalance));
   };
 
   const handleAddTrustline = async () => {
@@ -155,6 +155,15 @@ function AquaStake() {
     );
 
     await stellarService?.server?.submitTransaction(transactionToSubmit);
+  };
+
+  const updateWalletRecords = async () => {
+    const { address } = await kit.getAddress();
+    const stellarService = new StellarService();
+    const wrappedAccount = await stellarService.loadAccount(address);
+
+    dispatch(getAccountInfo(address));
+    dispatch(storeAccountBalance(wrappedAccount.balances));
   };
 
   const handleLockAqua = async () => {
@@ -245,22 +254,26 @@ function AquaStake() {
   };
 
   const handleProvideLiquidity = async () => {
+    dispatch(providingLp(true));
     const wallet = await kit.getAddress();
-    setProviding(true);
 
     if (!wallet.address) {
+      dispatch(providingLp(false));
       return toast.warn("Please connect wallet.");
     }
 
     if (!user) {
+      dispatch(providingLp(false));
       return toast.warn("Global state not initialized");
     }
 
-    if (!lqBlubAmount) {
+    if (!lpBlubAmount) {
+      dispatch(providingLp(false));
       return toast.warn("Please input XLM amount to stake.");
     }
 
-    if (!lqAquaAmount) {
+    if (!lpAquaAmount) {
+      dispatch(providingLp(false));
       return toast.warn("Please input AQUA amount to stake.");
     }
 
@@ -274,8 +287,8 @@ function AquaStake() {
 
       const aquaAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
 
-      const blubStakeAmount = lqBlubAmount.toFixed(7);
-      const aquaStakeAmount = lqAquaAmount.toFixed(7);
+      const blubStakeAmount = lpBlubAmount.toFixed(7);
+      const aquaStakeAmount = lpAquaAmount.toFixed(7);
 
       //transfer asset to server wallet
       const paymentOperation1 = Operation.payment({
@@ -331,19 +344,69 @@ function AquaStake() {
           senderPublicKey: address,
         })
       );
-      setProviding(false);
+      dispatch(providingLp(true));
+      toast.success("Transaction sent!");
     } catch (err) {
-      setProviding(false);
+      console.error("Transaction failed:", err);
+      dispatch(providingLp(false));
     }
+  };
+
+  const establishTrustline = async () => {
+    const stellarService = new StellarService();
+    const { address } = await kit.getAddress();
+    const senderAccount = await stellarService.loadAccount(address);
+
+    const transactionBuilder = new TransactionBuilder(senderAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.PUBLIC,
+    });
+
+    const trustlineOperation = Operation.changeTrust({
+      asset: new Asset(aquaAssetCode, aquaAssetIssuer),
+      limit: "100000000",
+    });
+
+    const transactionXDR = transactionBuilder
+      .addOperation(trustlineOperation)
+      .setTimeout(30)
+      .build()
+      .toXDR();
+
+    const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
+      address,
+      networkPassphrase: WalletNetwork.PUBLIC,
+    });
+
+    const HORIZON_SERVER = "https://horizon-testnet.stellar.org";
+
+    const transactionToSubmit = TransactionBuilder.fromXDR(
+      signedTxXdr,
+      HORIZON_SERVER
+    );
+
+    await stellarService?.server?.submitTransaction(transactionToSubmit);
   };
 
   useEffect(() => {
     if (user?.lockedAqua) {
       toast.success("Aqua locked successfully!");
+      setAquaDepositAmount(0);
       dispatch(lockingAqua(false));
       dispatch(resetStateValues());
+      updateWalletRecords();
     }
-  }, [user?.lockedAqua]);
+
+    if (user?.providedLp) {
+      toast.success("Provided Liquidity successfully!");
+      setLpAquaDepositAmount(0);
+      setLPBlubDepositAmount(0);
+      dispatch(providingLp(false));
+      dispatch(resetStateValues());
+      updateWalletRecords();
+    }
+    // establishTrustline();
+  }, [user?.lockedAqua, user?.providedLp]);
 
   return (
     <>
@@ -568,10 +631,10 @@ function AquaStake() {
                         type="number"
                         placeholder="0.00"
                         disabled={user?.lockingAqua}
-                        value={lqBlubAmount != null ? lqBlubAmount : ""}
+                        value={lpBlubAmount != null ? lpBlubAmount : ""}
                         className="mt-[3.5px]"
                         onChange={(e) =>
-                          setBlubAmount(
+                          setLPBlubDepositAmount(
                             e.target.value ? Number(e.target.value) : null
                           )
                         }
@@ -596,7 +659,7 @@ function AquaStake() {
                             position="end"
                             sx={{ cursor: "pointer" }}
                             onClick={() =>
-                              setLqAquaAmount(Number(userAquaBalance))
+                              setLpAquaDepositAmount(Number(userAquaBalance))
                             }
                           >
                             Max
@@ -604,10 +667,10 @@ function AquaStake() {
                         }
                         type="number"
                         placeholder="10.00"
-                        value={lqAquaAmount != null ? lqAquaAmount : ""}
+                        value={lpAquaAmount != null ? lpAquaAmount : ""}
                         className="mt-[3.5px]"
                         onChange={(e) =>
-                          setLqAquaAmount(
+                          setLpAquaDepositAmount(
                             e.target.value ? Number(e.target.value) : null
                           )
                         }
@@ -617,9 +680,10 @@ function AquaStake() {
                   <div className="col-span-12 md:col-span-6 px-2">
                     <button
                       className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
+                      disabled={user?.providingLp || !user?.userWalletAddress}
                       onClick={handleProvideLiquidity}
                     >
-                      {!isProviding ? (
+                      {!user?.providingLp ? (
                         <span>Provide Liquidity</span>
                       ) : (
                         <div className="flex justify-center items-center gap-[10px]">

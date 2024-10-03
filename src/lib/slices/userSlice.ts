@@ -256,31 +256,44 @@ export const userSlice = createSlice({
       state.lockingAqua = false;
     });
 
-    builder.addCase(mint.fulfilled, (state, { payload }) => {
+    builder.addCase(mint.fulfilled, (state, {}) => {
       state.lockedAqua = true;
     });
 
-    builder.addCase(mint.rejected, (state, action) => {
+    builder.addCase(mint.rejected, (state) => {
       state.lockingAqua = false;
     });
 
+    //provide lp
+    builder.addCase(provideLiquidity.pending, (state) => {
+      state.providedLp = false;
+    });
+
+    builder.addCase(provideLiquidity.fulfilled, (state, {}) => {
+      state.providedLp = true;
+    });
+
+    builder.addCase(provideLiquidity.rejected, (state) => {
+      state.providedLp = false;
+    });
+
     //store account
-    builder.addCase(storeAccountBalance.pending, (state) => {});
+    builder.addCase(storeAccountBalance.pending, () => {});
 
     builder.addCase(storeAccountBalance.fulfilled, (state, { payload }) => {
       state.userRecords.balances = payload;
     });
 
-    builder.addCase(storeAccountBalance.rejected, (state, action) => {});
+    builder.addCase(storeAccountBalance.rejected, () => {});
 
     //get user account details from db
-    builder.addCase(getAccountInfo.pending, (state) => {});
+    builder.addCase(getAccountInfo.pending, () => {});
 
     builder.addCase(getAccountInfo.fulfilled, (state, { payload }) => {
       state.userRecords.account = payload;
     });
 
-    builder.addCase(getAccountInfo.rejected, (state, action) => {});
+    builder.addCase(getAccountInfo.rejected, () => {});
   },
 });
 
