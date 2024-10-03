@@ -6,7 +6,7 @@ import Stake from "./pages/Stake";
 import Gauge from "./pages/Gauge";
 import Admin from "./pages/Admin";
 import { Provider } from "react-redux";
-import { makeStore, persistor } from "./lib/store";
+import { persistor, store } from "./lib/store";
 import { PersistGate } from "redux-persist/integration/react";
 import MainProvider from "./providers/MainProvider";
 
@@ -22,7 +22,7 @@ const theme = createTheme({
 function App() {
   return (
     <div>
-      <Provider store={makeStore()}>
+      <Provider store={store}>
         <PersistGate loading={null} persistor={persistor}>
           <MainProvider>
             <ThemeProvider theme={theme}>

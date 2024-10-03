@@ -20,7 +20,7 @@ const Navbar = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleWalletConnections = async () => {
-    // if (user?.walletConnected || user?.connectingWallet) return;
+    if (user?.walletConnected || user?.connectingWallet) return;
     dispatch(setConnectingWallet(true));
     dispatch(walletSelectionAction(true));
   };
@@ -34,6 +34,8 @@ const Navbar = () => {
   const toggleDropdown = () => {
     setDropdownOpen(!dropdownOpen);
   };
+
+  console.log(user?.userWalletAddress);
 
   return (
     <nav className="fixed top-0 right-0 z-30 min-h-[81.5px] w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[5px] transition-all duration-300">
