@@ -20,7 +20,7 @@ const initialState = {
   pools: null,
 } as {
   lp_balances: LpBalance[] | null;
-  pools: Pool[] | null;
+  pools: Pool[] | null | undefined;
 };
 
 export const getAppData = createAsyncThunk(

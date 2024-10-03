@@ -15,6 +15,9 @@ export interface User {
   userWalletAddress: string | null;
   connectingWallet: boolean;
   walletName: string | null;
+  fetchingWalletInfo: boolean;
+  lockingAqua: boolean;
+  lockedAqua: boolean;
 }
 
 const initialState = {
@@ -224,14 +227,42 @@ export const userSlice = createSlice({
       ...state,
       walletName: payload,
     }),
+    fetchingWalletInfo: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      fetchingWalletInfo: payload,
+    }),
+    lockingAqua: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      lockingAqua: payload,
+    }),
+    resetStateValues: (state) => ({
+      ...state,
+      lockedAqua: false,
+    }),
+    logOut: (state) => ({
+      ...state,
+      userRecords: { balances: null, account: null },
+      walletConnected: false,
+      walletSelectionOpen: false,
+      userWalletAddress: null,
+      connectingWallet: false,
+      walletName: null,
+      fetchingWalletInfo: false,
+    }),
   },
   extraReducers(builder) {
     //mint
-    builder.addCase(mint.pending, (state) => {});
+    builder.addCase(mint.pending, (state) => {
+      state.lockingAqua = false;
+    });
 
-    builder.addCase(mint.fulfilled, (state, { payload }) => {});
+    builder.addCase(mint.fulfilled, (state, { payload }) => {
+      state.lockedAqua = true;
+    });
 
-    builder.addCase(mint.rejected, (state, action) => {});
+    builder.addCase(mint.rejected, (state, action) => {
+      state.lockingAqua = false;
+    });
 
     //store account
     builder.addCase(storeAccountBalance.pending, (state) => {});
@@ -258,4 +289,8 @@ export const {
   setUserWalletAddress,
   setConnectingWallet,
   setWalletConnectName,
+  logOut,
+  fetchingWalletInfo,
+  lockingAqua,
+  resetStateValues,
 } = userSlice.actions;

@@ -200,5 +200,5 @@ export interface Stake {
 
 export interface UserRecords {
   balances: AccountBalance[] | null;
-  account: Account;
+  account: Account | null;
 }

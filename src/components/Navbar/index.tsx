@@ -5,6 +5,7 @@ import { adminWallets } from "../../config";
 import logo from "../../assets/images/logo.png";
 import { useAppDispatch } from "../../lib/hooks";
 import {
+  fetchingWalletInfo,
   setConnectingWallet,
   setUserWalletAddress,
   walletSelectionAction,
@@ -28,14 +29,13 @@ const Navbar = () => {
   const handleDisconnect = () => {
     setDropdownOpen(false);
     dispatch(setUserWalletAddress(null));
+    dispatch(fetchingWalletInfo(false));
   };
 
   // Toggle the dropdown when the button is clicked
   const toggleDropdown = () => {
     setDropdownOpen(!dropdownOpen);
   };
-
-  console.log(user?.userWalletAddress);
 
   return (
     <nav className="fixed top-0 right-0 z-30 min-h-[81.5px] w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[5px] transition-all duration-300">

@@ -12,7 +12,9 @@ import { isAllowed, setAllowed } from "@stellar/freighter-api";
 import { StellarService } from "../services/stellar.service";
 import { useAppDispatch } from "../lib/hooks";
 import {
+  fetchingWalletInfo,
   getAccountInfo,
+  logOut,
   setConnectingWallet,
   setUserWalletAddress,
   setWalletConnectName,
@@ -47,13 +49,18 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     dispatch(getAppData());
     dispatch(storeAccountBalance(wrappedAccount.balances));
     dispatch(getAccountInfo(address));
+    dispatch(fetchingWalletInfo(false));
   };
 
   useEffect(() => {
-    if (user.walletConnected) {
+    if (user.userWalletAddress) {
+      dispatch(fetchingWalletInfo(true));
+      console.log("fetchingWalletInfo", user?.fetchingWalletInfo);
       getWalletAddress();
+    } else {
+      dispatch(logOut());
     }
-  }, [user?.walletConnected]);
+  }, [user?.userWalletAddress]);
 
   return (
     <Fragment>
@@ -85,19 +92,35 @@ function ConnectWalletModal() {
         walletType === walletTypes.FREIGHTER ? FREIGHTER_ID : LOBSTR_ID;
 
       try {
-        const kit = new StellarWalletsKit({
-          network: WalletNetwork.PUBLIC,
-          selectedWalletId,
-          modules: allowAllModules(),
-        });
-        kit.setWallet(selectedWalletId);
+        if (selectedWalletId === walletTypes.FREIGHTER) {
+          const kit = new StellarWalletsKit({
+            network: WalletNetwork.PUBLIC,
+            selectedWalletId,
+            modules: [new FreighterModule()],
+          });
 
-        await setAllowed();
-        await isAllowed();
+          await setAllowed();
+          await isAllowed();
+          kit.setWallet(FREIGHTER_ID);
 
-        const { address } = await kit.getAddress();
-        dispatch(setUserWalletAddress(address));
-        handleWalletConnections();
+          const { address } = await kit.getAddress();
+          dispatch(setUserWalletAddress(address));
+          handleWalletConnections();
+        } else if (walletTypes.LOBSTR) {
+          const kit = new StellarWalletsKit({
+            network: WalletNetwork.PUBLIC,
+            selectedWalletId,
+            modules: [new LobstrModule()],
+          });
+
+          await setAllowed();
+          await isAllowed();
+          kit.setWallet(LOBSTR_ID);
+
+          const { address } = await kit.getAddress();
+          dispatch(setUserWalletAddress(address));
+          handleWalletConnections();
+        }
       } catch (error) {
         console.error(`Error connecting to ${walletType} wallet:`, error);
         setLoading(null);

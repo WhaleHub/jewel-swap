@@ -1,7 +1,7 @@
-import { LpBalance, SummarizedAssets } from "../interfaces";
+import { LpBalance, Pool, SummarizedAssets } from "../interfaces";
 
 export function summarizeAssets(
-  data: LpBalance[] | null
+  data: LpBalance[] | null | undefined
 ): SummarizedAssets | null {
   if (!data) return null;
 
@@ -28,4 +28,18 @@ export function summarizeAssets(
 
     return result;
   }, {} as SummarizedAssets);
+}
+
+export function sumAssets(transactions: any) {
+  let totalAssetA = 0;
+  let totalAssetB = 0;
+  if (!transactions) return;
+
+  transactions.forEach((tx: any) => {
+    totalAssetA += parseFloat(tx.assetAAmount);
+    totalAssetB += parseFloat(tx.assetBAmount);
+  });
+
+  const total = totalAssetA + totalAssetB;
+  return { totalAssetA, totalAssetB, total };
 }

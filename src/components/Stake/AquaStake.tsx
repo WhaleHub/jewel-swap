@@ -23,7 +23,12 @@ import {
 } from "@creit.tech/stellar-wallets-kit";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
 import { StellarService } from "../../services/stellar.service";
-import { blubIssuerPublicKey, treasureAddress } from "../../utils/constants";
+import {
+  blubIssuerPublicKey,
+  blubSignerPublicKey,
+  JEWEL_TOKEN,
+  lpSignerPublicKey,
+} from "../../utils/constants";
 import {
   Asset,
   BASE_FEE,
@@ -32,7 +37,12 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { useAppDispatch } from "../../lib/hooks";
-import { mint, provideLiquidity } from "../../lib/slices/userSlice";
+import {
+  lockingAqua,
+  mint,
+  provideLiquidity,
+  resetStateValues,
+} from "../../lib/slices/userSlice";
 import { summarizeAssets } from "../../lib/helpers";
 import { DepositType } from "../../enums";
 
@@ -62,11 +72,12 @@ function AquaStake() {
   const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
     useState<boolean>(false);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
-  const [isDepositingAqua, setIsDepositingAqua] = useState<boolean>(false);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [isProviding, setProviding] = useState<boolean>(false);
-  const [lqXlmAmount, setXlmAmount] = useState<number | null>();
+  const [lqBlubAmount, setBlubAmount] = useState<number | null>();
   const [lqAquaAmount, setLqAquaAmount] = useState<number | null>();
+
+  // const appLpBalances = summarizeAssets(appRecords?.lp_balances);
+  // const totalValueLocked = sumAssets(appRecords?.pools);
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
@@ -83,7 +94,7 @@ function AquaStake() {
 
   const userAquaBalance = aquaRecord?.balance;
   const whlAquaBalance = whlAquaRecord?.balance;
-  const xlmBalance = xlmRecord?.balance;
+  const blubBalance = xlmRecord?.balance;
 
   //lp account records
   const accountLps = user?.userRecords?.account?.pools?.filter(
@@ -95,7 +106,6 @@ function AquaStake() {
   const userPoolBalances = summarizeAssets(userLpProvisions);
 
   //user balances
-  const appLpBalances = summarizeAssets(appRecords?.lp_balances);
 
   const kit: StellarWalletsKit = new StellarWalletsKit({
     network: WalletNetwork.PUBLIC,
@@ -107,108 +117,110 @@ function AquaStake() {
     setAquaDepositAmount(Number(userAquaBalance));
   };
 
-  const handleSetXLMMaxDeposit = () => {
-    setXlmAmount(Number(xlmBalance));
+  const handleSetBlubMaxDeposit = () => {
+    setBlubAmount(Number(blubBalance));
+  };
+
+  const handleAddTrustline = async () => {
+    const stellarService = new StellarService();
+    const { address } = await kit.getAddress();
+    const senderAccount = await stellarService.loadAccount(address);
+
+    const transactionBuilder = new TransactionBuilder(senderAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.PUBLIC,
+    });
+
+    const trustlineOperation = Operation.changeTrust({
+      asset: new Asset(whlAssetCode, whlAquaIssuer),
+      limit: "1000000000",
+    });
+
+    const transactionXDR = transactionBuilder
+      .addOperation(trustlineOperation)
+      .setTimeout(30)
+      .build()
+      .toXDR();
+
+    const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
+      address,
+      networkPassphrase: WalletNetwork.PUBLIC,
+    });
+
+    const HORIZON_SERVER = "https://horizon-testnet.stellar.org";
+
+    const transactionToSubmit = TransactionBuilder.fromXDR(
+      signedTxXdr,
+      HORIZON_SERVER
+    );
+
+    await stellarService?.server?.submitTransaction(transactionToSubmit);
   };
 
   const handleLockAqua = async () => {
-    const wallet = await kit.getAddress();
+    dispatch(lockingAqua(true));
 
-    if (!wallet.address) {
+    const stellarService = new StellarService();
+    const { address } = await kit.getAddress();
+
+    if (!address) {
+      dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
     }
 
     if (!user) {
-      return toast.warn("Global state not initialized");
+      dispatch(lockingAqua(false));
+      return toast.warn("Global state not initialized.");
     }
 
     if (!aquaDepositAmount) {
+      dispatch(lockingAqua(false));
       return toast.warn("Please input amount to stake.");
     }
 
     if (aquaDepositAmount < MIN_DEPOSIT_AMOUNT) {
+      dispatch(lockingAqua(false));
       return toast.warn(
         `Deposit amount should be higher than ${MIN_DEPOSIT_AMOUNT}.`
       );
     }
 
-    setIsProcessing(true);
-    setIsDepositingAqua(true);
+    const senderAccount = await stellarService.loadAccount(address);
+    const existingTrustlines = senderAccount.balances.map(
+      (balance: Balance) => balance.asset_code
+    );
+
+    if (!existingTrustlines.includes(JEWEL_TOKEN)) {
+      try {
+        await handleAddTrustline();
+        toast.success("Trustline added successfully.");
+      } catch (error) {
+        dispatch(lockingAqua(false));
+        return toast.error("Failed to add trustline.");
+      }
+    }
 
     try {
-      // Retrieve the wallet address from the Stellar Kit
-      const { address } = await kit.getAddress();
-      const stellarService = new StellarService();
-
-      const senderAccount = await stellarService.loadAccount(address);
-      // const treasureAccount = await stellarService.loadAccount(treasureAddress);
-
-      // Load the sponsor (whaleHub) account details from the Stellar network
-      await stellarService.loadAccount(treasureAddress);
-      await stellarService.loadAccount(blubIssuerPublicKey);
-
-      // Define the custom asset using the provided code and issuer
       const customAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
-
       const stakeAmount = aquaDepositAmount.toFixed(7);
-      // const treasuryAmount = (aquaDepositAmount * 0.3).toFixed(7);
 
-      // Create the payment operation to transfer the custom asset to DAPP
       const paymentOperation = Operation.payment({
-        destination: blubIssuerPublicKey,
+        destination: blubSignerPublicKey,
         asset: customAsset,
-        amount: `${stakeAmount}`,
+        amount: stakeAmount,
       });
 
-      // Build transaction
       const transactionBuilder = new TransactionBuilder(senderAccount, {
         fee: BASE_FEE,
         networkPassphrase: Networks.PUBLIC,
       });
 
-      const existingTrustlines = senderAccount.balances.map(
-        (balance: Balance) => balance.asset_code
-      );
-
-      console.log(existingTrustlines);
-      return;
-
-      // transactionBuilder
-      //   .addOperation(
-      //     Operation.changeTrust({
-      //       asset: customAsset,
-      //       limit: "100000000",
-      //       source: blubIssuerPublicKey,
-      //     })
-      //   )
-      //   .addOperation(
-      //     Operation.changeTrust({
-      //       asset: customAsset,
-      //       limit: "100000000",
-      //       source: blubIssuerPublicKey,
-      //     })
-      //   );
-
-      if (!existingTrustlines.includes("WHLAQUA")) {
-        transactionBuilder.addOperation(
-          Operation.changeTrust({
-            asset: new Asset(whlAssetCode, whlAquaIssuer),
-            limit: "100000000",
-            source: address,
-          })
-        );
-      }
-
-      // Add the payment operation and set the timeout
       transactionBuilder.addOperation(paymentOperation).setTimeout(180);
 
-      // Build the transaction
       const transaction = transactionBuilder.build();
 
-      // Convert the transaction to XDR format for signing
       const transactionXDR = transaction.toXDR();
 
-      // Sign the transaction using the Stellar Wallets Kit
       const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
         address,
         networkPassphrase: WalletNetwork.PUBLIC,
@@ -223,10 +235,12 @@ function AquaStake() {
           senderPublicKey: address,
         })
       );
+
+      dispatch(lockingAqua(true));
+      toast.success("Transaction sent!");
     } catch (err) {
-      console.log(err);
-      setIsProcessing(false);
-      setIsDepositingAqua(false);
+      console.error("Transaction failed:", err);
+      dispatch(lockingAqua(false));
     }
   };
 
@@ -242,7 +256,7 @@ function AquaStake() {
       return toast.warn("Global state not initialized");
     }
 
-    if (!lqXlmAmount) {
+    if (!lqBlubAmount) {
       return toast.warn("Please input XLM amount to stake.");
     }
 
@@ -256,23 +270,23 @@ function AquaStake() {
       const senderAccount = await stellarService.loadAccount(wallet.address);
 
       // Load the sponsor (whaleHub) account details from the Stellar network
-      await stellarService.loadAccount(blubIssuerPublicKey);
+      await stellarService.loadAccount(lpSignerPublicKey);
 
       const aquaAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
 
-      const xlmStakeAmount = lqXlmAmount.toFixed(7);
+      const blubStakeAmount = lqBlubAmount.toFixed(7);
       const aquaStakeAmount = lqAquaAmount.toFixed(7);
 
       //transfer asset to server wallet
       const paymentOperation1 = Operation.payment({
-        destination: blubIssuerPublicKey,
+        destination: lpSignerPublicKey,
         asset: aquaAsset,
-        amount: `${xlmStakeAmount}`,
+        amount: `${blubStakeAmount}`,
       });
 
       const paymentOperation2 = Operation.payment({
-        destination: blubIssuerPublicKey,
-        asset: Asset.native(),
+        destination: lpSignerPublicKey,
+        asset: new Asset(whlAssetCode, whlAquaIssuer),
         amount: `${aquaStakeAmount}`,
       });
 
@@ -306,8 +320,8 @@ function AquaStake() {
       dispatch(
         provideLiquidity({
           asset1: {
-            ...Asset.native(),
-            amount: xlmStakeAmount,
+            ...new Asset(whlAssetCode, whlAquaIssuer),
+            amount: blubStakeAmount,
           },
           asset2: {
             ...aquaAsset,
@@ -323,31 +337,16 @@ function AquaStake() {
     }
   };
 
-  //TODO: UPDATE INTERFACE
-  function getTotalPoolValue(assets: any) {
-    let totalValue = 0;
-    for (const asset in assets) {
-      totalValue += parseFloat(assets[asset].totalAmount);
-    }
-    return totalValue;
-  }
-
-  const getWalletBalances = async () => {
-    const userWallet = user?.userWalletAddress;
-    console.log(userWallet);
-  };
-
   useEffect(() => {
-    getWalletBalances();
-  }, []);
+    if (user?.lockedAqua) {
+      toast.success("Aqua locked successfully!");
+      dispatch(lockingAqua(false));
+      dispatch(resetStateValues());
+    }
+  }, [user?.lockedAqua]);
 
   return (
     <>
-      <div className="flex flex-col gap-[7px] w-full">
-        <div className="text-[14px]">JWLSOL is a SOL-pegged stablecoin.</div>
-        <div className="text-[14px]">description</div>
-      </div>
-
       <div className="flex flex-col gap-[21px] w-full mt-[21px]">
         {/* Native staking */}
         <div className="w-full bg-[rgb(18,18,18)] bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.05))] rounded-[4px]">
@@ -368,36 +367,20 @@ function AquaStake() {
                 </div>
 
                 <div className="col-span-12 md:col-span-2 flex flex-col justify-center md:px-[10.5px]">
-                  <div>TVL</div>
-                  <div>
-                    1000
-                    {/* {`${(
-                    jwlsolSupply / LAMPORTS_PER_SOL
-                  ).toLocaleString()} JWLSOL`} */}
-                    total locked
-                  </div>
+                  {/* <div>TVL</div>
+                  <div>{totalValueLocked?.total} total locked</div> */}
                 </div>
 
                 <div className="col-span-12 md:col-span-1 md:px-[10.5px]"></div>
 
                 <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px]">
-                  <div className="flex justify-between items-center w-full">
+                  {/* <div className="flex justify-between items-center w-full">
                     <div>Your balance</div>
                     <div className="text-end">
-                      <div>
-                        {/* {`${(
-                        solBalance / LAMPORTS_PER_SOL
-                      ).toLocaleString()} SOL`} */}
-                        100 AQUA
-                      </div>
-                      <div>
-                        200 JWLAQUA
-                        {/* {`${(
-                        jwlsolBalance / LAMPORTS_PER_SOL
-                      ).toLocaleString()} JWLSOL`} */}
-                      </div>
+                      <div>100 AQUA</div>
+                      <div>200 JWLAQUA</div>
                     </div>
-                  </div>
+                  </div> */}
                 </div>
 
                 <div className="col-span-12 md:col-span-1 md:px-[10.5px]"></div>
@@ -449,7 +432,7 @@ function AquaStake() {
                         }
                         type="number"
                         placeholder="0.00"
-                        disabled={isProcessing || isDepositingAqua}
+                        disabled={user?.lockingAqua}
                         value={
                           aquaDepositAmount != null ? aquaDepositAmount : ""
                         }
@@ -460,13 +443,12 @@ function AquaStake() {
                           )
                         }
                       />
-
                       <button
-                        disabled={isProcessing || isDepositingAqua}
+                        disabled={user?.lockingAqua || !user?.userWalletAddress}
                         className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
                         onClick={handleLockAqua}
                       >
-                        {!isDepositingAqua ? (
+                        {!user?.lockingAqua ? (
                           <span>Mint</span>
                         ) : (
                           <div className="flex justify-center items-center gap-[10px]">
@@ -485,69 +467,6 @@ function AquaStake() {
                         )}
                       </button>
                     </div>
-
-                    {/* <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px] text-sm">
-                      <div>{`Avail WHLAQUA Balance: ${Number(
-                        whlAquaBalance
-                      ).toFixed(2)} WHLAQUA`}</div>
-
-                      <InputBase
-                        sx={{
-                          flex: 1,
-                          border: "1px",
-                          borderStyle: "solid",
-                          borderRadius: "5px",
-                          borderColor: "gray",
-                          padding: "2px 5px",
-                        }}
-                        endAdornment={
-                          <InputAdornment
-                            position="end"
-                            sx={{ cursor: "pointer" }}
-                            onClick={() =>
-                              setReserveRedeemAmount(Number(whlAquaBalance))
-                            }
-                          >
-                            Max
-                          </InputAdornment>
-                        }
-                        type="number"
-                        placeholder="10.00"
-                        value={
-                          reserveRedeemAmount != null ? reserveRedeemAmount : ""
-                        }
-                        className="mt-[3.5px]"
-                        onChange={(e) =>
-                          setReserveRedeemAmount(
-                            e.target.value ? Number(e.target.value) : null
-                          )
-                        }
-                      />
-
-                      <button
-                        // disabled={isProcessing || isReservingRedeem}
-                        className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
-                        // onClick={handleReserveRedeem}
-                      >
-                        {!isReservingRedeem ? (
-                          <span>Redeem</span>
-                        ) : (
-                          <div className="flex justify-center items-center gap-[10px]">
-                            <span className="text-white">Processing...</span>
-                            <TailSpin
-                              height="18"
-                              width="18"
-                              color="#ffffff"
-                              ariaLabel="tail-spin-loading"
-                              radius="1"
-                              wrapperStyle={{}}
-                              wrapperClass=""
-                              visible={true}
-                            />
-                          </div>
-                        )}
-                      </button>
-                    </div> */}
                   </div>
                 </div>
 
@@ -560,9 +479,9 @@ function AquaStake() {
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-12 md:col-span-4 px-[10.5px]">
-                      <div className="flex justify-start md:justify-center">
+                      {/* <div className="flex justify-start md:justify-center">
                         <div>SOL Reserved to Redeem</div>
-                      </div>
+                      </div> */}
                       <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
                         <div>
                           {/* {userInfoAccountInfo &&
@@ -575,9 +494,9 @@ function AquaStake() {
                     </div>
 
                     <div className="col-span-12 md:col-span-4 px-[10.5px]">
-                      <div className="flex justify-start md:justify-center">
+                      {/* <div className="flex justify-start md:justify-center">
                         <div>Unbonding Epoch</div>
-                      </div>
+                      </div> */}
                       <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
                         <div>
                           {/* {userInfoAccountInfo &&
@@ -594,18 +513,18 @@ function AquaStake() {
                     </div>
 
                     <div className="col-span-12 md:col-span-4 px-[10.5px]">
-                      <div className="flex justify-start md:justify-center">
+                      {/* <div className="flex justify-start md:justify-center">
                         <div>SOL Approved to Redeem</div>
                       </div>
                       <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
                         <div>
-                          {/* {userInfoAccountInfo &&
+                          {userInfoAccountInfo &&
                             (
                               userInfoAccountInfo.approvedRedeemAmount.toNumber() /
                               LAMPORTS_PER_SOL
-                            ).toLocaleString()} */}
+                            ).toLocaleString()}
                         </div>
-                      </div>
+                      </div> */}
                     </div>
                   </div>
                 </div>
@@ -614,9 +533,8 @@ function AquaStake() {
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-3 px-[10.5px]"></div>
                     <div className="col-span-9 px-[10.5px] italic">
-                      If you have already requested JWLSOL to be redeemed, the
-                      new redeem attempts will increase the unbonding epoch -
-                      you will need to wait for the unbonding period again.
+                      You will need to wait for the unbonding period again to
+                      receive your reward.
                     </div>
                   </div>
                 </div>
@@ -627,7 +545,7 @@ function AquaStake() {
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
-                      <div>{`XLM ${Number(xlmBalance)?.toFixed(2)}`}</div>
+                      <div>{`BLUB ${Number(blubBalance)?.toFixed(2)}`}</div>
 
                       <InputBase
                         sx={{
@@ -642,18 +560,18 @@ function AquaStake() {
                           <InputAdornment
                             position="end"
                             sx={{ cursor: "pointer" }}
-                            onClick={handleSetXLMMaxDeposit}
+                            onClick={handleSetBlubMaxDeposit}
                           >
                             Max
                           </InputAdornment>
                         }
                         type="number"
                         placeholder="0.00"
-                        disabled={isProcessing || isDepositingAqua}
-                        value={lqXlmAmount != null ? lqXlmAmount : ""}
+                        disabled={user?.lockingAqua}
+                        value={lqBlubAmount != null ? lqBlubAmount : ""}
                         className="mt-[3.5px]"
                         onChange={(e) =>
-                          setXlmAmount(
+                          setBlubAmount(
                             e.target.value ? Number(e.target.value) : null
                           )
                         }
@@ -694,51 +612,31 @@ function AquaStake() {
                           )
                         }
                       />
-
-                      <button
-                        className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
-                        onClick={handleProvideLiquidity}
-                      >
-                        {!isProviding ? (
-                          <span>Provide Liquidity</span>
-                        ) : (
-                          <div className="flex justify-center items-center gap-[10px]">
-                            <span className="text-white">Processing...</span>
-                            <TailSpin
-                              height="18"
-                              width="18"
-                              color="#ffffff"
-                              ariaLabel="tail-spin-loading"
-                              radius="1"
-                              wrapperStyle={{}}
-                              wrapperClass=""
-                              visible={true}
-                            />
-                          </div>
-                        )}
-                      </button>
                     </div>
-
-                    <div className="grid grid-cols-12 gap-4">
-                      {userPoolBalances &&
-                        Object.values(userPoolBalances).map(
-                          (asset: any, index) => (
-                            <div
-                              key={index}
-                              className="col-span-12 md:col-span-6 flex flex-col mt-5"
-                            >
-                              <div className="col-span-12 bg-white shadow-md p-4 rounded-md">
-                                <p className="text-sm font-bold text-gray-800">
-                                  {asset.assetCode}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  Total Amount: {asset.totalAmount}
-                                </p>
-                              </div>
-                            </div>
-                          )
-                        )}
-                    </div>
+                  </div>
+                  <div className="col-span-12 md:col-span-6 px-2">
+                    <button
+                      className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
+                      onClick={handleProvideLiquidity}
+                    >
+                      {!isProviding ? (
+                        <span>Provide Liquidity</span>
+                      ) : (
+                        <div className="flex justify-center items-center gap-[10px]">
+                          <span className="text-white">Processing...</span>
+                          <TailSpin
+                            height="18"
+                            width="18"
+                            color="#ffffff"
+                            ariaLabel="tail-spin-loading"
+                            radius="1"
+                            wrapperStyle={{}}
+                            wrapperClass=""
+                            visible={true}
+                          />
+                        </div>
+                      )}
+                    </button>
                   </div>
 
                   {/* <div className="grid grid-cols-12 gap-4 mt-5">
