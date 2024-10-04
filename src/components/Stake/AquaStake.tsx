@@ -71,7 +71,7 @@ interface Balance {
 function AquaStake() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
-  const appRecords = useSelector((state: RootState) => state.app);
+  // const appRecords = useSelector((state: RootState) => state.app);
   const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
     useState<boolean>(false);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
@@ -453,7 +453,7 @@ function AquaStake() {
                       setIsNativeStakeExpanded(!isNativeStakeExpanded)
                     }
                   >
-                    <span>Mint / Redeem</span>
+                    <span>Stake</span>
                     {isNativeStakeExpanded ? (
                       <KeyboardArrowUpIcon className="text-white" />
                     ) : (
@@ -574,18 +574,12 @@ function AquaStake() {
                     </div>
 
                     <div className="col-span-12 md:col-span-4 px-[10.5px]">
-                      {/* <div className="flex justify-start md:justify-center">
-                        <div>SOL Approved to Redeem</div>
+                      <div className="flex justify-start md:justify-center">
+                        <div>Unbonded Reward</div>
                       </div>
                       <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
-                        <div>
-                          {userInfoAccountInfo &&
-                            (
-                              userInfoAccountInfo.approvedRedeemAmount.toNumber() /
-                              LAMPORTS_PER_SOL
-                            ).toLocaleString()}
-                        </div>
-                      </div> */}
+                        <div>{user?.userLockedRewardsAmount}</div>
+                      </div>
                     </div>
                   </div>
                 </div>

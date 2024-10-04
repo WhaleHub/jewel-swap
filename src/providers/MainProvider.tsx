@@ -14,6 +14,7 @@ import { useAppDispatch } from "../lib/hooks";
 import {
   fetchingWalletInfo,
   getAccountInfo,
+  getLockedAquaRewardsForAccount,
   logOut,
   setConnectingWallet,
   setUserWalletAddress,
@@ -50,13 +51,24 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     dispatch(storeAccountBalance(wrappedAccount.balances));
     dispatch(getAccountInfo(address));
     dispatch(fetchingWalletInfo(false));
+    dispatch(getLockedAquaRewardsForAccount(address));
+  };
+
+  const getRewards = async () => {
+    const address = user?.userRecords?.account?.account;
+
+    const intervalId = setInterval(() => {
+      dispatch(getLockedAquaRewardsForAccount(address));
+    }, 100000);
+
+    return () => clearInterval(intervalId);
   };
 
   useEffect(() => {
     if (user.userWalletAddress) {
       dispatch(fetchingWalletInfo(true));
-      console.log("fetchingWalletInfo", user?.fetchingWalletInfo);
       getWalletAddress();
+      getRewards();
     } else {
       dispatch(logOut());
     }

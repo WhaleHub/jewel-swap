@@ -20,6 +20,7 @@ export interface User {
   providingLp: boolean;
   providedLp: boolean;
   lockedAqua: boolean;
+  userLockedRewardsAmount: number;
 }
 
 const initialState = {} as User;
@@ -202,6 +203,26 @@ export const redeemLPReward = createAsyncThunk(
   }
 );
 
+export const getLockedAquaRewardsForAccount = createAsyncThunk(
+  "user/lockedAquaRewards",
+  async (account: string | undefined, { rejectWithValue }) => {
+    try {
+      const { data } = await axios.get(
+        `${BACKEND_API}/token/getLockedReward?userPublicKey=${account}`
+      );
+      return data;
+    } catch (error: any) {
+      const customError: CustomError = error;
+
+      if (customError.response && customError.response.data.error.message) {
+        return rejectWithValue(customError.response.data.error.message);
+      }
+
+      throw new Error(customError.message || "An unknown error occurred");
+    }
+  }
+);
+
 export const userSlice = createSlice({
   name: "user",
   initialState,
@@ -294,6 +315,19 @@ export const userSlice = createSlice({
     });
 
     builder.addCase(getAccountInfo.rejected, () => {});
+
+    //get user locked aqua rewards
+    builder.addCase(getLockedAquaRewardsForAccount.pending, () => {});
+
+    builder.addCase(
+      getLockedAquaRewardsForAccount.fulfilled,
+      (state, { payload }) => {
+        state.userLockedRewardsAmount = payload.lockedAquaRewardEstimation;
+        console.log(payload.lockedAquaRewardEstimation);
+      }
+    );
+
+    builder.addCase(getLockedAquaRewardsForAccount.rejected, () => {});
   },
 });
 
