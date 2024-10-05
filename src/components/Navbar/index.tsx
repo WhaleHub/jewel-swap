@@ -52,18 +52,6 @@ const Navbar = () => {
 
           <div className="flex justify-end items-center gap-[5.6px]">
             <div className="flex items-center gap-3">
-              <Link
-                to={"/stake/sol"}
-                className="text-[14px] text-[#939da7] hover:text-white"
-              >
-                Stake
-              </Link>
-              <Link
-                to={"/gauge"}
-                className="text-[14px] text-[#939da7] hover:text-white"
-              >
-                Gauge
-              </Link>
               {user?.userWalletAddress &&
                 adminWallets.includes(user?.userWalletAddress) && (
                   <Link
