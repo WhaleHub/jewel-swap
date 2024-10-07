@@ -18,6 +18,9 @@ import { RootState } from "../../lib/store";
 import {
   allowAllModules,
   FREIGHTER_ID,
+  FreighterModule,
+  LOBSTR_ID,
+  LobstrModule,
   StellarWalletsKit,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
@@ -46,6 +49,7 @@ import {
   resetStateValues,
   storeAccountBalance,
   unStakeAqua,
+  unStakingAqua,
 } from "../../lib/slices/userSlice";
 import { summarizeAssets } from "../../lib/helpers";
 import { DepositType } from "../../enums";
@@ -79,6 +83,8 @@ function AquaStake() {
   const [lpBlubAmount, setLPBlubDepositAmount] = useState<number | null>();
   const [lpAquaAmount, setLpAquaDepositAmount] = useState<number | null>();
 
+  // @ts-ignore
+
   // const appLpBalances = summarizeAssets(appRecords?.lp_balances);
   // const totalValueLocked = sumAssets(appRecords?.pools);
 
@@ -104,13 +110,14 @@ function AquaStake() {
   const userLpProvisions = user?.userRecords?.account?.lpBalances;
   // const userPoolBalances = summarizeAssets(userLpProvisions);
 
-  //user balances
-
-  const kit: StellarWalletsKit = new StellarWalletsKit({
-    network: WalletNetwork.PUBLIC,
-    selectedWalletId: FREIGHTER_ID,
-    modules: allowAllModules(),
-  });
+  const accountClaimableRecords = (
+    user?.userRecords?.account?.claimableRecords?.reduce(
+      (total, record: any) => {
+        return Number(total) + Number(record.amount);
+      },
+      0
+    ) || 0
+  ).toString();
 
   const handleSetMaxDeposit = () => {
     setAquaDepositAmount(Number(userAquaBalance));
@@ -121,6 +128,15 @@ function AquaStake() {
   };
 
   const handleAddTrustline = async () => {
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId: LOBSTR_ID,
+      modules: [
+        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
+        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
+      ],
+    });
+
     const stellarService = new StellarService();
     const { address } = await kit.getAddress();
     const senderAccount = await stellarService.loadAccount(address);
@@ -157,6 +173,15 @@ function AquaStake() {
   };
 
   const updateWalletRecords = async () => {
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId: LOBSTR_ID,
+      modules: [
+        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
+        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
+      ],
+    });
+
     const { address } = await kit.getAddress();
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
@@ -166,6 +191,15 @@ function AquaStake() {
   };
 
   const handleLockAqua = async () => {
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId: LOBSTR_ID,
+      modules: [
+        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
+        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
+      ],
+    });
+
     dispatch(lockingAqua(true));
 
     const stellarService = new StellarService();
@@ -253,11 +287,30 @@ function AquaStake() {
   };
 
   const handleUnlockAqua = async () => {
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId: LOBSTR_ID,
+      modules: [
+        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
+        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
+      ],
+    });
+
     const { address } = await kit.getAddress();
+    dispatch(unStakingAqua(true));
     dispatch(unStakeAqua({ senderPublicKey: address }));
   };
 
   const handleProvideLiquidity = async () => {
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId: LOBSTR_ID,
+      modules: [
+        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
+        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
+      ],
+    });
+
     dispatch(providingLp(true));
     const wallet = await kit.getAddress();
 
@@ -356,42 +409,6 @@ function AquaStake() {
     }
   };
 
-  const establishTrustline = async () => {
-    const stellarService = new StellarService();
-    const { address } = await kit.getAddress();
-    const senderAccount = await stellarService.loadAccount(address);
-
-    const transactionBuilder = new TransactionBuilder(senderAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: Networks.PUBLIC,
-    });
-
-    const trustlineOperation = Operation.changeTrust({
-      asset: new Asset(aquaAssetCode, aquaAssetIssuer),
-      limit: "100000000",
-    });
-
-    const transactionXDR = transactionBuilder
-      .addOperation(trustlineOperation)
-      .setTimeout(30)
-      .build()
-      .toXDR();
-
-    const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-      address,
-      networkPassphrase: WalletNetwork.PUBLIC,
-    });
-
-    const HORIZON_SERVER = "https://horizon-testnet.stellar.org";
-
-    const transactionToSubmit = TransactionBuilder.fromXDR(
-      signedTxXdr,
-      HORIZON_SERVER
-    );
-
-    await stellarService?.server?.submitTransaction(transactionToSubmit);
-  };
-
   useEffect(() => {
     if (user?.lockedAqua) {
       toast.success("Aqua locked successfully!");
@@ -409,8 +426,13 @@ function AquaStake() {
       dispatch(resetStateValues());
       updateWalletRecords();
     }
-    // establishTrustline();
-  }, [user?.lockedAqua, user?.providedLp]);
+
+    if (user?.unStakedAqua) {
+      toast.success("Aqua unstaked successfully!");
+      dispatch(resetStateValues());
+      dispatch(unStakingAqua(false));
+    }
+  }, [user?.lockedAqua, user?.providedLp, user?.unStakedAqua]);
 
   return (
     <>
@@ -539,14 +561,14 @@ function AquaStake() {
 
                         <button
                           disabled={
-                            user?.lockingAqua || !user?.userWalletAddress
+                            user?.unStakingAqua || !user?.userWalletAddress
                           }
                           className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
                           onClick={handleUnlockAqua}
                         >
-                          {!user?.lockingAqua ? (
+                          {!user?.unStakingAqua ? (
                             <span>
-                              Unstake <span>{1000}</span>
+                              Unstake <span>({accountClaimableRecords})</span>
                             </span>
                           ) : (
                             <div className="flex justify-center items-center gap-[10px]">

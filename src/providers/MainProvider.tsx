@@ -36,16 +36,21 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
 
-  const kit: StellarWalletsKit = new StellarWalletsKit({
-    network: WalletNetwork.PUBLIC,
-    selectedWalletId: LOBSTR_ID,
-    modules: [new FreighterModule(), new LobstrModule()],
-  });
-
   const getWalletAddress = async () => {
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId: `${user?.walletName}`,
+      modules: [
+        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
+        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
+      ],
+    });
+
     const { address } = await kit.getAddress();
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
+
+    console.log(address);
 
     dispatch(getAppData());
     dispatch(storeAccountBalance(wrappedAccount.balances));

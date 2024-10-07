@@ -17,11 +17,11 @@ export interface User {
   walletName: string | null;
   fetchingWalletInfo: boolean;
   lockingAqua: boolean;
-  unLockingAqua: boolean;
+  unStakingAqua: boolean;
   providingLp: boolean;
   providedLp: boolean;
   lockedAqua: boolean;
-  unLockedAqua: boolean;
+  unStakedAqua: boolean;
   userLockedRewardsAmount: number;
 }
 
@@ -274,6 +274,10 @@ export const userSlice = createSlice({
       ...state,
       lockingAqua: payload,
     }),
+    unStakingAqua: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      unStakingAqua: payload,
+    }),
     providingLp: (state, { payload }: PayloadAction<any>) => ({
       ...state,
       providingLp: payload,
@@ -282,6 +286,7 @@ export const userSlice = createSlice({
       ...state,
       lockedAqua: false,
       providedLp: false,
+      unStakedAqua: false,
     }),
     logOut: (state) => ({
       ...state,
@@ -306,6 +311,20 @@ export const userSlice = createSlice({
 
     builder.addCase(mint.rejected, (state) => {
       state.lockingAqua = false;
+    });
+
+    //unlock
+    builder.addCase(unStakeAqua.pending, (state) => {
+      state.unStakingAqua = true;
+    });
+
+    builder.addCase(unStakeAqua.fulfilled, (state, {}) => {
+      state.unStakedAqua = true;
+    });
+
+    builder.addCase(unStakeAqua.rejected, (state) => {
+      state.unStakingAqua = false;
+      state.unStakedAqua = false;
     });
 
     //provide lp
@@ -358,6 +377,7 @@ export const {
   logOut,
   providingLp,
   lockingAqua,
+  unStakingAqua,
   resetStateValues,
   fetchingWalletInfo,
   setConnectingWallet,
