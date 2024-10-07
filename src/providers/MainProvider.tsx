@@ -69,7 +69,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     if (user.userWalletAddress) {
       dispatch(fetchingWalletInfo(true));
       getWalletAddress();
-      // getRewards();
+      getRewards();
     } else {
       dispatch(logOut());
     }
