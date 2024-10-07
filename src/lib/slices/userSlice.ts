@@ -7,6 +7,15 @@ import {
   TransactionData,
   UserRecords,
 } from "../../interfaces";
+import {
+  allowAllModules,
+  FREIGHTER_ID,
+  FreighterModule,
+  LOBSTR_ID,
+  LobstrModule,
+  StellarWalletsKit,
+  WalletNetwork,
+} from "@creit.tech/stellar-wallets-kit";
 
 export interface User {
   userRecords: UserRecords;
@@ -14,7 +23,7 @@ export interface User {
   walletSelectionOpen: boolean;
   userWalletAddress: string | null;
   connectingWallet: boolean;
-  walletName: string | null;
+  walletName: typeof LOBSTR_ID | typeof FREIGHTER_ID | null;
   fetchingWalletInfo: boolean;
   lockingAqua: boolean;
   unStakingAqua: boolean;
@@ -297,6 +306,7 @@ export const userSlice = createSlice({
       connectingWallet: false,
       walletName: null,
       fetchingWalletInfo: false,
+      lockingAqua: false,
     }),
   },
   extraReducers(builder) {

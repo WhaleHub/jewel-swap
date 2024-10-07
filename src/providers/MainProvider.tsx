@@ -5,6 +5,7 @@ import {
   FreighterModule,
   LOBSTR_ID,
   LobstrModule,
+  ModuleInterface,
   StellarWalletsKit,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
@@ -37,21 +38,18 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
   const user = useSelector((state: RootState) => state.user);
 
   const getWalletAddress = async () => {
+    if (!user?.walletName) return;
+
     const kit: StellarWalletsKit = new StellarWalletsKit({
       network: WalletNetwork.PUBLIC,
-      selectedWalletId: `${user?.walletName}`,
-      modules: [
-        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
-        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
-      ],
+      selectedWalletId: FREIGHTER_ID,
+      modules: allowAllModules(),
     });
 
     const { address } = await kit.getAddress();
+
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
-
-    console.log(address);
-
     dispatch(getAppData());
     dispatch(storeAccountBalance(wrappedAccount.balances));
     dispatch(getAccountInfo(address));
@@ -61,13 +59,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
 
   const getRewards = async () => {
     const address = user?.userRecords?.account?.account;
-
-    const intervalId = setInterval(() => {
-      console.log("Interval");
-      dispatch(getLockedAquaRewardsForAccount(address));
-    }, 100000);
-
-    return () => clearInterval(intervalId);
+    if (address) getLockedAquaRewardsForAccount(address);
   };
 
   useEffect(() => {
@@ -109,31 +101,31 @@ function ConnectWalletModal() {
       const selectedWalletId =
         walletType === walletTypes.FREIGHTER ? FREIGHTER_ID : LOBSTR_ID;
 
+      console.log({ selectedWalletId });
+
       try {
         if (selectedWalletId === walletTypes.FREIGHTER) {
-          const kit = new StellarWalletsKit({
+          const kit: StellarWalletsKit = new StellarWalletsKit({
             network: WalletNetwork.PUBLIC,
-            selectedWalletId,
+            selectedWalletId: FREIGHTER_ID,
             modules: [new FreighterModule()],
           });
 
           await setAllowed();
           await isAllowed();
-          kit.setWallet(FREIGHTER_ID);
 
           const { address } = await kit.getAddress();
           dispatch(setUserWalletAddress(address));
           handleWalletConnections();
         } else if (walletTypes.LOBSTR) {
-          const kit = new StellarWalletsKit({
+          const kit: StellarWalletsKit = new StellarWalletsKit({
             network: WalletNetwork.PUBLIC,
-            selectedWalletId,
+            selectedWalletId: LOBSTR_ID,
             modules: [new LobstrModule()],
           });
 
           await setAllowed();
           await isAllowed();
-          kit.setWallet(LOBSTR_ID);
 
           const { address } = await kit.getAddress();
           dispatch(setUserWalletAddress(address));

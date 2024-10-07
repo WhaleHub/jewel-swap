@@ -16,7 +16,6 @@ import {
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
 import {
-  allowAllModules,
   FREIGHTER_ID,
   FreighterModule,
   LOBSTR_ID,
@@ -107,7 +106,7 @@ function AquaStake() {
   );
 
   //pools
-  const userLpProvisions = user?.userRecords?.account?.lpBalances;
+  // const userLpProvisions = user?.userRecords?.account?.lpBalances;
   // const userPoolBalances = summarizeAssets(userLpProvisions);
 
   const accountClaimableRecords = (
@@ -117,7 +116,9 @@ function AquaStake() {
       },
       0
     ) || 0
-  ).toString();
+  )
+    // @ts-ignore
+    .toFixed(2);
 
   const handleSetMaxDeposit = () => {
     setAquaDepositAmount(Number(userAquaBalance));
@@ -128,13 +129,16 @@ function AquaStake() {
   };
 
   const handleAddTrustline = async () => {
-    const kit: StellarWalletsKit = new StellarWalletsKit({
+    const selectedModule =
+      user?.walletName === LOBSTR_ID
+        ? new LobstrModule()
+        : new FreighterModule();
+
+    const kit = new StellarWalletsKit({
       network: WalletNetwork.PUBLIC,
-      selectedWalletId: LOBSTR_ID,
-      modules: [
-        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
-        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
-      ],
+      selectedWalletId:
+        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+      modules: [selectedModule],
     });
 
     const stellarService = new StellarService();
@@ -162,7 +166,7 @@ function AquaStake() {
       networkPassphrase: WalletNetwork.PUBLIC,
     });
 
-    const HORIZON_SERVER = "https://horizon-testnet.stellar.org";
+    const HORIZON_SERVER = "https://horizon.stellar.org";
 
     const transactionToSubmit = TransactionBuilder.fromXDR(
       signedTxXdr,
@@ -173,13 +177,15 @@ function AquaStake() {
   };
 
   const updateWalletRecords = async () => {
+    const selectedModule =
+      user?.walletName === LOBSTR_ID
+        ? new LobstrModule()
+        : new FreighterModule();
+
     const kit: StellarWalletsKit = new StellarWalletsKit({
       network: WalletNetwork.PUBLIC,
-      selectedWalletId: LOBSTR_ID,
-      modules: [
-        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
-        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
-      ],
+      selectedWalletId: FREIGHTER_ID,
+      modules: [selectedModule],
     });
 
     const { address } = await kit.getAddress();
@@ -191,13 +197,16 @@ function AquaStake() {
   };
 
   const handleLockAqua = async () => {
+    const selectedModule =
+      user?.walletName === LOBSTR_ID
+        ? new LobstrModule()
+        : new FreighterModule();
+
     const kit: StellarWalletsKit = new StellarWalletsKit({
       network: WalletNetwork.PUBLIC,
-      selectedWalletId: LOBSTR_ID,
-      modules: [
-        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
-        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
-      ],
+      selectedWalletId:
+        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+      modules: [selectedModule],
     });
 
     dispatch(lockingAqua(true));
@@ -287,13 +296,16 @@ function AquaStake() {
   };
 
   const handleUnlockAqua = async () => {
+    const selectedModule =
+      user?.walletName === LOBSTR_ID
+        ? new LobstrModule()
+        : new FreighterModule();
+
     const kit: StellarWalletsKit = new StellarWalletsKit({
       network: WalletNetwork.PUBLIC,
-      selectedWalletId: LOBSTR_ID,
-      modules: [
-        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
-        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
-      ],
+      selectedWalletId:
+        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+      modules: [selectedModule],
     });
 
     const { address } = await kit.getAddress();
@@ -302,13 +314,16 @@ function AquaStake() {
   };
 
   const handleProvideLiquidity = async () => {
+    const selectedModule =
+      user?.walletName === LOBSTR_ID
+        ? new LobstrModule()
+        : new FreighterModule();
+
     const kit: StellarWalletsKit = new StellarWalletsKit({
       network: WalletNetwork.PUBLIC,
-      selectedWalletId: LOBSTR_ID,
-      modules: [
-        ...(user?.walletName === LOBSTR_ID ? [new FreighterModule()] : []),
-        ...(user?.walletName === FREIGHTER_ID ? [new LobstrModule()] : []),
-      ],
+      selectedWalletId:
+        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+      modules: [selectedModule],
     });
 
     dispatch(providingLp(true));
