@@ -58,6 +58,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     const address = user?.userRecords?.account?.account;
 
     const intervalId = setInterval(() => {
+      console.log("Interval");
       dispatch(getLockedAquaRewardsForAccount(address));
     }, 100000);
 
@@ -68,7 +69,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     if (user.userWalletAddress) {
       dispatch(fetchingWalletInfo(true));
       getWalletAddress();
-      getRewards();
+      // getRewards();
     } else {
       dispatch(logOut());
     }

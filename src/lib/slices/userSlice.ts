@@ -17,16 +17,18 @@ export interface User {
   walletName: string | null;
   fetchingWalletInfo: boolean;
   lockingAqua: boolean;
+  unLockingAqua: boolean;
   providingLp: boolean;
   providedLp: boolean;
   lockedAqua: boolean;
+  unLockedAqua: boolean;
   userLockedRewardsAmount: number;
 }
 
 const initialState = {} as User;
 
 export const mint = createAsyncThunk(
-  "lock/mint",
+  "lock/stake",
   async (
     values: {
       assetCode: string;
@@ -39,6 +41,27 @@ export const mint = createAsyncThunk(
   ) => {
     try {
       const { data } = await axios.post(`${BACKEND_API}/token/lock`, values);
+      return data;
+    } catch (error: any) {
+      const customError: CustomError = error;
+
+      if (customError.response && customError.response.data.error.message) {
+        return rejectWithValue(customError.response.data.error.message);
+      }
+
+      throw new Error(customError.message || "An unknown error occurred");
+    }
+  }
+);
+
+export const unStakeAqua = createAsyncThunk(
+  "lock/unlock-aqua",
+  async (values: { senderPublicKey: string }, { rejectWithValue }) => {
+    try {
+      const { data } = await axios.post(
+        `${BACKEND_API}/token/unlock-aqua`,
+        values
+      );
       return data;
     } catch (error: any) {
       const customError: CustomError = error;

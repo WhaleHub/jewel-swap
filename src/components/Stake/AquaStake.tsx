@@ -45,6 +45,7 @@ import {
   providingLp,
   resetStateValues,
   storeAccountBalance,
+  unStakeAqua,
 } from "../../lib/slices/userSlice";
 import { summarizeAssets } from "../../lib/helpers";
 import { DepositType } from "../../enums";
@@ -91,7 +92,7 @@ function AquaStake() {
   );
 
   const userAquaBalance = aquaRecord?.balance;
-  const whlAquaBalance = whlAquaRecord?.balance;
+  // const whlAquaBalance = whlAquaRecord?.balance;
   const blubBalance = whlAquaRecord?.balance;
 
   //lp account records
@@ -101,7 +102,7 @@ function AquaStake() {
 
   //pools
   const userLpProvisions = user?.userRecords?.account?.lpBalances;
-  const userPoolBalances = summarizeAssets(userLpProvisions);
+  // const userPoolBalances = summarizeAssets(userLpProvisions);
 
   //user balances
 
@@ -249,6 +250,11 @@ function AquaStake() {
       console.error("Transaction failed:", err);
       dispatch(lockingAqua(false));
     }
+  };
+
+  const handleUnlockAqua = async () => {
+    const { address } = await kit.getAddress();
+    dispatch(unStakeAqua({ senderPublicKey: address }));
   };
 
   const handleProvideLiquidity = async () => {
@@ -504,29 +510,61 @@ function AquaStake() {
                           )
                         }
                       />
-                      <button
-                        disabled={user?.lockingAqua || !user?.userWalletAddress}
-                        className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
-                        onClick={handleLockAqua}
-                      >
-                        {!user?.lockingAqua ? (
-                          <span>Mint</span>
-                        ) : (
-                          <div className="flex justify-center items-center gap-[10px]">
-                            <span className="text-white">Processing...</span>
-                            <TailSpin
-                              height="18"
-                              width="18"
-                              color="#ffffff"
-                              ariaLabel="tail-spin-loading"
-                              radius="1"
-                              wrapperStyle={{}}
-                              wrapperClass=""
-                              visible={true}
-                            />
-                          </div>
-                        )}
-                      </button>
+                      <div className="flex space-x-4">
+                        <button
+                          disabled={
+                            user?.lockingAqua || !user?.userWalletAddress
+                          }
+                          className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
+                          onClick={handleLockAqua}
+                        >
+                          {!user?.lockingAqua ? (
+                            <span>Mint</span>
+                          ) : (
+                            <div className="flex justify-center items-center gap-[10px]">
+                              <span className="text-white">Processing...</span>
+                              <TailSpin
+                                height="18"
+                                width="18"
+                                color="#ffffff"
+                                ariaLabel="tail-spin-loading"
+                                radius="1"
+                                wrapperStyle={{}}
+                                wrapperClass=""
+                                visible={true}
+                              />
+                            </div>
+                          )}
+                        </button>
+
+                        <button
+                          disabled={
+                            user?.lockingAqua || !user?.userWalletAddress
+                          }
+                          className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
+                          onClick={handleUnlockAqua}
+                        >
+                          {!user?.lockingAqua ? (
+                            <span>
+                              Unstake <span>{1000}</span>
+                            </span>
+                          ) : (
+                            <div className="flex justify-center items-center gap-[10px]">
+                              <span className="text-white">Processing...</span>
+                              <TailSpin
+                                height="18"
+                                width="18"
+                                color="#ffffff"
+                                ariaLabel="tail-spin-loading"
+                                radius="1"
+                                wrapperStyle={{}}
+                                wrapperClass=""
+                                visible={true}
+                              />
+                            </div>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
