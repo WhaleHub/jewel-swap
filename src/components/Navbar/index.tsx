@@ -42,7 +42,7 @@ const Navbar = () => {
       <div className="flex flex-col md:flex-row justify-center w-full h-full pt-[16px]">
         <div className="flex flex-col md:flex-row justify-between items-center gap-[5px] md:gap-[14px] w-full max-w-[1320px] h-full px-[10.5px]">
           <a
-            href="https://jewelswap.io/"
+            href="/"
             target="_blank"
             rel="noopener noreferrer"
             className="flex justify-center items-center w-[160px] md:w-[200px]"
@@ -67,7 +67,7 @@ const Navbar = () => {
               <div className="relative inline-block text-left">
                 <button
                   type="button"
-                  className="btn-primary2 after:bg-[rgba(84,245,183,.6)] inline-flex w-full justify-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+                  className="btn-primary2 after:bg-[rgba(16,197,207,.6)] inline-flex w-full justify-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
                   id="menu-button"
                   aria-haspopup="true"
                   onClick={toggleDropdown}

@@ -331,6 +331,7 @@ export const userSlice = createSlice({
     builder.addCase(unStakeAqua.fulfilled, (state, {}) => {
       state.unStakedAqua = true;
       state.unStakingAqua = false;
+      state.userLockedRewardsAmount = 0;
     });
 
     builder.addCase(unStakeAqua.rejected, (state) => {
@@ -375,7 +376,6 @@ export const userSlice = createSlice({
       getLockedAquaRewardsForAccount.fulfilled,
       (state, { payload }) => {
         state.userLockedRewardsAmount = payload.lockedAquaRewardEstimation;
-        console.log(payload.lockedAquaRewardEstimation);
       }
     );
 

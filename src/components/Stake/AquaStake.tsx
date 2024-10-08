@@ -105,20 +105,26 @@ function AquaStake() {
     (pool) => pool.depositType === DepositType.LIQUIDITY_PROVISION
   );
 
-  //pools
-  // const userLpProvisions = user?.userRecords?.account?.lpBalances;
-  // const userPoolBalances = summarizeAssets(userLpProvisions);
+  const userPoolBalances =
+    user?.userRecords?.account?.pools
+      ?.filter((pool: any) => pool.claimed === "UNCLAIMED")
+      ?.filter((pool: any) => pool.depositType === "LOCKER")
+      ?.filter((pool: any) => pool.assetB.code === "AQUA")
+      ?.reduce((total, record: any) => {
+        return Number(total) + Number(record.assetBAmount);
+      }, 0) || 0;
 
-  const accountClaimableRecords = (
-    user?.userRecords?.account?.claimableRecords?.reduce(
-      (total, record: any) => {
+  // Calculate accountClaimableRecords
+  const accountClaimableRecords =
+    user?.userRecords?.account?.claimableRecords
+      ?.filter((record: any) => record.claimed === "UNCLAIMED")
+      ?.reduce((total, record: any) => {
         return Number(total) + Number(record.amount);
-      },
-      0
-    ) || 0
-  )
-    // @ts-ignore
-    .toFixed(2);
+      }, 0) || 0;
+
+  // Add the two calculated values
+  const poolAndClaimBalance =
+    Number(userPoolBalances) + Number(accountClaimableRecords);
 
   const handleSetMaxDeposit = () => {
     setAquaDepositAmount(Number(userAquaBalance));
@@ -491,7 +497,7 @@ function AquaStake() {
 
                 <div className="col-span-12 md:col-span-2 flex items-center md:px-[10.5px]">
                   <button
-                    className="flex justify-center items-center w-full p-[7px] border border-solid border-[rgba(84,245,183,0.6)] rounded-[5px]"
+                    className="flex justify-center items-center w-full p-[7px] border border-solid border-[rgba(16,197,207,0.6)] rounded-[5px]"
                     onClick={() =>
                       setIsNativeStakeExpanded(!isNativeStakeExpanded)
                     }
@@ -552,7 +558,7 @@ function AquaStake() {
                           disabled={
                             user?.lockingAqua || !user?.userWalletAddress
                           }
-                          className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
+                          className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] border-radius-1 rounded-md bg-[rgba(16,197,207,0.6)]"
                           onClick={handleLockAqua}
                         >
                           {!user?.lockingAqua ? (
@@ -578,12 +584,12 @@ function AquaStake() {
                           disabled={
                             user?.unStakingAqua || !user?.userWalletAddress
                           }
-                          className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
+                          className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px]  rounded-md bg-[rgba(16,197,207,0.6)]"
                           onClick={handleUnlockAqua}
                         >
                           {!user?.unStakingAqua ? (
                             <span>
-                              Unstake <span>({accountClaimableRecords})</span>
+                              Unstake <span>({poolAndClaimBalance})</span>
                             </span>
                           ) : (
                             <div className="flex justify-center items-center gap-[10px]">
@@ -746,7 +752,7 @@ function AquaStake() {
                   </div>
                   <div className="col-span-12 md:col-span-6 px-2">
                     <button
-                      className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px] btn-primary2"
+                      className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px]  rounded-md bg-[rgba(16,197,207,0.6)]"
                       disabled={user?.providingLp || !user?.userWalletAddress}
                       onClick={handleProvideLiquidity}
                     >

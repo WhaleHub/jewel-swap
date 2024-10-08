@@ -1,8 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { Link, useParams } from "react-router-dom";
 import { tokensRegistered } from "../../data";
-import LiquidStake from "../../components/Stake/LiquidStake";
-import HadesStake from "../../components/Stake/HadesStake";
 import solLogo from "../../assets/images/sol_logo.png";
 import aquaLogo from "../../assets/images/aqua_logo.png";
 import AquaStake from "../../components/Stake/AquaStake";
@@ -44,7 +42,7 @@ const Stake = () => {
                   to={`/stake/${item.toLowerCase()}`}
                   className={`flex justify-center items-center p-[5px_10px] rounded-[10px] border border-solid border-[rgba(84,245,183,.6)] ${
                     tokenId == item.toLowerCase()
-                      ? "bg-[rgba(84,245,183,.6)]"
+                      ? "bg-[rgba(16,197,207,.6)]"
                       : "bg-none"
                   }`}
                 >
@@ -54,10 +52,6 @@ const Stake = () => {
             })}
           </div>
         </div>
-
-        {tokenId == "sol" && <LiquidStake />}
-
-        {tokenId == "hades" && <HadesStake />}
 
         {tokenId == "aqua" && <AquaStake />}
       </div>

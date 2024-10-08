@@ -11,45 +11,6 @@ export interface IPieChartData {
   lastVotedAt: number;
 }
 
-export interface IGlobalState {
-  adminAccount: PublicKey;
-  botAccount: PublicKey;
-  jwlsolMint: PublicKey;
-  jwlsolAuthority: PublicKey;
-  jwlsolAuthorityBump: number;
-  jwlsolVault: PublicKey;
-  jwlsolVaultBump: number;
-  jwlsolVaultAuthority: PublicKey;
-  jwlsolVaultAuthorityBump: number;
-  jwlsolReserve: anchor.BN;
-  sjwlsolMint: PublicKey;
-  sjwlsolAuthority: PublicKey;
-  sjwlsolAuthorityBump: number;
-  sjwlsolReserve: anchor.BN;
-  vejwlsolReserve: anchor.BN;
-  reserveVault: PublicKey;
-  reserveVaultBump: number;
-  stakeWithdrawAuthority: PublicKey;
-  stakeWithdrawAuthorityBump: number;
-  stakeDepositAuthority: PublicKey;
-  stakeDepositAuthorityBump: number;
-  splitStakeAccountsStore: PublicKey;
-  whirlpool: PublicKey;
-  whirlpoolPosition: PublicKey;
-  whirlpoolPositionMint: PublicKey;
-  whirlpoolPositionMintOwner: PublicKey;
-  whirlpoolPositionTokenAccount: PublicKey;
-  lastEpochCheckedRewards: anchor.BN;
-  totalSolToStake: anchor.BN;
-  totalSolToRedeem: anchor.BN;
-  totalSolAvailableToUnstake: anchor.BN;
-  totalSolToAddLiquidity: anchor.BN;
-  totalSolDelegated: anchor.BN;
-  totalSolToClaim: anchor.BN;
-  totalSolReservedToClaim: anchor.BN;
-  totalSolEarned: anchor.BN;
-}
-
 export interface IValidator {
   voteAccount: PublicKey;
   validatorStore: PublicKey;
