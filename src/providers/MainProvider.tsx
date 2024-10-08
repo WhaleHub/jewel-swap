@@ -101,8 +101,6 @@ function ConnectWalletModal() {
       const selectedWalletId =
         walletType === walletTypes.FREIGHTER ? FREIGHTER_ID : LOBSTR_ID;
 
-      console.log({ selectedWalletId });
-
       try {
         if (selectedWalletId === walletTypes.FREIGHTER) {
           const kit: StellarWalletsKit = new StellarWalletsKit({

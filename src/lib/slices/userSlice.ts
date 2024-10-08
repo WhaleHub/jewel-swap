@@ -330,11 +330,11 @@ export const userSlice = createSlice({
 
     builder.addCase(unStakeAqua.fulfilled, (state, {}) => {
       state.unStakedAqua = true;
+      state.unStakingAqua = false;
     });
 
     builder.addCase(unStakeAqua.rejected, (state) => {
       state.unStakingAqua = false;
-      state.unStakedAqua = false;
     });
 
     //provide lp
