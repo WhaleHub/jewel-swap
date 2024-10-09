@@ -301,7 +301,9 @@ function AquaStake() {
     }
   };
 
-  const handleUnlockAqua = async () => {
+  const handleUnstakeAqua = async () => {
+    if (poolAndClaimBalance < 1) return toast.warn("Nothing to unstake");
+
     const selectedModule =
       user?.walletName === LOBSTR_ID
         ? new LobstrModule()
@@ -455,8 +457,6 @@ function AquaStake() {
     }
   }, [user?.lockedAqua, user?.providedLp, user?.unStakedAqua]);
 
-  console.log(user?.unStakingAqua);
-
   return (
     <>
       <div className="flex flex-col gap-[21px] w-full mt-[21px]">
@@ -587,7 +587,7 @@ function AquaStake() {
                             user?.unStakingAqua || !user?.userWalletAddress
                           }
                           className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px]  rounded-md bg-[rgba(16,197,207,0.6)]"
-                          onClick={handleUnlockAqua}
+                          onClick={handleUnstakeAqua}
                         >
                           {!user?.unStakingAqua ? (
                             <span>
