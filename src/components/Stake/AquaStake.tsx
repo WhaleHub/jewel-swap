@@ -455,6 +455,8 @@ function AquaStake() {
     }
   }, [user?.lockedAqua, user?.providedLp, user?.unStakedAqua]);
 
+  console.log(user?.unStakingAqua);
+
   return (
     <>
       <div className="flex flex-col gap-[21px] w-full mt-[21px]">

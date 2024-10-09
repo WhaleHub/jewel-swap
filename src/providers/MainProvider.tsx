@@ -70,7 +70,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     } else {
       dispatch(logOut());
     }
-  }, [user?.userWalletAddress]);
+  }, [user?.userWalletAddress, user?.unStakingAqua]);
 
   return (
     <Fragment>
