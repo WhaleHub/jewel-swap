@@ -65,7 +65,10 @@ export const mint = createAsyncThunk(
 
 export const unStakeAqua = createAsyncThunk(
   "lock/unlock-aqua",
-  async (values: { senderPublicKey: string }, { rejectWithValue }) => {
+  async (
+    values: { senderPublicKey: string; amountToUnstake: number },
+    { rejectWithValue }
+  ) => {
     try {
       const { data } = await axios.post(
         `${BACKEND_API}/token/unlock-aqua`,

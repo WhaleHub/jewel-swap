@@ -81,8 +81,7 @@ function AquaStake() {
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
   const [lpBlubAmount, setLPBlubDepositAmount] = useState<number | null>();
   const [lpAquaAmount, setLpAquaDepositAmount] = useState<number | null>();
-
-  // @ts-ignore
+  const [blubUnstakeAmount, setBlubUnstakeAmount] = useState<number | null>(0);
 
   // const appLpBalances = summarizeAssets(appRecords?.lp_balances);
   // const totalValueLocked = sumAssets(appRecords?.pools);
@@ -128,6 +127,10 @@ function AquaStake() {
 
   const handleSetMaxDeposit = () => {
     setAquaDepositAmount(Number(userAquaBalance));
+  };
+
+  const handleSetMaxDepositForBlub = () => {
+    setBlubUnstakeAmount(Number(accountClaimableRecords));
   };
 
   const handleSetBlubMaxDeposit = () => {
@@ -302,7 +305,11 @@ function AquaStake() {
   };
 
   const handleUnstakeAqua = async () => {
-    if (poolAndClaimBalance < 1) return toast.warn("Nothing to unstake");
+    if (poolAndClaimBalance < 1 || Number(blubUnstakeAmount) < 1)
+      return toast.warn("Nothing to unstake");
+
+    if (Number(blubUnstakeAmount) > poolAndClaimBalance)
+      return toast.warn("Unstake amount exceeds the pool balance");
 
     const selectedModule =
       user?.walletName === LOBSTR_ID
@@ -318,7 +325,12 @@ function AquaStake() {
 
     const { address } = await kit.getAddress();
     dispatch(unStakingAqua(true));
-    dispatch(unStakeAqua({ senderPublicKey: address }));
+    dispatch(
+      unStakeAqua({
+        senderPublicKey: address,
+        amountToUnstake: Number(blubUnstakeAmount),
+      })
+    );
   };
 
   const handleProvideLiquidity = async () => {
@@ -581,18 +593,55 @@ function AquaStake() {
                             </div>
                           )}
                         </button>
+                      </div>
+                    </div>
 
+                    <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
+                      <div>{`BLUB to unstake: ${Number(
+                        poolAndClaimBalance
+                      )?.toFixed(2)}`}</div>
+
+                      <InputBase
+                        sx={{
+                          flex: 1,
+                          border: "1px",
+                          borderStyle: "solid",
+                          borderRadius: "5px",
+                          borderColor: "gray",
+                          padding: "2px 5px",
+                        }}
+                        endAdornment={
+                          <InputAdornment
+                            position="end"
+                            sx={{ cursor: "pointer" }}
+                            onClick={handleSetMaxDepositForBlub}
+                          >
+                            Max
+                          </InputAdornment>
+                        }
+                        type="number"
+                        placeholder="0.00"
+                        disabled={user?.lockingAqua}
+                        value={
+                          blubUnstakeAmount != null ? blubUnstakeAmount : ""
+                        }
+                        className="mt-[3.5px]"
+                        onChange={(e) =>
+                          setBlubUnstakeAmount(
+                            e.target.value ? Number(e.target.value) : null
+                          )
+                        }
+                      />
+                      <div className="flex space-x-4">
                         <button
-                          disabled={
-                            user?.unStakingAqua || !user?.userWalletAddress
-                          }
+                          // disabled={
+                          //   user?.unStakingAqua || !user?.userWalletAddress
+                          // }
                           className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px]  rounded-md bg-[rgba(16,197,207,0.6)]"
                           onClick={handleUnstakeAqua}
                         >
                           {!user?.unStakingAqua ? (
-                            <span>
-                              Unstake <span>({poolAndClaimBalance})</span>
-                            </span>
+                            <span>Unstake</span>
                           ) : (
                             <div className="flex justify-center items-center gap-[10px]">
                               <span className="text-white">Processing...</span>
@@ -673,6 +722,72 @@ function AquaStake() {
                   </div>
                 </div>
               </div>
+
+              {/* [x] working later */}
+              {/* <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
+                <div className="col-span-12 md:col-span-6">
+                  <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
+                    <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
+                      <div>{`BLUB ${Number(blubBalance)?.toFixed(2)}`}</div>
+
+                      <InputBase
+                        sx={{
+                          flex: 1,
+                          border: "1px",
+                          borderStyle: "solid",
+                          borderRadius: "5px",
+                          borderColor: "gray",
+                          padding: "2px 5px",
+                        }}
+                        endAdornment={
+                          <InputAdornment
+                            position="end"
+                            sx={{ cursor: "pointer" }}
+                            onClick={handleSetBlubMaxDeposit}
+                          >
+                            Max
+                          </InputAdornment>
+                        }
+                        type="number"
+                        placeholder="0.00"
+                        disabled={user?.lockingAqua}
+                        value={lpBlubAmount != null ? lpBlubAmount : ""}
+                        className="mt-[3.5px]"
+                        onChange={(e) =>
+                          setLPBlubDepositAmount(
+                            e.target.value ? Number(e.target.value) : null
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div className="col-span-12 md:col-span-6 px-2">
+                    <button
+                      className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px]  rounded-md bg-[rgba(16,197,207,0.6)]"
+                      disabled={user?.providingLp || !user?.userWalletAddress}
+                      onClick={handleProvideLiquidity}
+                    >
+                      {!user?.providingLp ? (
+                        <span>Stake </span>
+                      ) : (
+                        <div className="flex justify-center items-center gap-[10px]">
+                          <span className="text-white">Processing...</span>
+                          <TailSpin
+                            height="18"
+                            width="18"
+                            color="#ffffff"
+                            ariaLabel="tail-spin-loading"
+                            radius="1"
+                            wrapperStyle={{}}
+                            wrapperClass=""
+                            visible={true}
+                          />
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div> */}
 
               {/* lp section */}
               <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
@@ -773,26 +888,6 @@ function AquaStake() {
                       )}
                     </button>
                   </div>
-
-                  {/* <div className="grid grid-cols-12 gap-4 mt-5">
-                    <div className="col-span-6 flex justify-center">
-                      <button
-                        onClick={withdrawLprovision}
-                        className="flex justify-center items-center px-6 py-2 btn-primary2"
-                      >
-                        <span>Withdraw</span>
-                      </button>
-                    </div>
-
-                    <div className="col-span-6 flex justify-center">
-                      <button
-                        onClick={RedeemReward}
-                        className="flex justify-center items-center px-6 py-2 btn-primary2"
-                      >
-                        <span>Redeem Reward</span>
-                      </button>
-                    </div>
-                  </div> */}
                 </div>
               </div>
             </AccordionDetails>
