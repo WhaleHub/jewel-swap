@@ -469,7 +469,7 @@ function AquaStake() {
               className="w-full !cursor-default"
             >
               <div className="grid grid-cols-12 w-full text-[12.6px] px-[10.5px]">
-                <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px]">
+                <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px] mb-2">
                   <div className="flex items-center">
                     <div className="flex justify-center items-center w-[50px] h-[50px] mx-[7px]">
                       <img src={aquaLogo} alt="sol-logo" className="w-full" />
@@ -614,11 +614,7 @@ function AquaStake() {
                   </div>
                 </div>
 
-                <div className="block md:hidden col-span-12 w-full italic px-[10.5px]">
-                  If you have already requested JWLSOL to be redeemed, the new
-                  redeem attempts will increase the unbonding epoch - you will
-                  need to wait for the unbonding period again.
-                </div>
+                <div className="block md:hidden col-span-12 w-full italic px-[10.5px]"></div>
 
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
@@ -671,8 +667,8 @@ function AquaStake() {
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-3 px-[10.5px]"></div>
                     <div className="col-span-9 px-[10.5px] italic">
-                      You will need to wait for the unbonding period again to
-                      receive your reward.
+                      {/* You will need to wait for the unbonding period again to
+                      receive your reward. */}
                     </div>
                   </div>
                 </div>
