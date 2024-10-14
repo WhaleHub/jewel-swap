@@ -27,6 +27,8 @@ export interface User {
   fetchingWalletInfo: boolean;
   lockingAqua: boolean;
   unStakingAqua: boolean;
+  restaking: boolean;
+  restaked: boolean;
   providingLp: boolean;
   providedLp: boolean;
   lockedAqua: boolean;
@@ -72,6 +74,36 @@ export const unStakeAqua = createAsyncThunk(
     try {
       const { data } = await axios.post(
         `${BACKEND_API}/token/unlock-aqua`,
+        values
+      );
+      return data;
+    } catch (error: any) {
+      const customError: CustomError = error;
+
+      if (customError.response && customError.response.data.error.message) {
+        return rejectWithValue(customError.response.data.error.message);
+      }
+
+      throw new Error(customError.message || "An unknown error occurred");
+    }
+  }
+);
+
+export const restakeBlub = createAsyncThunk(
+  "lock/restake-blub",
+  async (
+    values: {
+      assetCode: string;
+      assetIssuer: string;
+      amount: string;
+      signedTxXdr: string;
+      senderPublicKey: string;
+    },
+    { rejectWithValue }
+  ) => {
+    try {
+      const { data } = await axios.post(
+        `${BACKEND_API}/token/restake-blub`,
         values
       );
       return data;
@@ -286,6 +318,10 @@ export const userSlice = createSlice({
       ...state,
       lockingAqua: payload,
     }),
+    restaking: (state, { payload }: PayloadAction<any>) => ({
+      ...state,
+      restaking: payload,
+    }),
     unStakingAqua: (state, { payload }: PayloadAction<any>) => ({
       ...state,
       unStakingAqua: payload,
@@ -299,6 +335,7 @@ export const userSlice = createSlice({
       lockedAqua: false,
       providedLp: false,
       unStakedAqua: false,
+      restaked: false,
     }),
     logOut: (state) => ({
       ...state,
@@ -339,6 +376,19 @@ export const userSlice = createSlice({
 
     builder.addCase(unStakeAqua.rejected, (state) => {
       state.unStakingAqua = false;
+    });
+
+    //mint
+    builder.addCase(restakeBlub.pending, (state) => {
+      state.restaking = false;
+    });
+
+    builder.addCase(restakeBlub.fulfilled, (state, {}) => {
+      state.restaked = true;
+    });
+
+    builder.addCase(restakeBlub.rejected, (state) => {
+      state.restaking = false;
     });
 
     //provide lp
@@ -388,6 +438,7 @@ export const userSlice = createSlice({
 
 export const {
   logOut,
+  restaking,
   providingLp,
   lockingAqua,
   unStakingAqua,

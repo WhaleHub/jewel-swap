@@ -30,6 +30,7 @@ import {
   blubSignerPublicKey,
   JEWEL_TOKEN,
   lpSignerPublicKey,
+  treasureAddress,
 } from "../../utils/constants";
 import {
   Asset,
@@ -46,6 +47,8 @@ import {
   provideLiquidity,
   providingLp,
   resetStateValues,
+  restakeBlub,
+  restaking,
   storeAccountBalance,
   unStakeAqua,
   unStakingAqua,
@@ -82,6 +85,7 @@ function AquaStake() {
   const [lpBlubAmount, setLPBlubDepositAmount] = useState<number | null>();
   const [lpAquaAmount, setLpAquaDepositAmount] = useState<number | null>();
   const [blubUnstakeAmount, setBlubUnstakeAmount] = useState<number | null>(0);
+  const [blubStakeAmount, setBlubStakeAmount] = useState<number | null>(0);
 
   // const appLpBalances = summarizeAssets(appRecords?.lp_balances);
   // const totalValueLocked = sumAssets(appRecords?.pools);
@@ -135,6 +139,10 @@ function AquaStake() {
 
   const handleSetBlubMaxDeposit = () => {
     setLPBlubDepositAmount(Number(blubBalance));
+  };
+
+  const handleSetRestakeMaxDeposit = () => {
+    setBlubStakeAmount(Number(blubBalance));
   };
 
   const handleAddTrustline = async () => {
@@ -444,6 +452,93 @@ function AquaStake() {
     }
   };
 
+  const handleRestake = async () => {
+    const selectedModule =
+      user?.walletName === LOBSTR_ID
+        ? new LobstrModule()
+        : new FreighterModule();
+
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId:
+        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+      modules: [selectedModule],
+    });
+
+    dispatch(restaking(true));
+
+    const { address } = await kit.getAddress();
+
+    if (!address) {
+      dispatch(lockingAqua(false));
+      return toast.warn("Please connect wallet.");
+    }
+
+    if (!user) {
+      dispatch(lockingAqua(false));
+      return toast.warn("Global state not initialized.");
+    }
+
+    if (!blubStakeAmount) {
+      dispatch(lockingAqua(false));
+      return toast.warn("Please input amount to stake.");
+    }
+
+    if (Number(blubBalance) < blubStakeAmount) {
+      dispatch(lockingAqua(false));
+      return toast.warn(`Your balance is low`);
+    }
+
+    const stellarService = new StellarService();
+    const senderAccount = await stellarService.loadAccount(address);
+
+    const existingTrustlines = senderAccount.balances.map(
+      (balance: Balance) => balance.asset_code
+    );
+
+    if (!existingTrustlines.includes(JEWEL_TOKEN)) return;
+
+    try {
+      const stakeAmount = blubStakeAmount.toFixed(7);
+
+      const paymentOperation = Operation.payment({
+        destination: lpSignerPublicKey,
+        asset: new Asset(whlAssetCode, whlAquaIssuer),
+        amount: stakeAmount,
+      });
+
+      const transactionBuilder = new TransactionBuilder(senderAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.PUBLIC,
+      });
+
+      transactionBuilder.addOperation(paymentOperation).setTimeout(180);
+
+      const transaction = transactionBuilder.build();
+
+      const transactionXDR = transaction.toXDR();
+
+      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
+        address,
+        networkPassphrase: WalletNetwork.PUBLIC,
+      });
+
+      dispatch(
+        restakeBlub({
+          assetCode: "WHLAQUA",
+          assetIssuer: blubIssuerPublicKey,
+          amount: `${blubStakeAmount}`,
+          signedTxXdr,
+          senderPublicKey: address,
+        })
+      );
+      dispatch(restaking(true));
+    } catch (err) {
+      console.log(err);
+      dispatch(restaking(false));
+    }
+  };
+
   useEffect(() => {
     if (user?.lockedAqua) {
       toast.success("Aqua locked successfully!");
@@ -463,11 +558,19 @@ function AquaStake() {
     }
 
     if (user?.unStakedAqua) {
-      toast.success("Aqua unstaked successfully!");
+      toast.success("Blub unstaked successfully!");
       dispatch(resetStateValues());
       dispatch(unStakingAqua(false));
+      updateWalletRecords();
     }
-  }, [user?.lockedAqua, user?.providedLp, user?.unStakedAqua]);
+
+    if (user?.restaked) {
+      toast.success("BLUB Locked successfully!");
+      dispatch(resetStateValues());
+      dispatch(restaking(false));
+      updateWalletRecords();
+    }
+  }, [user?.lockedAqua, user?.providedLp, user?.unStakedAqua, user?.restaked]);
 
   return (
     <>
@@ -724,7 +827,7 @@ function AquaStake() {
               </div>
 
               {/* [x] working later */}
-              {/* <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
+              <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px] mb-7">
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
@@ -743,7 +846,7 @@ function AquaStake() {
                           <InputAdornment
                             position="end"
                             sx={{ cursor: "pointer" }}
-                            onClick={handleSetBlubMaxDeposit}
+                            onClick={handleSetRestakeMaxDeposit}
                           >
                             Max
                           </InputAdornment>
@@ -751,10 +854,10 @@ function AquaStake() {
                         type="number"
                         placeholder="0.00"
                         disabled={user?.lockingAqua}
-                        value={lpBlubAmount != null ? lpBlubAmount : ""}
+                        value={blubStakeAmount != null ? blubStakeAmount : ""}
                         className="mt-[3.5px]"
                         onChange={(e) =>
-                          setLPBlubDepositAmount(
+                          setBlubStakeAmount(
                             e.target.value ? Number(e.target.value) : null
                           )
                         }
@@ -764,10 +867,10 @@ function AquaStake() {
                   <div className="col-span-12 md:col-span-6 px-2">
                     <button
                       className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px]  rounded-md bg-[rgba(16,197,207,0.6)]"
-                      disabled={user?.providingLp || !user?.userWalletAddress}
-                      onClick={handleProvideLiquidity}
+                      // disabled={user?.restaking || !user?.userWalletAddress}
+                      onClick={handleRestake}
                     >
-                      {!user?.providingLp ? (
+                      {!user?.restaking ? (
                         <span>Stake </span>
                       ) : (
                         <div className="flex justify-center items-center gap-[10px]">
@@ -787,7 +890,7 @@ function AquaStake() {
                     </button>
                   </div>
                 </div>
-              </div> */}
+              </div>
 
               {/* lp section */}
               <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
