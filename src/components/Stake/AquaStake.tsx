@@ -465,8 +465,6 @@ function AquaStake() {
       modules: [selectedModule],
     });
 
-    dispatch(restaking(true));
-
     const { address } = await kit.getAddress();
 
     if (!address) {
@@ -489,6 +487,7 @@ function AquaStake() {
       return toast.warn(`Your balance is low`);
     }
 
+    dispatch(restaking(true));
     const stellarService = new StellarService();
     const senderAccount = await stellarService.loadAccount(address);
 
@@ -541,34 +540,34 @@ function AquaStake() {
 
   useEffect(() => {
     if (user?.lockedAqua) {
+      updateWalletRecords();
       toast.success("Aqua locked successfully!");
       setAquaDepositAmount(0);
       dispatch(lockingAqua(false));
       dispatch(resetStateValues());
-      updateWalletRecords();
     }
 
     if (user?.providedLp) {
+      updateWalletRecords();
       toast.success("Provided Liquidity successfully!");
       setLpAquaDepositAmount(0);
       setLPBlubDepositAmount(0);
       dispatch(providingLp(false));
       dispatch(resetStateValues());
-      updateWalletRecords();
     }
 
     if (user?.unStakedAqua) {
+      updateWalletRecords();
       toast.success("Blub unstaked successfully!");
       dispatch(resetStateValues());
       dispatch(unStakingAqua(false));
-      updateWalletRecords();
     }
 
     if (user?.restaked) {
+      updateWalletRecords();
       toast.success("BLUB Locked successfully!");
       dispatch(resetStateValues());
       dispatch(restaking(false));
-      updateWalletRecords();
     }
   }, [user?.lockedAqua, user?.providedLp, user?.unStakedAqua, user?.restaked]);
 
