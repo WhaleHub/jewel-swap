@@ -685,7 +685,7 @@ function AquaStake() {
                           onClick={handleLockAqua}
                         >
                           {!user?.lockingAqua ? (
-                            <span>Mint</span>
+                            <span>Convert & Stake</span>
                           ) : (
                             <div className="flex justify-center items-center gap-[10px]">
                               <span className="text-white">Processing...</span>
