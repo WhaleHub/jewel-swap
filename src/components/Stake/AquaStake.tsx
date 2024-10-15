@@ -773,10 +773,7 @@ function AquaStake() {
               <div className="grid grid-cols-12 w-full text-[12.6px] px-[10.5px]">
                 <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px] mb-2">
                   <div className="flex items-center">
-                    <div className="flex justify-center items-center w-[50px] h-[50px] mx-[7px]">
-                      <img src={aquaLogo} alt="sol-logo" className="w-full" />
-                    </div>
-                    <div>AQUA</div>
+                    <div>Stake</div>
                   </div>
                 </div>
 
@@ -804,7 +801,7 @@ function AquaStake() {
                     className="flex justify-center items-center w-full p-[7px] border border-solid border-[rgba(16,197,207,0.6)] rounded-[5px]"
                     onClick={() => setIsBlubStakeExpanded(!isBlubStakeExpanded)}
                   >
-                    <span>Stake</span>
+                    <span>Stake/Unstake</span>
                     {isBlubStakeExpanded ? (
                       <KeyboardArrowUpIcon className="text-white" />
                     ) : (
