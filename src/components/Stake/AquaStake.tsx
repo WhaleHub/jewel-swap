@@ -79,7 +79,9 @@ function AquaStake() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   // const appRecords = useSelector((state: RootState) => state.app);
-  const [isNativeStakeExpanded, setIsNativeStakeExpanded] =
+  const [isAquaStakeExpanded, setIsAquaStakeExpanded] =
+    useState<boolean>(false);
+  const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
     useState<boolean>(false);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
   const [lpBlubAmount, setLPBlubDepositAmount] = useState<number | null>();
@@ -575,8 +577,9 @@ function AquaStake() {
     <>
       <div className="flex flex-col gap-[21px] w-full mt-[21px]">
         {/* Native staking */}
+
         <div className="w-full bg-[rgb(18,18,18)] bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.05))] rounded-[4px]">
-          <Accordion expanded={isNativeStakeExpanded}>
+          <Accordion expanded={isAquaStakeExpanded}>
             <AccordionSummary
               id="panel1a-header"
               aria-controls="panel1a-content"
@@ -614,12 +617,10 @@ function AquaStake() {
                 <div className="col-span-12 md:col-span-2 flex items-center md:px-[10.5px]">
                   <button
                     className="flex justify-center items-center w-full p-[7px] border border-solid border-[rgba(16,197,207,0.6)] rounded-[5px]"
-                    onClick={() =>
-                      setIsNativeStakeExpanded(!isNativeStakeExpanded)
-                    }
+                    onClick={() => setIsAquaStakeExpanded(!isAquaStakeExpanded)}
                   >
                     <span>Stake</span>
-                    {isNativeStakeExpanded ? (
+                    {isAquaStakeExpanded ? (
                       <KeyboardArrowUpIcon className="text-white" />
                     ) : (
                       <KeyboardArrowDownIcon className="text-white" />
@@ -679,6 +680,181 @@ function AquaStake() {
                         >
                           {!user?.lockingAqua ? (
                             <span>Mint</span>
+                          ) : (
+                            <div className="flex justify-center items-center gap-[10px]">
+                              <span className="text-white">Processing...</span>
+                              <TailSpin
+                                height="18"
+                                width="18"
+                                color="#ffffff"
+                                ariaLabel="tail-spin-loading"
+                                radius="1"
+                                wrapperStyle={{}}
+                                wrapperClass=""
+                                visible={true}
+                              />
+                            </div>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="block md:hidden col-span-12 w-full italic px-[10.5px]"></div>
+
+                <div className="col-span-12 md:col-span-6">
+                  <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
+                    <div className="col-span-12 md:col-span-4 px-[10.5px]">
+                      {/* <div className="flex justify-start md:justify-center">
+                        <div>SOL Reserved to Redeem</div>
+                      </div> */}
+                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
+                        <div>
+                          {/* {userInfoAccountInfo &&
+                            (
+                              userInfoAccountInfo.reservedRedeemAmount.toNumber() /
+                              LAMPORTS_PER_SOL
+                            ).toLocaleString()} */}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-span-12 md:col-span-4 px-[10.5px]">
+                      {/* <div className="flex justify-start md:justify-center">
+                        <div>Unbonding Epoch</div>
+                      </div> */}
+                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
+                        <div>
+                          {/* {userInfoAccountInfo &&
+                          (userInfoAccountInfo.reservedRedeemAmount.toNumber() >
+                            0 ||
+                          userInfoAccountInfo.approvedRedeemAmount.toNumber() >
+                              0)
+                            ? userInfoAccountInfo.lastRedeemReservedEpoch.toNumber() +
+                              UNBOINDING_PERIOD +
+                              1
+                            : "-"} */}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-span-12 md:col-span-4 px-[10.5px]">
+                      <div className="flex justify-start md:justify-center">
+                        <div>Total accumulated rewards</div>
+                      </div>
+                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
+                        <div>{user?.userLockedRewardsAmount}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </AccordionDetails>
+          </Accordion>
+        </div>
+
+        <div className="w-full bg-[rgb(18,18,18)] bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.05))] rounded-[4px]">
+          <Accordion expanded={isBlubStakeExpanded}>
+            <AccordionSummary
+              id="panel1a-header"
+              aria-controls="panel1a-content"
+              className="w-full !cursor-default"
+            >
+              <div className="grid grid-cols-12 w-full text-[12.6px] px-[10.5px]">
+                <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px] mb-2">
+                  <div className="flex items-center">
+                    <div className="flex justify-center items-center w-[50px] h-[50px] mx-[7px]">
+                      <img src={aquaLogo} alt="sol-logo" className="w-full" />
+                    </div>
+                    <div>AQUA</div>
+                  </div>
+                </div>
+
+                <div className="col-span-12 md:col-span-2 flex flex-col justify-center md:px-[10.5px]">
+                  {/* <div>TVL</div>
+                  <div>{totalValueLocked?.total} total locked</div> */}
+                </div>
+
+                <div className="col-span-12 md:col-span-1 md:px-[10.5px]"></div>
+
+                <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px]">
+                  {/* <div className="flex justify-between items-center w-full">
+                    <div>Your balance</div>
+                    <div className="text-end">
+                      <div>100 AQUA</div>
+                      <div>200 JWLAQUA</div>
+                    </div>
+                  </div> */}
+                </div>
+
+                <div className="col-span-12 md:col-span-1 md:px-[10.5px]"></div>
+
+                <div className="col-span-12 md:col-span-2 flex items-center md:px-[10.5px]">
+                  <button
+                    className="flex justify-center items-center w-full p-[7px] border border-solid border-[rgba(16,197,207,0.6)] rounded-[5px]"
+                    onClick={() => setIsBlubStakeExpanded(!isBlubStakeExpanded)}
+                  >
+                    <span>Stake</span>
+                    {isBlubStakeExpanded ? (
+                      <KeyboardArrowUpIcon className="text-white" />
+                    ) : (
+                      <KeyboardArrowDownIcon className="text-white" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </AccordionSummary>
+            <AccordionDetails sx={{ padding: "0px 16px 16px" }}>
+              <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
+                <div className="col-span-12 md:col-span-6">
+                  <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
+                    <div className="col-span-12 md:col-span-6">
+                      <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
+                        <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
+                          <div>{`BLUB ${Number(blubBalance)?.toFixed(2)}`}</div>
+
+                          <InputBase
+                            sx={{
+                              flex: 1,
+                              border: "1px",
+                              borderStyle: "solid",
+                              borderRadius: "5px",
+                              borderColor: "gray",
+                              padding: "2px 5px",
+                            }}
+                            endAdornment={
+                              <InputAdornment
+                                position="end"
+                                sx={{ cursor: "pointer" }}
+                                onClick={handleSetRestakeMaxDeposit}
+                              >
+                                Max
+                              </InputAdornment>
+                            }
+                            type="number"
+                            placeholder="0.00"
+                            disabled={user?.lockingAqua}
+                            value={
+                              blubStakeAmount != null ? blubStakeAmount : ""
+                            }
+                            className="mt-[3.5px]"
+                            onChange={(e) =>
+                              setBlubStakeAmount(
+                                e.target.value ? Number(e.target.value) : null
+                              )
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="col-span-12 md:col-span-6 px-2">
+                        <button
+                          className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px]  rounded-md bg-[rgba(16,197,207,0.6)]"
+                          // disabled={user?.restaking || !user?.userWalletAddress}
+                          onClick={handleRestake}
+                        >
+                          {!user?.restaking ? (
+                            <span>Stake </span>
                           ) : (
                             <div className="flex justify-center items-center gap-[10px]">
                               <span className="text-white">Processing...</span>
@@ -803,14 +979,114 @@ function AquaStake() {
                       </div>
                     </div>
 
-                    <div className="col-span-12 md:col-span-4 px-[10.5px]">
+                    {/* <div className="col-span-12 md:col-span-4 px-[10.5px]">
                       <div className="flex justify-start md:justify-center">
                         <div>Unbonded Reward</div>
                       </div>
                       <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
                         <div>{user?.userLockedRewardsAmount}</div>
                       </div>
+                    </div> */}
+                  </div>
+                </div>
+              </div>
+            </AccordionDetails>
+          </Accordion>
+        </div>
+        <div className="w-full bg-[rgb(18,18,18)] bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.05))] rounded-[4px]">
+          <Accordion expanded={isBlubStakeExpanded}>
+            <AccordionSummary
+              id="panel1a-header"
+              aria-controls="panel1a-content"
+              className="w-full !cursor-default"
+            >
+              <div className="grid grid-cols-12 w-full text-[12.6px] px-[10.5px]">
+                <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px] mb-2">
+                  <div className="flex items-center">
+                    <div>Provide Liquidity</div>
+                  </div>
+                </div>
+
+                <div className="col-span-12 md:col-span-2 flex flex-col justify-center md:px-[10.5px]">
+                  {/* <div>TVL</div>
+                  <div>{totalValueLocked?.total} total locked</div> */}
+                </div>
+
+                <div className="col-span-12 md:col-span-1 md:px-[10.5px]"></div>
+
+                <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px]">
+                  {/* <div className="flex justify-between items-center w-full">
+                    <div>Your balance</div>
+                    <div className="text-end">
+                      <div>100 AQUA</div>
+                      <div>200 JWLAQUA</div>
                     </div>
+                  </div> */}
+                </div>
+
+                <div className="col-span-12 md:col-span-1 md:px-[10.5px]"></div>
+
+                <div className="col-span-12 md:col-span-2 flex items-center md:px-[10.5px]">
+                  <button
+                    className="flex justify-center items-center w-full p-[7px] border border-solid border-[rgba(16,197,207,0.6)] rounded-[5px]"
+                    onClick={() => setIsBlubStakeExpanded(!isBlubStakeExpanded)}
+                  >
+                    <span>PROVIDE LIQUIDITY</span>
+                    {isBlubStakeExpanded ? (
+                      <KeyboardArrowUpIcon className="text-white" />
+                    ) : (
+                      <KeyboardArrowDownIcon className="text-white" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </AccordionSummary>
+            <AccordionDetails sx={{ padding: "0px 16px 16px" }}>
+              <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
+                <div className="col-span-12 md:col-span-6">
+                  <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
+                    <div className="col-span-12 md:col-span-4 px-[10.5px]">
+                      {/* <div className="flex justify-start md:justify-center">
+                        <div>SOL Reserved to Redeem</div>
+                      </div> */}
+                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
+                        <div>
+                          {/* {userInfoAccountInfo &&
+                            (
+                              userInfoAccountInfo.reservedRedeemAmount.toNumber() /
+                              LAMPORTS_PER_SOL
+                            ).toLocaleString()} */}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="col-span-12 md:col-span-4 px-[10.5px]">
+                      {/* <div className="flex justify-start md:justify-center">
+                        <div>Unbonding Epoch</div>
+                      </div> */}
+                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
+                        <div>
+                          {/* {userInfoAccountInfo &&
+                          (userInfoAccountInfo.reservedRedeemAmount.toNumber() >
+                            0 ||
+                          userInfoAccountInfo.approvedRedeemAmount.toNumber() >
+                              0)
+                            ? userInfoAccountInfo.lastRedeemReservedEpoch.toNumber() +
+                              UNBOINDING_PERIOD +
+                              1
+                            : "-"} */}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* <div className="col-span-12 md:col-span-4 px-[10.5px]">
+                      <div className="flex justify-start md:justify-center">
+                        <div>Unbonded Reward</div>
+                      </div>
+                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
+                        <div>{user?.userLockedRewardsAmount}</div>
+                      </div>
+                    </div> */}
                   </div>
                 </div>
 
@@ -821,72 +1097,6 @@ function AquaStake() {
                       {/* You will need to wait for the unbonding period again to
                       receive your reward. */}
                     </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* [x] working later */}
-              <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px] mb-7">
-                <div className="col-span-12 md:col-span-6">
-                  <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
-                    <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
-                      <div>{`BLUB ${Number(blubBalance)?.toFixed(2)}`}</div>
-
-                      <InputBase
-                        sx={{
-                          flex: 1,
-                          border: "1px",
-                          borderStyle: "solid",
-                          borderRadius: "5px",
-                          borderColor: "gray",
-                          padding: "2px 5px",
-                        }}
-                        endAdornment={
-                          <InputAdornment
-                            position="end"
-                            sx={{ cursor: "pointer" }}
-                            onClick={handleSetRestakeMaxDeposit}
-                          >
-                            Max
-                          </InputAdornment>
-                        }
-                        type="number"
-                        placeholder="0.00"
-                        disabled={user?.lockingAqua}
-                        value={blubStakeAmount != null ? blubStakeAmount : ""}
-                        className="mt-[3.5px]"
-                        onChange={(e) =>
-                          setBlubStakeAmount(
-                            e.target.value ? Number(e.target.value) : null
-                          )
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div className="col-span-12 md:col-span-6 px-2">
-                    <button
-                      className="flex justify-center items-center w-fit p-[7px_21px] mt-[7px]  rounded-md bg-[rgba(16,197,207,0.6)]"
-                      // disabled={user?.restaking || !user?.userWalletAddress}
-                      onClick={handleRestake}
-                    >
-                      {!user?.restaking ? (
-                        <span>Stake </span>
-                      ) : (
-                        <div className="flex justify-center items-center gap-[10px]">
-                          <span className="text-white">Processing...</span>
-                          <TailSpin
-                            height="18"
-                            width="18"
-                            color="#ffffff"
-                            ariaLabel="tail-spin-loading"
-                            radius="1"
-                            wrapperStyle={{}}
-                            wrapperClass=""
-                            visible={true}
-                          />
-                        </div>
-                      )}
-                    </button>
                   </div>
                 </div>
               </div>
