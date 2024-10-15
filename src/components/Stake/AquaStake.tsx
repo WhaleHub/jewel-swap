@@ -632,10 +632,10 @@ function AquaStake() {
 
             <AccordionDetails sx={{ padding: "0px 16px 16px" }}>
               <div className="grid mt-[14px] px-4">
-                Mint BLUB token by locking ACQUA token and receive the share of
-                Acqua governance and yield farming rewards. BLUB is
-                automatically staked with an option to unstake and add liquidity
-                in ACQUA-BLUB pool.
+                Mint BLUB token by locking AQUA token and receive the share of
+                AQUA governance and yield farming rewards. BLUB is automatically
+                staked with an option to unstake and add liquidity in AQUA-BLUB
+                pool.
               </div>
               <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[20px]">
                 <div className="col-span-12 md:col-span-6">
