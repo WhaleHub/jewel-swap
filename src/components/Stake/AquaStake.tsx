@@ -630,7 +630,13 @@ function AquaStake() {
             </AccordionSummary>
 
             <AccordionDetails sx={{ padding: "0px 16px 16px" }}>
-              <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
+              <div className="grid mt-[14px] px-4">
+                Mint BLUB token by locking ACQUA token and receive the share of
+                Acqua governance and yield farming rewards. BLUB is
+                automatically staked with an option to unstake and add liquidity
+                in ACQUA-BLUB pool.
+              </div>
+              <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[20px]">
                 <div className="col-span-12 md:col-span-6">
                   <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                     <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
@@ -739,8 +745,12 @@ function AquaStake() {
                     </div>
 
                     <div className="col-span-12 md:col-span-4 px-[10.5px]">
-                      <div className="flex justify-start md:justify-center">
+                      <div className="flex justify-start md:justify-center relative group">
                         <div>Total accumulated rewards</div>
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 max-w-xs bg-gray-700 text-white text-sm rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity break-words">
+                          A total accumulated BLUB rewards, distributed
+                          automatically for all stakers of WhaleHub
+                        </div>
                       </div>
                       <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
                         <div>{user?.userLockedRewardsAmount}</div>
@@ -1041,65 +1051,6 @@ function AquaStake() {
               </div>
             </AccordionSummary>
             <AccordionDetails sx={{ padding: "0px 16px 16px" }}>
-              <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
-                <div className="col-span-12 md:col-span-6">
-                  <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
-                    <div className="col-span-12 md:col-span-4 px-[10.5px]">
-                      {/* <div className="flex justify-start md:justify-center">
-                        <div>SOL Reserved to Redeem</div>
-                      </div> */}
-                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
-                        <div>
-                          {/* {userInfoAccountInfo &&
-                            (
-                              userInfoAccountInfo.reservedRedeemAmount.toNumber() /
-                              LAMPORTS_PER_SOL
-                            ).toLocaleString()} */}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="col-span-12 md:col-span-4 px-[10.5px]">
-                      {/* <div className="flex justify-start md:justify-center">
-                        <div>Unbonding Epoch</div>
-                      </div> */}
-                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
-                        <div>
-                          {/* {userInfoAccountInfo &&
-                          (userInfoAccountInfo.reservedRedeemAmount.toNumber() >
-                            0 ||
-                          userInfoAccountInfo.approvedRedeemAmount.toNumber() >
-                              0)
-                            ? userInfoAccountInfo.lastRedeemReservedEpoch.toNumber() +
-                              UNBOINDING_PERIOD +
-                              1
-                            : "-"} */}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* <div className="col-span-12 md:col-span-4 px-[10.5px]">
-                      <div className="flex justify-start md:justify-center">
-                        <div>Unbonded Reward</div>
-                      </div>
-                      <div className="flex justify-start md:justify-center mt-[5px] md:mt-[21px]">
-                        <div>{user?.userLockedRewardsAmount}</div>
-                      </div>
-                    </div> */}
-                  </div>
-                </div>
-
-                <div className="hidden md:block col-span-12 mt-[14px]">
-                  <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
-                    <div className="col-span-3 px-[10.5px]"></div>
-                    <div className="col-span-9 px-[10.5px] italic">
-                      {/* You will need to wait for the unbonding period again to
-                      receive your reward. */}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               {/* lp section */}
               <div className="grid grid-cols-12 gap-[20px] md:gap-0 w-full mt-[14px]">
                 <div className="col-span-12 md:col-span-6">
