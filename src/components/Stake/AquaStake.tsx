@@ -82,6 +82,7 @@ function AquaStake() {
   const [isAquaStakeExpanded, setIsAquaStakeExpanded] = useState<boolean>(true);
   const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
     useState<boolean>(false);
+  const [isProvideLpExpanded, setProvideLpExpanded] = useState<boolean>(false);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
   const [lpBlubAmount, setLPBlubDepositAmount] = useState<number | null>();
   const [lpAquaAmount, setLpAquaDepositAmount] = useState<number | null>();
@@ -1000,7 +1001,7 @@ function AquaStake() {
           </Accordion>
         </div>
         <div className="w-full bg-[rgb(18,18,18)] bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.05))] rounded-[4px]">
-          <Accordion expanded={isBlubStakeExpanded}>
+          <Accordion expanded={isProvideLpExpanded}>
             <AccordionSummary
               id="panel1a-header"
               aria-controls="panel1a-content"
@@ -1013,32 +1014,21 @@ function AquaStake() {
                   </div>
                 </div>
 
-                <div className="col-span-12 md:col-span-2 flex flex-col justify-center md:px-[10.5px]">
-                  {/* <div>TVL</div>
-                  <div>{totalValueLocked?.total} total locked</div> */}
-                </div>
+                <div className="col-span-12 md:col-span-2 flex flex-col justify-center md:px-[10.5px]"></div>
 
                 <div className="col-span-12 md:col-span-1 md:px-[10.5px]"></div>
 
-                <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px]">
-                  {/* <div className="flex justify-between items-center w-full">
-                    <div>Your balance</div>
-                    <div className="text-end">
-                      <div>100 AQUA</div>
-                      <div>200 JWLAQUA</div>
-                    </div>
-                  </div> */}
-                </div>
+                <div className="col-span-12 md:col-span-3 flex items-center md:px-[10.5px]"></div>
 
                 <div className="col-span-12 md:col-span-1 md:px-[10.5px]"></div>
 
                 <div className="col-span-12 md:col-span-2 flex items-center md:px-[10.5px]">
                   <button
                     className="flex justify-center items-center w-full p-[7px] border border-solid border-[rgba(16,197,207,0.6)] rounded-[5px]"
-                    onClick={() => setIsBlubStakeExpanded(!isBlubStakeExpanded)}
+                    onClick={() => setProvideLpExpanded(!isProvideLpExpanded)}
                   >
                     <span>PROVIDE LIQUIDITY</span>
-                    {isBlubStakeExpanded ? (
+                    {isProvideLpExpanded ? (
                       <KeyboardArrowUpIcon className="text-white" />
                     ) : (
                       <KeyboardArrowDownIcon className="text-white" />
