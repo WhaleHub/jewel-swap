@@ -79,8 +79,7 @@ function AquaStake() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   // const appRecords = useSelector((state: RootState) => state.app);
-  const [isAquaStakeExpanded, setIsAquaStakeExpanded] =
-    useState<boolean>(false);
+  const [isAquaStakeExpanded, setIsAquaStakeExpanded] = useState<boolean>(true);
   const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
     useState<boolean>(false);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
