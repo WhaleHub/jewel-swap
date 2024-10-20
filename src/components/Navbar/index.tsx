@@ -42,8 +42,7 @@ const Navbar = () => {
       <div className="flex flex-col md:flex-row justify-center w-full h-full pt-[16px]">
         <div className="flex flex-col md:flex-row justify-between items-center gap-[5px] md:gap-[14px] w-full max-w-[1320px] h-full px-[10.5px]">
           <a
-            href="/"
-            target="_blank"
+            href="https://www.app.whalehub.io"
             rel="noopener noreferrer"
             className="flex justify-center items-center w-[160px] md:w-[200px]"
           >

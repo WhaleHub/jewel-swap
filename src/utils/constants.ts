@@ -9,3 +9,11 @@ export const treasureAddress: string =
   "GC6UELQOGTXPOKGIG52T5ZC42YGNZIZATMJF7A3HM3TGRFOC3WSPMWXA";
 export const BACKEND_API = process.env.REACT_APP_BACKEND_URL;
 export const JEWEL_TOKEN = "WHLAQUA";
+
+export const aquaAssetCode = "AQUA";
+export const aquaAssetIssuer =
+  "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA";
+
+export const whlAssetCode = "WHLAQUA";
+export const whlAquaIssuer =
+  "GCX6LOZ6ZEXBHLTPOPP2THN74K33LMT4HKSPDTWSLVCF4EWRGXOS7D3V";
