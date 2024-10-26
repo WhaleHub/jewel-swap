@@ -36,11 +36,65 @@ import {
 } from "@stellar/stellar-sdk";
 import aquaLogo from "../../assets/images/aqua_logo.png";
 import { TailSpin } from "react-loader-spinner";
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from "@tanstack/react-table";
+
+type PoolType = {
+  pool: string;
+  tvl: number;
+  rewardsApy: string;
+};
+
+const defaultData: PoolType[] = [
+  {
+    pool: "BLUB/AQUA",
+    tvl: 24000,
+    rewardsApy: "2.9%",
+  },
+];
+
+const columnHelper = createColumnHelper<PoolType>();
+
+const columns = [
+  columnHelper.accessor("pool", {
+    id: "Pool",
+    cell: (info) => (
+      <div className="flex items-center gap-2">
+        <div className="relative flex items-center mt-4">
+          <img
+            src="/blub_logo.png"
+            alt="BLUB"
+            className="w-12 h-12 relative z-10 rounded-full"
+          />
+          <img
+            src={aquaLogo}
+            alt="AQUA"
+            className="w-12 h-12 -ml-4 rounded-full"
+          />
+        </div>
+        <div>{info.getValue()}</div>
+      </div>
+    ),
+  }),
+  columnHelper.accessor("tvl", {
+    id: "TVL",
+    cell: (info) => info.renderValue(),
+  }),
+  columnHelper.accessor("rewardsApy", {
+    id: "Rewards APY",
+    cell: (info) => info.renderValue(),
+  }),
+];
 
 function ProvideLP() {
   const [lpBlubAmount, setLPBlubDepositAmount] = useState<number | null>();
   const [lpAquaAmount, setLpAquaDepositAmount] = useState<number | null>();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [data, _setData] = useState(() => [...defaultData]);
 
   const dispatch = useAppDispatch();
 
@@ -185,6 +239,12 @@ function ProvideLP() {
     setIsModalOpen(false);
   };
 
+  const table = useReactTable({
+    data,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
   useEffect(() => {
     if (user?.providedLp) {
       updateWalletRecords();
@@ -198,46 +258,35 @@ function ProvideLP() {
 
   return (
     <Fragment>
-      <div className="w-full p-4 bg-white rounded-[4px] cursor-pointer">
-        <div className="grid grid-cols-5 text-gray-500 text-sm font-semibold pb-4">
-          <div className="w-2/5 md:w-1/3">Pool</div>
-          <div className="text-center">Fee</div>
-          <div className="text-center">TVL</div>
-          <div className="text-center">LP APY</div>
-          <div className="text-center">Rewards APY</div>
-        </div>
-
-        <div
-          className="p-4 flex items-center shadow-md bg-[rgb(18,18,18)] bg-[linear-gradient(rgba(255,255,255,0.05),rgba(255,255,255,0.05))] rounded-[4px]"
-          onClick={openModal}
-        >
-          <div className="flex items-center space-x-4 w-2/5 md:w-1/3">
-            <div className="relative flex items-center">
-              <img
-                src="/blub_logo.png"
-                alt="BLUB"
-                className="w-12 h-12 relative z-10 rounded-full"
-              />
-              <img
-                src={aquaLogo}
-                alt="AQUA"
-                className="w-12 h-12 -ml-4 rounded-full"
-              />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-lg font-semibold text-white">
-                BLUB / AQUA
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-4 gap-4 w-full text-center">
-            <div className="text-sm font-semibold text-gray-300">0.30%</div>
-            <div className="text-sm font-semibold text-gray-300">$989,876</div>
-            <div className="text-sm font-semibold text-gray-300">0.02%</div>
-            <div className="text-sm font-semibold text-gray-300">2.92%</div>
-          </div>
-        </div>
+      <div className="w-full overflow-x-scroll">
+        <table className="w-full px-3">
+          <thead className="bg-white rounded-[4px] cursor-pointer p-4">
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id} className=" text-gray-500 ">
+                {headerGroup.headers.map((header) => (
+                  <th key={header.id} className="">
+                    {header.isPlaceholder ? null : (
+                      <div className="text-start capitalize">
+                        {header.column.id}
+                      </div>
+                    )}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody className="mt-8 p-4">
+            {table.getRowModel().rows.map((row) => (
+              <tr key={row.id} onClick={openModal} className="cursor-pointer">
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {isModalOpen && (
@@ -299,15 +348,6 @@ function ProvideLP() {
                     <img src={aquaLogo} alt="USDC" className="w-6 h-6" />
                   </div>
                 </div>
-              </div>
-
-              <div className="flex justify-between text-sm">
-                <span>Type</span>
-                <span>Volatile</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>Fee</span>
-                <span>0.30%</span>
               </div>
 
               <div className="bg-gray-50 p-4 rounded-lg mt-4 hidden">

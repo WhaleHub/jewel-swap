@@ -7,6 +7,7 @@ import { Provider } from "react-redux";
 import { persistor, store } from "./lib/store";
 import { PersistGate } from "redux-persist/integration/react";
 import MainProvider from "./providers/MainProvider";
+import Vote from "./components/Vote/Vote";
 
 const theme = createTheme({
   palette: {
@@ -23,14 +24,15 @@ function App() {
       <Provider store={store}>
         <PersistGate loading={null} persistor={persistor}>
           <MainProvider>
-            <ThemeProvider theme={theme}>
+            <ThemeProvider {...{ theme }}>
               <BrowserRouter>
                 <Routes>
-                  <Route path="*" element={<Navigate to="/stake/aqua" />} />
                   <Route path="/" element={<AppLayout />}>
                     <Route path="/" element={<Navigate to="/stake/aqua" />} />
                     <Route path="/stake/:tokenId" element={<Stake />} />
+                    <Route path="/vote" element={<Vote />} />
                   </Route>
+                  <Route path="*" element={<Navigate to="/stake/aqua" />} />
                 </Routes>
               </BrowserRouter>
             </ThemeProvider>

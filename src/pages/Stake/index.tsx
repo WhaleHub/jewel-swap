@@ -8,8 +8,6 @@ import AquaStake from "../../components/Stake/AquaStake";
 const Stake = () => {
   const { tokenId } = useParams();
 
-  console.log({ tokenId });
-
   return (
     <div className="flex justify-center w-full mt-[56px] md:mt-[40px] px-[10.5px]">
       <div className="flex flex-col w-full max-w-[1320px] bg-[#0f1720] rounded-[12px] p-[30px_20px] md:p-[30px]">
