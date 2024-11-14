@@ -411,7 +411,7 @@ function Restake() {
                       onClick={handleUnstakeAqua}
                     >
                       {!user?.unStakingAqua ? (
-                        <span>Unstake</span>
+                        <span>Claim Earnings</span>
                       ) : (
                         <div className="flex justify-center items-center gap-[10px]">
                           <span className="text-white">Processing...</span>
