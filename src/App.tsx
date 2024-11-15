@@ -27,6 +27,7 @@ function App() {
             <ThemeProvider {...{ theme }}>
               <BrowserRouter>
                 <Routes>
+                  <Route path="/.well-known/*" element={null} />
                   <Route path="/" element={<AppLayout />}>
                     <Route path="/" element={<Navigate to="/stake/aqua" />} />
                     <Route path="/stake/:tokenId" element={<Stake />} />
