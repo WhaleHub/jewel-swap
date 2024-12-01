@@ -128,7 +128,7 @@ const columns = [
 
 function BlubAqua() {
   const [lpAmount1, setLPDepositAmount1] = useState<number | null>();
-  const [lpAmount2, setLpDepositAmount2] = useState<number | null>();
+  const [lpAmount2, setLPDepositAmount2] = useState<number | null>();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [data, _setData] = useState(() => [...defaultData]);
   const [activePool, setActivePool] = useState("");
@@ -299,7 +299,7 @@ function BlubAqua() {
       updateWalletRecords();
       toast.success("Provided Liquidity successfully!");
       setLPDepositAmount1(0);
-      setLpDepositAmount2(0);
+      setLPDepositAmount1(0);
       dispatch(providingLp(false));
       dispatch(resetStateValues());
     }
@@ -392,7 +392,7 @@ function BlubAqua() {
                     className="block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
                     placeholder="Enter AQUA amount"
                     onChange={(e) =>
-                      setLPDepositAmount1(
+                      setLPDepositAmount2(
                         e.target.value ? Number(e.target.value) : null
                       )
                     }
