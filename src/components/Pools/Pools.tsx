@@ -24,8 +24,11 @@ import {
   aquaAssetIssuer,
   blubIssuerPublicKey,
   lpSignerPublicKey,
-  whlAquaIssuer,
-  whlAssetCode,
+  blubIssuer,
+  blubAssetCode,
+  XlmAssetCode,
+  usdcAssetCode,
+  usdcIssuer,
 } from "../../utils/constants";
 import {
   Asset,
@@ -35,6 +38,8 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import aquaLogo from "../../assets/images/aqua_logo.png";
+import xlmLogo from "../../assets/images/xlm.png";
+import usdcLogo from "../../assets/images/usdc.svg";
 import { TailSpin } from "react-loader-spinner";
 import {
   createColumnHelper,
@@ -55,30 +60,61 @@ const defaultData: PoolType[] = [
     tvl: 24000,
     rewardsApy: "2.9%",
   },
+  {
+    pool: "USDC/XLM",
+    tvl: 24000,
+    rewardsApy: "2.9%",
+  },
 ];
+
+const poolRecords: Record<
+  string,
+  { img1: string; img2: string; assetA: Asset; assetB: Asset }
+> = {
+  "BLUB/AQUA": {
+    img1: "/blub_logo.png",
+    img2: aquaLogo,
+    assetA: new Asset(blubAssetCode, blubIssuer),
+    assetB: new Asset(aquaAssetCode, blubIssuer),
+  },
+  "USDC/XLM": {
+    img1: usdcLogo,
+    img2: xlmLogo,
+    assetA: new Asset(usdcAssetCode, usdcIssuer),
+    assetB: new Asset(XlmAssetCode),
+  },
+};
 
 const columnHelper = createColumnHelper<PoolType>();
 
 const columns = [
   columnHelper.accessor("pool", {
     id: "Pool",
-    cell: (info) => (
-      <div className="flex items-center gap-2">
-        <div className="relative flex items-center mt-4">
-          <img
-            src="/blub_logo.png"
-            alt="BLUB"
-            className="w-12 h-12 relative z-10 rounded-full"
-          />
-          <img
-            src={aquaLogo}
-            alt="AQUA"
-            className="w-12 h-12 -ml-4 rounded-full"
-          />
+    cell: (info) => {
+      const poolName = info.getValue();
+      const images = poolRecords[poolName] || {
+        img1: "/default_logo1.png",
+        img2: "/default_logo2.png",
+      };
+
+      return (
+        <div className="flex items-center gap-2 mb-2">
+          <div className="relative flex items-center mt-4">
+            <img
+              src={images.img1}
+              alt={poolName.split("/")[0]}
+              className="w-12 h-12 relative z-10 rounded-full"
+            />
+            <img
+              src={images.img2}
+              alt={poolName.split("/")[1]}
+              className="w-12 h-12 -ml-4 rounded-full"
+            />
+          </div>
+          <div>{poolName}</div>
         </div>
-        <div>{info.getValue()}</div>
-      </div>
-    ),
+      );
+    },
   }),
   columnHelper.accessor("tvl", {
     id: "TVL",
@@ -90,11 +126,18 @@ const columns = [
   }),
 ];
 
-function ProvideLP() {
-  const [lpBlubAmount, setLPBlubDepositAmount] = useState<number | null>();
-  const [lpAquaAmount, setLpAquaDepositAmount] = useState<number | null>();
+function BlubAqua() {
+  const [lpAmount1, setLPDepositAmount1] = useState<number | null>();
+  const [lpAmount2, setLpDepositAmount2] = useState<number | null>();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [data, _setData] = useState(() => [...defaultData]);
+  const [activePool, setActivePool] = useState("");
+
+  const poolImage1 = poolRecords[activePool]?.img1;
+  const poolImage2 = poolRecords[activePool]?.img2;
+
+  const poolAsset1 = poolRecords[activePool]?.assetA;
+  const poolAsset2 = poolRecords[activePool]?.assetB;
 
   const dispatch = useAppDispatch();
 
@@ -125,14 +168,18 @@ function ProvideLP() {
       return toast.warn("Global state not initialized");
     }
 
-    if (!lpBlubAmount) {
+    if (!lpAmount1) {
       dispatch(providingLp(false));
-      return toast.warn("Please input XLM amount to stake.");
+      return toast.warn(
+        `Please input ${activePool.split("/")[0]} amount to stake.`
+      );
     }
 
-    if (!lpAquaAmount) {
+    if (!lpAmount2) {
       dispatch(providingLp(false));
-      return toast.warn("Please input AQUA amount to stake.");
+      return toast.warn(
+        `Please input ${activePool.split("/")[1]}  amount to stake.`
+      );
     }
     dispatch(providingLp(true));
 
@@ -146,20 +193,20 @@ function ProvideLP() {
 
       const aquaAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
 
-      const blubStakeAmount = lpBlubAmount.toFixed(7);
-      const aquaStakeAmount = lpAquaAmount.toFixed(7);
+      const stakeAmount1 = lpAmount1.toFixed(7);
+      const stakeAmount2 = lpAmount2.toFixed(7);
 
       //transfer asset to server wallet
       const paymentOperation1 = Operation.payment({
         destination: lpSignerPublicKey,
-        asset: aquaAsset,
-        amount: `${blubStakeAmount}`,
+        asset: poolAsset1,
+        amount: `${stakeAmount1}`,
       });
 
       const paymentOperation2 = Operation.payment({
         destination: lpSignerPublicKey,
-        asset: new Asset(whlAssetCode, whlAquaIssuer),
-        amount: `${aquaStakeAmount}`,
+        asset: poolAsset2,
+        amount: `${stakeAmount2}`,
       });
 
       // Build transaction
@@ -192,12 +239,12 @@ function ProvideLP() {
       dispatch(
         provideLiquidity({
           asset1: {
-            ...new Asset(whlAssetCode, whlAquaIssuer),
-            amount: blubStakeAmount,
+            ...poolAsset1,
+            amount: stakeAmount1,
           },
           asset2: {
-            ...aquaAsset,
-            amount: aquaStakeAmount,
+            ...poolAsset2,
+            amount: stakeAmount2,
           },
           signedTxXdr,
           senderPublicKey: address,
@@ -231,11 +278,13 @@ function ProvideLP() {
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };
 
-  const openModal = () => {
+  const openModal = (pool: string) => {
+    setActivePool(pool);
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
+    setActivePool("");
     setIsModalOpen(false);
   };
 
@@ -249,8 +298,8 @@ function ProvideLP() {
     if (user?.providedLp) {
       updateWalletRecords();
       toast.success("Provided Liquidity successfully!");
-      setLpAquaDepositAmount(0);
-      setLPBlubDepositAmount(0);
+      setLPDepositAmount1(0);
+      setLpDepositAmount2(0);
       dispatch(providingLp(false));
       dispatch(resetStateValues());
     }
@@ -277,7 +326,11 @@ function ProvideLP() {
           </thead>
           <tbody className="mt-8 p-4">
             {table.getRowModel().rows.map((row) => (
-              <tr key={row.id} onClick={openModal} className="cursor-pointer">
+              <tr
+                key={row.id}
+                onClick={() => openModal(row.original.pool)}
+                className="cursor-pointer border-white border-b-2 mb-3 py-2"
+              >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -306,7 +359,7 @@ function ProvideLP() {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  BLUB Amount
+                  {activePool?.split("/")[0]} Amount
                 </label>
                 <div className="relative mt-1">
                   <input
@@ -314,16 +367,16 @@ function ProvideLP() {
                     className="block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
                     placeholder="Enter BLUB amount"
                     onChange={(e) =>
-                      setLPBlubDepositAmount(
+                      setLPDepositAmount1(
                         e.target.value ? Number(e.target.value) : null
                       )
                     }
                   />
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
                     <img
-                      src={"/blub_logo.png"}
-                      alt="Blub"
-                      className="w-6 h-6"
+                      src={poolImage1}
+                      alt={activePool.split("/")[0]}
+                      className="w-[25px] h-[25px] relative z-10 rounded-full"
                     />
                   </div>
                 </div>
@@ -331,7 +384,7 @@ function ProvideLP() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  AQUA Amount
+                  {activePool?.split("/")[1]} Amount
                 </label>
                 <div className="relative mt-1">
                   <input
@@ -339,13 +392,17 @@ function ProvideLP() {
                     className="block w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-purple-500 focus:border-purple-500 sm:text-sm"
                     placeholder="Enter AQUA amount"
                     onChange={(e) =>
-                      setLpAquaDepositAmount(
+                      setLPDepositAmount1(
                         e.target.value ? Number(e.target.value) : null
                       )
                     }
                   />
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
-                    <img src={aquaLogo} alt="USDC" className="w-6 h-6" />
+                    <img
+                      src={poolImage2}
+                      alt={activePool.split("/")[0]}
+                      className="w-[25px] h-[25px] relative z-10 rounded-full"
+                    />
                   </div>
                 </div>
               </div>
@@ -401,4 +458,4 @@ function ProvideLP() {
   );
 }
 
-export default ProvideLP;
+export default BlubAqua;

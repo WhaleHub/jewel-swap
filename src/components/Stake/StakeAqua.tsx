@@ -39,7 +39,7 @@ import {
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { blubSignerPublicKey, JEWEL_TOKEN } from "../../utils/constants";
+import { blubAssetCode, blubSignerPublicKey } from "../../utils/constants";
 import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
 
@@ -181,7 +181,7 @@ function StakeAqua() {
       (balance: Balance) => balance.asset_code
     );
 
-    if (!existingTrustlines.includes(JEWEL_TOKEN)) {
+    if (!existingTrustlines.includes(blubAssetCode)) {
       try {
         await handleAddTrustline();
         toast.success("Trustline added successfully.");

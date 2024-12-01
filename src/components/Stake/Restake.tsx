@@ -42,10 +42,9 @@ import {
 } from "@stellar/stellar-sdk";
 import {
   blubIssuerPublicKey,
-  JEWEL_TOKEN,
   lpSignerPublicKey,
-  whlAquaIssuer,
-  whlAssetCode,
+  blubIssuer,
+  blubAssetCode,
 } from "../../utils/constants";
 import { StellarService } from "../../services/stellar.service";
 import { Balance } from "../../utils/interfaces";
@@ -193,14 +192,14 @@ function Restake() {
       (balance: Balance) => balance.asset_code
     );
 
-    if (!existingTrustlines.includes(JEWEL_TOKEN)) return;
+    if (!existingTrustlines.includes(blubAssetCode)) return;
 
     try {
       const stakeAmount = blubStakeAmount.toFixed(7);
 
       const paymentOperation = Operation.payment({
         destination: lpSignerPublicKey,
-        asset: new Asset(whlAssetCode, whlAquaIssuer),
+        asset: new Asset(blubAssetCode, blubIssuer),
         amount: stakeAmount,
       });
 
