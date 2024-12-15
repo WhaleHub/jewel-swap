@@ -12,9 +12,7 @@ import Vote from "./components/Vote/Vote";
 const theme = createTheme({
   palette: {
     mode: "dark",
-    primary: {
-      main: "#37b06f",
-    },
+    primary: { main: "#37b06f" },
   },
 });
 

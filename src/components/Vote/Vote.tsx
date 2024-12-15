@@ -1,5 +1,3 @@
-import React from "react";
-
 type Vote = {
   pool: string;
   tvl: number;
