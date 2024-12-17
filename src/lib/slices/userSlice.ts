@@ -298,10 +298,12 @@ export const userSlice = createSlice({
       ...state,
       walletSelectionOpen: payload,
     }),
-    setUserWalletAddress: (state, { payload }: PayloadAction<any>) => ({
-      ...state,
-      userWalletAddress: payload,
-    }),
+    setUserWalletAddress: (state, { payload }: PayloadAction<any>) => {
+      return {
+        ...state,
+        userWalletAddress: payload,
+      };
+    },
     setConnectingWallet: (state, { payload }: PayloadAction<any>) => ({
       ...state,
       connectingWallet: payload,
@@ -336,6 +338,10 @@ export const userSlice = createSlice({
       providedLp: false,
       unStakedAqua: false,
       restaked: false,
+    }),
+    setWalletConnected: (state, { payload }) => ({
+      ...state,
+      walletConnected: payload,
     }),
     logOut: (state) => ({
       ...state,
@@ -448,4 +454,5 @@ export const {
   setWalletConnectName,
   setUserWalletAddress,
   walletSelectionAction,
+  setWalletConnected,
 } = userSlice.actions;
