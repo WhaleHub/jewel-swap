@@ -43,6 +43,7 @@ import {
 import { toast } from "react-toastify";
 import { StellarService } from "../../services/stellar.service";
 import { TailSpin } from "react-loader-spinner";
+import { InformationCircleIcon } from "@heroicons/react/16/solid";
 
 function AddLiquidity() {
   const poolRecords: Record<
@@ -240,7 +241,7 @@ function AddLiquidity() {
         </div>
         <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
           <div>Boost liquidity pool for yield</div>
-          <i className="fa fa-exclamation-circle" aria-hidden="true"></i>
+          <InformationCircleIcon className="size-6" />
         </div>
 
         <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">

@@ -73,8 +73,8 @@ const Navbar = () => {
   }, [dispatch]);
 
   return (
-    <nav className="fixed top-0 right-0 z-30 w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[32px] px-[32px] transition-all duration-300 font-inter">
-      <div className="flex flex-col md:flex-row justify-between items-center  w-full max-w-[1954px] h-full ">
+    <nav className="fixed top-0 right-0 z-30 w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[32px] px-[15px] md:px-[32px] transition-all duration-300 font-inter">
+      <div className="flex md:flex-row justify-between items-center  w-full max-w-[1954px] h-full mx-auto">
         <div>
           <a
             href="https://www.whalehub.io"
@@ -85,13 +85,13 @@ const Navbar = () => {
           </a>
         </div>
 
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-8 xs:hidden lg:block space-x-4">
           <button className="font-medium text-base">Boost rewards</button>
           <button className="font-medium text-base">Generate Yeild</button>
         </div>
 
         <div className="flex justify-end items-center gap-[5.6px]">
-          <div className="fixed w-52 text-right ">
+          <div className="fixed w-52 text-right">
             <Menu>
               <MenuButton
                 className={clsx(

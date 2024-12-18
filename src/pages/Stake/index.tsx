@@ -8,7 +8,7 @@ const Stake = () => {
   return (
     <div className="w-full mt-[56px] md:mt-[64px] px-[10.5px]">
       <div className=" w-full">{tokenId == "aqua" && <NewStakelayout />}</div>
-      <div className="justify-between max-w-[1280px] mx-auto grid grid-cols-2 space-x-6 my-20">
+      <div className="justify-between max-w-[1280px] mx-auto grid grid-cols-2 space-x-6 my-20 hidden">
         <div className="px-6 py-6 bg-[#2B3553] rounded-[15px]">
           <div className="flex h-20 w-20 rounded-full bg-[#151A29] items-center justify-center">
             <img

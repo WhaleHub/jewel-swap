@@ -40,6 +40,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { TailSpin } from "react-loader-spinner";
 import AddLiquidity from "./AddLiquidity";
+import { InformationCircleIcon } from "@heroicons/react/16/solid";
 
 function Yeild() {
   const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
@@ -249,7 +250,7 @@ function Yeild() {
   return (
     <div>
       <div className="max-w-[912px] mx-auto">
-        <div className="text-white text-4xl-custom1 font-medium text-center">
+        <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
           Make Smart Yield Decisions to Maximize Returns
         </div>
         <div className="text-[#B1B3B8] text-base font-normal text-center">
@@ -257,7 +258,7 @@ function Yeild() {
           and thriving.
         </div>
       </div>
-      <div className="mt-10 grid gap-5 grid-cols-2 mb-10">
+      <div className="mt-10 md:grid gap-5 grid-cols-2 mb-10">
         <div>
           <div className="bg-[#0E111BCC] p-10 rounded-[16px] space-y-10">
             <div>
@@ -273,7 +274,7 @@ function Yeild() {
               </div>
               <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
                 <div>Manage your earnings</div>
-                <i className="fa fa-exclamation-circle" aria-hidden="true"></i>
+                <InformationCircleIcon className="size-6" />
               </div>
 
               <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">

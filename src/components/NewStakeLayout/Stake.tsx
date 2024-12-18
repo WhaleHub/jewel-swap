@@ -4,7 +4,7 @@ import Yeild from "./Yeild";
 
 function NewStakelayout() {
   return (
-    <div className="font-inter w-[914px] mx-auto">
+    <div className="font-inter md:w-[914px] mx-auto">
       <Wrapper>
         <STKAqua />
         <Yeild />

@@ -38,6 +38,7 @@ import {
 import { toast } from "react-toastify";
 import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
+import { InformationCircleIcon } from "@heroicons/react/16/solid";
 
 function STKAqua() {
   const dispatch = useAppDispatch();
@@ -243,7 +244,7 @@ function STKAqua() {
   return (
     <div>
       <div className="mx-auto">
-        <div className="text-white text-4xl-custom1 font-medium text-center">
+        <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
           Elevate Rewards to Rise Above the Curve
         </div>
         <div className="text-[#B1B3B8] text-base font-normal text-center">
@@ -251,7 +252,7 @@ function STKAqua() {
           strategic advantage.
         </div>
       </div>
-      <div className="mt-10 grid gap-5 grid-cols-2 mb-10">
+      <div className="mt-10 md:grid gap-5 grid-cols-2 mb-10">
         <div>
           <div className="bg-[#0E111BCC] p-10 rounded-[16px]">
             <div className="flex items-center space-x-4">
@@ -274,8 +275,10 @@ function STKAqua() {
               </div>
             </div>
             <div className="flex items-center space-x-2 mt-5 text-2xl">
-              <div className="font-medium text-white">Convert & Stake</div>
-              <i className="fa fa-exclamation-circle" aria-hidden="true"></i>
+              <div className="font-medium text-white xs:text-2xl">
+                Convert & Stake
+              </div>
+              <InformationCircleIcon className="size-6" />
             </div>
 
             <div className="flex items-center bg-[#0E111B]  py-2 space-x-2 mt-2 rounded-[8px]">
@@ -329,7 +332,7 @@ function STKAqua() {
 
             <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
               <div>Accumulated rewards</div>
-              <i className="fa fa-exclamation-circle" aria-hidden="true"></i>
+              <InformationCircleIcon className="size-6" />
             </div>
 
             <div className="flex items-center bg-[#0E111B] px-5 py-2 mt-2 rounded-[8px] justify-between">
