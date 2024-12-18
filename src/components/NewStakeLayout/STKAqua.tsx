@@ -104,7 +104,7 @@ function STKAqua() {
 
     const transactionXDR = transactionBuilder
       .addOperation(trustlineOperation)
-      .setTimeout(30)
+      .setTimeout(3000)
       .build()
       .toXDR();
 
@@ -306,7 +306,7 @@ function STKAqua() {
             </div>
 
             <Button
-              className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold"
+              className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold cursor-pointer"
               onClick={handleLockAqua}
               disabled={user?.lockingAqua}
             >

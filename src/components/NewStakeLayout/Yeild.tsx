@@ -276,7 +276,7 @@ function Yeild() {
                 <i className="fa fa-exclamation-circle" aria-hidden="true"></i>
               </div>
 
-              <div className="flex items-center bg-[#0E111B] px-5 py-2 space-x-2 mt-2 rounded-[8px]">
+              <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
                 <Input
                   placeholder="0 AQUA"
                   className={clsx(
@@ -335,7 +335,7 @@ function Yeild() {
             <hr className="border-[1px] border-solid border-[#3C404D]" />
 
             <div>
-              <div className="flex items-center bg-[#0E111B] px-5 py-2 space-x-2 mt-2 rounded-[8px]">
+              <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
                 <Input
                   placeholder="0 BLUB"
                   className={clsx(
