@@ -1,57 +1,55 @@
-import React from "react";
-import { Link, useParams } from "react-router-dom";
-import { tokensRegistered } from "../../data";
-import solLogo from "../../assets/images/sol_logo.png";
-import aquaLogo from "../../assets/images/aqua_logo.png";
-import AquaStake from "../../components/Stake/AquaStake";
+import { useParams } from "react-router-dom";
+import NewStakelayout from "../../components/NewStakeLayout/Stake";
+import { Button } from "@headlessui/react";
 
 const Stake = () => {
   const { tokenId } = useParams();
 
   return (
-    <div className="flex justify-center w-full mt-[56px] md:mt-[40px] px-[10.5px]">
-      <div className="flex flex-col w-full max-w-[1320px] bg-[#0f1720] rounded-[12px] p-[30px_20px] md:p-[30px]">
-        <div className="flex justify-between items-center w-full">
-          <h1 className="text-[31.5px] md:text-[35px] text-white font-normal">
-            Stake
-          </h1>
-
-          <div className="flex justify-center items-center w-[62px] md:w-[72px] h-[62px] md:h-[72px] border border-solid border-[#808080] rounded-[15px] p-[10px]">
-            <div className="flex justify-center items-center w-[40px] md:w-[50px] h-[40px] md:h-[50px]">
-              <img
-                src={tokenId === "sol" ? solLogo : aquaLogo}
-                alt={tokenId === "sol" ? "sol-logo" : "aqua-logo"}
-                className="w-full"
-              />
-            </div>
+    <div className="w-full mt-[56px] md:mt-[64px] px-[10.5px]">
+      <div className=" w-full">{tokenId == "aqua" && <NewStakelayout />}</div>
+      <div className="justify-between max-w-[1280px] mx-auto grid grid-cols-2 space-x-6 my-20 hidden">
+        <div className="px-6 py-6 bg-[#2B3553] rounded-[15px]">
+          <div className="flex h-20 w-20 rounded-full bg-[#151A29] items-center justify-center">
+            <img
+              className="inline-block size-10 rounded-full"
+              src={"/discord_icon.svg"}
+              alt="Discord"
+            />
           </div>
+
+          <div className="div text-2xl font-medium">Join us on Discord</div>
+
+          <Button
+            className={
+              "mt-5 text-base font-semibold bg-[white] text-[#151A29] px-5 py-3 rounded-2xl"
+            }
+          >
+            Join Discord
+          </Button>
         </div>
 
-        <div className="flex items-center gap-[14px] mt-[3.5px] mb-[21px]">
-          <div className="flex justify-center items-center text-[17px]">
-            Token:
+        <div className="px-6 py-6 bg-[#173A59] rounded-[15px]">
+          <div className="flex h-20 w-20 rounded-full bg-[#151A29] items-center justify-center">
+            <img
+              className="inline-block size-10 rounded-full"
+              src={"/x_icon.svg"}
+              alt="Twitter(X)"
+            />
           </div>
 
-          <div className="flex justify-center items-center gap-[14px]">
-            {tokensRegistered.map((item, index) => {
-              return (
-                <Link
-                  key={index}
-                  to={`/stake/${item.toLowerCase()}`}
-                  className={`flex justify-center items-center p-[5px_10px] rounded-[10px] border border-solid border-[rgba(84,245,183,.6)] ${
-                    tokenId == item.toLowerCase()
-                      ? "bg-[rgba(16,197,207,.6)]"
-                      : "bg-none"
-                  }`}
-                >
-                  {item.toUpperCase()}
-                </Link>
-              );
-            })}
+          <div className="div text-2xl font-medium">
+            Follow us on Twitter(X)
           </div>
+
+          <Button
+            className={
+              "mt-5 text-base font-semibold bg-[white] text-[#151A29] px-5 py-3 rounded-2xl"
+            }
+          >
+            Follow on Twitter
+          </Button>
         </div>
-
-        {tokenId == "aqua" && <AquaStake />}
       </div>
     </div>
   );

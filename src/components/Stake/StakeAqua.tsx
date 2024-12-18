@@ -39,17 +39,17 @@ import {
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { blubSignerPublicKey, JEWEL_TOKEN } from "../../utils/constants";
+import {
+  blubAssetCode,
+  blubIssuer,
+  blubSignerPublicKey,
+} from "../../utils/constants";
 import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
 
 const aquaAssetCode = "AQUA";
 const aquaAssetIssuer =
   "GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA";
-
-const whlAssetCode = "WHLAQUA";
-const whlAquaIssuer =
-  "GCX6LOZ6ZEXBHLTPOPP2THN74K33LMT4HKSPDTWSLVCF4EWRGXOS7D3V";
 
 function StakeAqua() {
   const dispatch = useAppDispatch();
@@ -111,7 +111,7 @@ function StakeAqua() {
     });
 
     const trustlineOperation = Operation.changeTrust({
-      asset: new Asset(whlAssetCode, whlAquaIssuer),
+      asset: new Asset(blubAssetCode, blubIssuer),
       limit: "1000000000",
     });
 
@@ -181,7 +181,7 @@ function StakeAqua() {
       (balance: Balance) => balance.asset_code
     );
 
-    if (!existingTrustlines.includes(JEWEL_TOKEN)) {
+    if (!existingTrustlines.includes(blubAssetCode)) {
       try {
         await handleAddTrustline();
         toast.success("Trustline added successfully.");

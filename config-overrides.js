@@ -39,7 +39,7 @@ module.exports = function (config, env) {
         ignoreWarnings: [/Failed to parse source map/],
         devServer: {
             hot: true,
-            liveReload: true, 
-          },
+            liveReload: true,
+        },
     };
 };

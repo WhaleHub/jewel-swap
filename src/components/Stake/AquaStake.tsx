@@ -1,7 +1,7 @@
 import React, { Fragment } from "react";
 import StakeAqua from "./StakeAqua";
 import Restake from "./Restake";
-import ProvideLP from "./ProvideLP";
+import Pools from "../Pools/Pools";
 
 function AquaStake() {
   return (
@@ -9,7 +9,7 @@ function AquaStake() {
       <div className="flex flex-col gap-[21px] w-full mt-[21px]">
         <StakeAqua />
         <Restake />
-        <ProvideLP />
+        <Pools />
       </div>
     </Fragment>
   );

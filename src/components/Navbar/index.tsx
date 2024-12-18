@@ -1,72 +1,163 @@
-import React, { Fragment, useRef } from "react";
+import { useCallback, useRef } from "react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
-import { adminWallets } from "../../config";
-import logo from "../../assets/images/logo.png";
 import { useAppDispatch } from "../../lib/hooks";
 import {
   fetchingWalletInfo,
   setConnectingWallet,
   setUserWalletAddress,
+  setWalletConnected,
   walletSelectionAction,
 } from "../../lib/slices/userSlice";
+import { isAllowed, setAllowed } from "@stellar/freighter-api";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
-import { TailSpin } from "react-loader-spinner";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { XMarkIcon } from "@heroicons/react/16/solid";
+import { walletTypes } from "../../enums";
+import {
+  FREIGHTER_ID,
+  FreighterModule,
+  LOBSTR_ID,
+  LobstrModule,
+  StellarWalletsKit,
+  WalletNetwork,
+} from "@creit.tech/stellar-wallets-kit";
+import clsx from "clsx";
 
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState<string | null>(null);
 
-  const handleWalletConnections = async () => {
-    if (user?.walletConnected || user?.connectingWallet) return;
-    dispatch(setConnectingWallet(true));
-    dispatch(walletSelectionAction(true));
-  };
+  const handleWalletConnections = useCallback(
+    async (walletType: string) => {
+      if (user?.connectingWallet) return;
 
-  const handleDisconnect = () => {
+      const selectedWalletId =
+        walletType === walletTypes.FREIGHTER ? FREIGHTER_ID : LOBSTR_ID;
+
+      try {
+        if (selectedWalletId === walletTypes.FREIGHTER) {
+          const kit: StellarWalletsKit = new StellarWalletsKit({
+            network: WalletNetwork.PUBLIC,
+            selectedWalletId: FREIGHTER_ID,
+            modules: [new FreighterModule()],
+          });
+
+          await setAllowed();
+          await isAllowed();
+
+          dispatch(setConnectingWallet(false));
+          dispatch(setWalletConnected(true));
+          setLoading(null);
+          dispatch(walletSelectionAction(false));
+        } else if (walletTypes.LOBSTR) {
+          //[x] will implement after upgrade
+        }
+      } catch (error) {
+        console.error(`Error connecting to ${walletType} wallet:`, error);
+        setLoading(null);
+      } finally {
+        setLoading(null);
+      }
+    },
+    [user?.walletConnected, user?.connectingWallet, dispatch]
+  );
+
+  const handleDisconnect = useCallback(() => {
     setDropdownOpen(false);
     dispatch(setUserWalletAddress(null));
     dispatch(fetchingWalletInfo(false));
-  };
-
-  // Toggle the dropdown when the button is clicked
-  const toggleDropdown = () => {
-    setDropdownOpen(!dropdownOpen);
-  };
+  }, [dispatch]);
 
   return (
-    <nav className="fixed top-0 right-0 z-30 min-h-[81.5px] w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[5px] transition-all duration-300">
-      <div className="flex flex-col md:flex-row justify-center w-full h-full pt-[16px]">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-[5px] md:gap-[14px] w-full max-w-[1320px] h-full px-[10.5px]">
+    <nav className="fixed top-0 right-0 z-30 w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[32px] px-[15px] md:px-[32px] transition-all duration-300 font-inter">
+      <div className="flex md:flex-row justify-between items-center  w-full max-w-[1954px] h-full mx-auto">
+        <div>
           <a
             href="https://www.whalehub.io"
             rel="noopener noreferrer"
-            className="flex justify-center items-center w-[160px] md:w-[200px]"
+            className="flex justify-center items-center "
           >
-            <img src={logo} className="w-full" alt="logo" />
+            <img src={"/whalehub_logo.svg"} className="w-full" alt="Whalehub" />
           </a>
+        </div>
 
-          <div className="flex justify-end items-center gap-[5.6px]">
-            <div className="flex items-center gap-3">
-              {user?.userWalletAddress &&
-                adminWallets.includes(user?.userWalletAddress) && (
-                  <Link
-                    to={"/admin"}
-                    className="text-[14px] text-[#939da7] hover:text-white"
-                  >
-                    Admin
-                  </Link>
+        <div className="flex items-center gap-8 xs:hidden lg:block space-x-4">
+          <button className="font-medium text-base">Boost rewards</button>
+          <button className="font-medium text-base">Generate Yeild</button>
+        </div>
+
+        <div className="flex justify-end items-center gap-[5.6px]">
+          <div className="fixed w-52 text-right">
+            <Menu>
+              <MenuButton
+                className={clsx(
+                  `inline-flex items-center gap-2 py-3 px-8 text-sm/6 font-semibold text-white shadow-inner shadow-white/10 focus:outline-none data-[hover]:bg-gray-700 data-[open]:bg-gray-700 data-[focus]:outline-1 data-[focus]:outline-white rounded-lg text-base`,
+                  `${
+                    !user?.userWalletAddress
+                      ? " bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)]"
+                      : "b-[#3C404D]"
+                  }`,
+                  `${user?.userWalletAddress ? "border border-[#B1B3B8]" : ""}`
                 )}
-            </div>
+              >
+                {user?.userWalletAddress
+                  ? "Disconnect Wallet"
+                  : "Connect Wallet"}
+              </MenuButton>
 
-            <div className="p-[7px]">
+              <MenuItems
+                transition
+                anchor="bottom end"
+                className={clsx(
+                  "w-96 origin-top-right border bg-[#151A29] border-white/5  text-sm/6 text-white transition duration-100 ease-out [--anchor-gap:var(--spacing-1)] focus:outline-none data-[closed]:scale-95 data-[closed]:opacity-0 z-40 mt-3",
+                  `${user?.userWalletAddress ? "hidden" : "block"}`
+                )}
+              >
+                <MenuItem>
+                  <button
+                    className={clsx(
+                      `group flex w-full items-center gap-2 py-4 px-4 data-[focus]:bg-white/10 justify-between border-t border-l border-r border-solid border-[#B1B3B8] text-base text-white font-semibold`
+                    )}
+                  >
+                    Connect wallet
+                    <XMarkIcon className="size-6 fill-white/30" />
+                  </button>
+                </MenuItem>
+                <div className="p-4 border border-solid border-[#B1B3B8]">
+                  <MenuItem>
+                    <button
+                      className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
+                      onClick={() =>
+                        handleWalletConnections(walletTypes.FREIGHTER)
+                      }
+                    >
+                      Freighter wallet
+                    </button>
+                  </MenuItem>
+                  {/* <div className="my-2">
+                    <MenuItem>
+                      <button className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold">
+                        LOBSTR wallet
+                      </button>
+                    </MenuItem>
+                  </div> */}
+                  <div className="text-xs  font-normal text-[#B1B3B8]">
+                    By connecting a wallet, you agree to WhaleHub Terms of
+                    Service and consent to its Privacy Policy.
+                  </div>
+                </div>
+              </MenuItems>
+            </Menu>
+          </div>
+          {/* <div className="p-[7px]">
               <div className="relative inline-block text-left">
                 <button
+                  className="rounded-[8px] py-2 px-6 text-white w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-sm font-semibold"
                   type="button"
-                  className="btn-primary2 after:bg-[rgba(16,197,207,.6)] inline-flex w-full justify-center gap-x-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
                   id="menu-button"
                   aria-haspopup="true"
                   onClick={toggleDropdown}
@@ -84,6 +175,7 @@ const Navbar = () => {
                     />
                   ) : (
                     <Fragment>
+                      Connect Wallet
                       {user?.userWalletAddress
                         ? `${user?.userWalletAddress.slice(
                             0,
@@ -106,7 +198,6 @@ const Navbar = () => {
                   )}
                 </button>
 
-                {/* Dropdown */}
                 {dropdownOpen && (
                   <div
                     ref={dropdownRef}
@@ -122,7 +213,7 @@ const Navbar = () => {
                         role="menuitem"
                         tabIndex={-1}
                         onClick={handleWalletConnections}
-                        disabled={user?.userWalletAddress !== null} // Disable if wallet is already connected
+                        disabled={user?.userWalletAddress !== null}
                       >
                         Connect
                       </button>
@@ -135,7 +226,7 @@ const Navbar = () => {
                         role="menuitem"
                         tabIndex={-1}
                         onClick={handleDisconnect}
-                        disabled={!user?.userWalletAddress} // Disable if no wallet is connected
+                        disabled={!user?.userWalletAddress} 
                       >
                         Disconnect
                       </button>
@@ -143,8 +234,7 @@ const Navbar = () => {
                   </div>
                 )}
               </div>
-            </div>
-          </div>
+            </div> */}
         </div>
       </div>
     </nav>
