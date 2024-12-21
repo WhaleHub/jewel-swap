@@ -1,43 +1,37 @@
-import { Fragment, ReactNode, useCallback, useEffect, useState } from "react";
+import { Fragment, ReactNode, useEffect } from "react";
 import {
   allowAllModules,
   FREIGHTER_ID,
   FreighterModule,
-  LOBSTR_ID,
-  LobstrModule,
-  ModuleInterface,
   StellarWalletsKit,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
-import { isAllowed, setAllowed } from "@stellar/freighter-api";
 import { StellarService } from "../services/stellar.service";
 import { useAppDispatch } from "../lib/hooks";
 import {
   fetchingWalletInfo,
   getAccountInfo,
   getLockedAquaRewardsForAccount,
-  logOut,
-  setConnectingWallet,
+  setUserbalances,
   setUserWalletAddress,
   setWalletConnected,
   setWalletConnectName,
   storeAccountBalance,
-  walletSelectionAction,
 } from "../lib/slices/userSlice";
-import { getAppData } from "../lib/slices/appSlice";
 import { useSelector } from "react-redux";
 import { RootState } from "../lib/store";
 import { walletTypes } from "../enums";
-import { TailSpin } from "react-loader-spinner";
+import { getPublicKey, signTransaction } from "@lobstrco/signer-extension-api";
+import { getAppData } from "../lib/slices/appSlice";
 import {
   Asset,
   BASE_FEE,
+  Horizon,
   Networks,
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { blubAssetCode, blubIssuer } from "../utils/constants";
-import * as StellarSdk from "@stellar/stellar-sdk";
+import { aquaAssetCode, aquaAssetIssuer } from "../utils/constants";
 
 interface MainProviderProps {
   children: ReactNode;
@@ -47,24 +41,35 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
 
-  const getWalletAddress = async () => {
+  const getWalletInfo = async () => {
     if (!user?.walletName) return;
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: allowAllModules(),
-    });
-
-    const { address } = await kit.getAddress();
-
     const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
-    dispatch(getAppData());
-    dispatch(storeAccountBalance(wrappedAccount.balances));
-    dispatch(getAccountInfo(address));
-    dispatch(fetchingWalletInfo(false));
-    dispatch(getLockedAquaRewardsForAccount(address));
+
+    if (user?.walletName === walletTypes.FREIGHTER) {
+      const kit: StellarWalletsKit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [new FreighterModule()],
+      });
+      const { address } = await kit.getAddress();
+      const wrappedAccount = await stellarService.loadAccount(address);
+      console.log(wrappedAccount.balances);
+
+      dispatch(getAppData());
+      dispatch(setUserbalances(wrappedAccount.balances));
+      dispatch(getAccountInfo(address));
+      dispatch(fetchingWalletInfo(false));
+      // dispatch(getLockedAquaRewardsForAccount(address));
+    } else if (user?.walletName === walletTypes.LOBSTR) {
+      const address = `${user.userWalletAddress}`;
+      const wrappedAccount = await stellarService.loadAccount(address);
+
+      dispatch(getAppData());
+      dispatch(setUserbalances(wrappedAccount.balances));
+      dispatch(getAccountInfo(address));
+      dispatch(fetchingWalletInfo(false));
+      dispatch(getLockedAquaRewardsForAccount(address));
+    }
   };
 
   const getRewards = async () => {
@@ -73,94 +78,93 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
   };
 
   const getAddress = async () => {
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [new FreighterModule()],
-    });
-
-    const { address } = await kit.getAddress();
-
-    dispatch(setUserWalletAddress(address));
+    try {
+      if (walletTypes.FREIGHTER === user?.walletName) {
+        if (user?.walletName) return;
+        const kit: StellarWalletsKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const { address } = await kit.getAddress();
+        dispatch(setUserWalletAddress(address));
+      } else if (walletTypes.LOBSTR === user?.walletName) {
+        if (user?.walletName) return;
+        const publicKey = await getPublicKey();
+        dispatch(setUserWalletAddress(publicKey));
+      }
+    } catch (err) {
+      dispatch(setWalletConnectName(null));
+    }
   };
 
   const handleAddTrustline = async () => {
-    try {
-      // const selectedModule =
-      //   user?.walletName === LOBSTR_ID
-      //     ? new LobstrModule()
-      //     : new FreighterModule();
+    const stellarService = new StellarService();
 
+    console.log(user?.userWalletAddress);
+
+    // Load sender's Stellar account
+    const senderAccount = await stellarService.loadAccount(
+      user?.userWalletAddress as string
+    );
+
+    // Build transaction
+    const transactionBuilder = new TransactionBuilder(senderAccount, {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.PUBLIC,
+    });
+
+    // Add trustline operation
+    transactionBuilder.addOperation(
+      Operation.changeTrust({
+        asset: new Asset(aquaAssetCode, aquaAssetIssuer),
+        limit: "1000000000",
+      })
+    );
+
+    // Set timeout and build transaction
+    const transaction = transactionBuilder.setTimeout(3000).build();
+
+    // Sign transaction based on wallet type
+    let signedTxXdr: string = "";
+
+    if (user?.walletName === walletTypes.LOBSTR) {
+      signedTxXdr = await signTransaction(transaction.toXDR());
+    } else {
       const kit = new StellarWalletsKit({
         network: WalletNetwork.PUBLIC,
         selectedWalletId: FREIGHTER_ID,
         modules: [new FreighterModule()],
       });
 
-      const stellarService = new StellarService();
-      const { address } = await kit.getAddress();
-      const senderAccount = await stellarService.loadAccount(address);
-
-      const transactionBuilder = new TransactionBuilder(senderAccount, {
-        fee: BASE_FEE,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
-
-      const trustlineOperation = Operation.changeTrust({
-        asset: new Asset(blubAssetCode, blubIssuer),
-        limit: "1000000000",
-      });
-
-      const transactionXDR = transactionBuilder
-        .addOperation(trustlineOperation)
-        .setTimeout(30000)
-        .build()
-        .toXDR();
-
-      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-        address,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
-
-      const HORIZON_SERVER = "https://horizon.stellar.org";
-
-      const transactionToSubmit = TransactionBuilder.fromXDR(
-        signedTxXdr,
-        HORIZON_SERVER
+      const { signedTxXdr: signed } = await kit.signTransaction(
+        transaction.toXDR(),
+        {
+          address: user?.userWalletAddress || "",
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
       );
 
-      const server = new StellarSdk.Horizon.Server(HORIZON_SERVER);
-      await server.submitTransaction(transactionToSubmit);
-      console.log("sent");
-    } catch (error: any) {
-      if (error.response) {
-        // Horizon error
-        console.error("Horizon Error:", error.response.data.extras);
-        return;
-        console.error("Operation failed:", error.response.data.extras);
-        switch (error.response.data.extras.result_codes.operations[0]) {
-          case "op_low_reserve":
-            console.error("Account has insufficient XLM to add trustline");
-            break;
-          case "op_invalid_limit":
-            console.error("Invalid trustline limit");
-            break;
-          default:
-            console.error("Unknown error:", error.response.data);
-        }
-      } else {
-        console.error("Transaction failed:", error);
-      }
+      signedTxXdr = signed;
     }
+
+    const HORIZON_SERVER = "https://horizon.stellar.org";
+    const transactionToSubmit = TransactionBuilder.fromXDR(
+      signedTxXdr,
+      HORIZON_SERVER
+    );
+
+    await stellarService?.server?.submitTransaction(transactionToSubmit);
   };
 
   useEffect(() => {
-    // handleAddTrustline();
-    if (user?.walletConnected) {
+    if (user?.walletConnected || user?.userWalletAddress) {
       getAddress();
       dispatch(setWalletConnected(false));
+      getWalletInfo();
+      // handleAddTrustline();
     }
-  }, [user?.walletConnected]);
+  }, [user?.walletConnected, user?.userWalletAddress]);
 
   return <Fragment>{children}</Fragment>;
 }
