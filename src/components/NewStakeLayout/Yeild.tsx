@@ -41,6 +41,8 @@ import {
 import { TailSpin } from "react-loader-spinner";
 import AddLiquidity from "./AddLiquidity";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
+import { walletTypes } from "../../enums";
+import { signTransaction } from "@lobstrco/signer-extension-api";
 
 function Yeild() {
   const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
@@ -96,23 +98,10 @@ function Yeild() {
     if (Number(blubUnstakeAmount) > poolAndClaimBalance)
       return toast.warn("Unstake amount exceeds the pool balance");
 
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
-    const { address } = await kit.getAddress();
     dispatch(unStakingAqua(true));
     dispatch(
       unStakeAqua({
-        senderPublicKey: address,
+        senderPublicKey: `${user?.userWalletAddress}`,
         amountToUnstake: Number(blubUnstakeAmount),
       })
     );
@@ -143,21 +132,19 @@ function Yeild() {
   };
 
   const handleRestake = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
+    // const selectedModule =
+    //   user?.walletName === LOBSTR_ID
+    //     ? new LobstrModule()
+    //     : new FreighterModule();
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+    // const kit: StellarWalletsKit = new StellarWalletsKit({
+    //   network: WalletNetwork.PUBLIC,
+    //   selectedWalletId:
+    //     user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+    //   modules: [selectedModule],
+    // });
 
-    const { address } = await kit.getAddress();
-
-    if (!address) {
+    if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
     }
@@ -172,14 +159,16 @@ function Yeild() {
       return toast.warn("Please input amount to stake.");
     }
 
-    if (Number(blubBalance) < blubStakeAmount) {
+    if (Number(blubBalance) < blubStakeAmount || !blubBalance) {
       dispatch(lockingAqua(false));
       return toast.warn(`Your balance is low`);
     }
 
     dispatch(restaking(true));
     const stellarService = new StellarService();
-    const senderAccount = await stellarService.loadAccount(address);
+    const senderAccount = await stellarService.loadAccount(
+      user?.userWalletAddress
+    );
 
     const existingTrustlines = senderAccount.balances.map(
       (balance: Balance) => balance.asset_code
@@ -204,24 +193,35 @@ function Yeild() {
         networkPassphrase: Networks.PUBLIC,
       });
 
-      transactionBuilder.addOperation(paymentOperation).setTimeout(180);
+      const transaction = transactionBuilder.setTimeout(3000).build();
 
-      const transaction = transactionBuilder.build();
-
-      const transactionXDR = transaction.toXDR();
-
-      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-        address,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
-
+      let signedTxXdr: string = "";
+      if (user?.walletName === walletTypes.LOBSTR) {
+        signedTxXdr = await signTransaction(transaction.toXDR());
+      } else {
+        const kit: StellarWalletsKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        transactionBuilder.addOperation(paymentOperation).setTimeout(180);
+        const transactionXDR = transaction.toXDR();
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transactionXDR,
+          {
+            address: `${user?.userWalletAddress}`,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      }
       dispatch(
         restakeBlub({
           assetCode: "WHLAQUA",
           assetIssuer: blubIssuerPublicKey,
           amount: `${blubStakeAmount}`,
           signedTxXdr,
-          senderPublicKey: address,
+          senderPublicKey: `${user?.userWalletAddress}`,
         })
       );
       dispatch(restaking(true));
@@ -293,7 +293,12 @@ function Yeild() {
                     )
                   }
                 />
-                <button className="bg-[#3C404D] p-2 rounded-[4px]">Max</button>
+                <button
+                  className="bg-[#3C404D] p-2 rounded-[4px]"
+                  onClick={handleSetRestakeMaxDeposit}
+                >
+                  Max
+                </button>
               </div>
 
               <div className="flex items-center text-normal mt-6 space-x-1">

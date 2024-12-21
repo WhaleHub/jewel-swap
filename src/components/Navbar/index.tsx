@@ -4,8 +4,10 @@ import { useAppDispatch } from "../../lib/hooks";
 import {
   fetchingWalletInfo,
   setConnectingWallet,
+  setUserbalances,
   setUserWalletAddress,
   setWalletConnected,
+  setWalletConnectName,
   walletSelectionAction,
 } from "../../lib/slices/userSlice";
 import { isAllowed, setAllowed } from "@stellar/freighter-api";
@@ -18,11 +20,11 @@ import {
   FREIGHTER_ID,
   FreighterModule,
   LOBSTR_ID,
-  LobstrModule,
   StellarWalletsKit,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
 import clsx from "clsx";
+import { getPublicKey } from "@lobstrco/signer-extension-api";
 
 const Navbar = () => {
   const dispatch = useAppDispatch();
@@ -32,35 +34,38 @@ const Navbar = () => {
   const [loading, setLoading] = useState<string | null>(null);
 
   const handleWalletConnections = useCallback(
-    async (walletType: string) => {
-      if (user?.connectingWallet) return;
-
-      const selectedWalletId =
-        walletType === walletTypes.FREIGHTER ? FREIGHTER_ID : LOBSTR_ID;
-
+    async (walletType: walletTypes) => {
       try {
-        if (selectedWalletId === walletTypes.FREIGHTER) {
+        if (user?.connectingWallet) return;
+        if (walletType === walletTypes.FREIGHTER) {
           const kit: StellarWalletsKit = new StellarWalletsKit({
             network: WalletNetwork.PUBLIC,
             selectedWalletId: FREIGHTER_ID,
             modules: [new FreighterModule()],
           });
 
+          const { address } = await kit.getAddress();
+
           await setAllowed();
           await isAllowed();
-
+          dispatch(setUserWalletAddress(address));
           dispatch(setConnectingWallet(false));
+          dispatch(setWalletConnectName(FREIGHTER_ID));
           dispatch(setWalletConnected(true));
           setLoading(null);
           dispatch(walletSelectionAction(false));
-        } else if (walletTypes.LOBSTR) {
-          //[x] will implement after upgrade
+        } else {
+          dispatch(setConnectingWallet(false));
+          dispatch(setWalletConnectName(LOBSTR_ID));
+          setLoading(null);
+          dispatch(walletSelectionAction(false));
+          dispatch(setWalletConnected(true));
+          const publicKey = await getPublicKey();
+          dispatch(setUserWalletAddress(publicKey));
         }
-      } catch (error) {
-        console.error(`Error connecting to ${walletType} wallet:`, error);
-        setLoading(null);
+      } catch (err) {
+        dispatch(setWalletConnectName(null));
       } finally {
-        setLoading(null);
       }
     },
     [user?.walletConnected, user?.connectingWallet, dispatch]
@@ -70,6 +75,8 @@ const Navbar = () => {
     setDropdownOpen(false);
     dispatch(setUserWalletAddress(null));
     dispatch(fetchingWalletInfo(false));
+    dispatch(setWalletConnectName(null));
+    dispatch(setUserbalances(null));
   }, [dispatch]);
 
   return (
@@ -94,11 +101,14 @@ const Navbar = () => {
           <div className="fixed w-52 text-right">
             <Menu>
               <MenuButton
+                onClick={() =>
+                  user?.userWalletAddress ? handleDisconnect() : null
+                }
                 className={clsx(
                   `inline-flex items-center gap-2 py-3 px-8 text-sm/6 font-semibold text-white shadow-inner shadow-white/10 focus:outline-none data-[hover]:bg-gray-700 data-[open]:bg-gray-700 data-[focus]:outline-1 data-[focus]:outline-white rounded-lg text-base`,
                   `${
-                    !user?.userWalletAddress
-                      ? " bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)]"
+                    !user?.userWalletAddress && !user?.walletConnected
+                      ? "bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)]"
                       : "b-[#3C404D]"
                   }`,
                   `${user?.userWalletAddress ? "border border-[#B1B3B8]" : ""}`
@@ -114,7 +124,11 @@ const Navbar = () => {
                 anchor="bottom end"
                 className={clsx(
                   "w-96 origin-top-right border bg-[#151A29] border-white/5  text-sm/6 text-white transition duration-100 ease-out [--anchor-gap:var(--spacing-1)] focus:outline-none data-[closed]:scale-95 data-[closed]:opacity-0 z-40 mt-3",
-                  `${user?.userWalletAddress ? "hidden" : "block"}`
+                  `${
+                    user?.userWalletAddress && user?.walletConnected
+                      ? "hidden"
+                      : "block"
+                  }`
                 )}
               >
                 <MenuItem>
@@ -138,13 +152,18 @@ const Navbar = () => {
                       Freighter wallet
                     </button>
                   </MenuItem>
-                  {/* <div className="my-2">
+                  <div className="my-2">
                     <MenuItem>
-                      <button className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold">
+                      <button
+                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
+                        onClick={() =>
+                          handleWalletConnections(walletTypes.LOBSTR)
+                        }
+                      >
                         LOBSTR wallet
                       </button>
                     </MenuItem>
-                  </div> */}
+                  </div>
                   <div className="text-xs  font-normal text-[#B1B3B8]">
                     By connecting a wallet, you agree to WhaleHub Terms of
                     Service and consent to its Privacy Policy.

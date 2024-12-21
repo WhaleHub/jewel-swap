@@ -316,9 +316,13 @@ function StakeAqua() {
             <div className="col-span-12 md:col-span-6">
               <div className="grid grid-cols-12 gap-[10px] md:gap-0 w-full">
                 <div className="col-span-12 md:col-span-6 flex flex-col px-[10.5px]">
-                  <div>{`Avail AQUA Balance: ${Number(userAquaBalance)?.toFixed(
-                    2
-                  )} AQUA`}</div>
+                  <div>
+                    {`Avail AQUA Balance: ${
+                      isNaN(Number(userAquaBalance))
+                        ? 0
+                        : Number(userAquaBalance).toFixed(2)
+                    } AQUA`}
+                  </div>
 
                   <InputBase
                     sx={{

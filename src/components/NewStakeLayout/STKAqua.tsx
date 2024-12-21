@@ -39,11 +39,13 @@ import { toast } from "react-toastify";
 import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
+import { walletTypes } from "../../enums";
+import { signTransaction } from "@lobstrco/signer-extension-api";
 
 function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
-  const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>();
+  const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
@@ -77,45 +79,54 @@ function STKAqua() {
   };
 
   const handleAddTrustline = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
     const stellarService = new StellarService();
-    const { address } = await kit.getAddress();
-    const senderAccount = await stellarService.loadAccount(address);
 
+    // Load sender's Stellar account
+    const senderAccount = await stellarService.loadAccount(
+      user?.userWalletAddress as string
+    );
+
+    // Build transaction
     const transactionBuilder = new TransactionBuilder(senderAccount, {
       fee: BASE_FEE,
       networkPassphrase: Networks.PUBLIC,
     });
 
-    const trustlineOperation = Operation.changeTrust({
-      asset: new Asset(blubAssetCode, blubIssuer),
-      limit: "1000000000",
-    });
+    // Add trustline operation
+    transactionBuilder.addOperation(
+      Operation.changeTrust({
+        asset: new Asset(blubAssetCode, blubIssuer),
+        limit: "1000000000",
+      })
+    );
 
-    const transactionXDR = transactionBuilder
-      .addOperation(trustlineOperation)
-      .setTimeout(3000)
-      .build()
-      .toXDR();
+    // Set timeout and build transaction
+    const transaction = transactionBuilder.setTimeout(3000).build();
 
-    const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-      address,
-      networkPassphrase: WalletNetwork.PUBLIC,
-    });
+    // Sign transaction based on wallet type
+    let signedTxXdr: string = "";
+
+    if (user?.walletName === walletTypes.LOBSTR) {
+      signedTxXdr = await signTransaction(transaction.toXDR());
+    } else {
+      const kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [new FreighterModule()],
+      });
+
+      const { signedTxXdr: signed } = await kit.signTransaction(
+        transaction.toXDR(),
+        {
+          address: user?.userWalletAddress || "",
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
+      );
+
+      signedTxXdr = signed;
+    }
 
     const HORIZON_SERVER = "https://horizon.stellar.org";
-
     const transactionToSubmit = TransactionBuilder.fromXDR(
       signedTxXdr,
       HORIZON_SERVER
@@ -125,26 +136,14 @@ function STKAqua() {
   };
 
   const handleLockAqua = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
-    dispatch(lockingAqua(true));
-
-    const stellarService = new StellarService();
-    const { address } = await kit.getAddress();
-
-    if (!address) {
+    if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
+    }
+
+    if (!userAquaBalance) {
+      dispatch(lockingAqua(false));
+      return toast.warn("Balance is low");
     }
 
     if (!user) {
@@ -164,7 +163,11 @@ function STKAqua() {
       );
     }
 
-    const senderAccount = await stellarService.loadAccount(address);
+    const stellarService = new StellarService();
+
+    const senderAccount = await stellarService.loadAccount(
+      user?.userWalletAddress
+    );
     const existingTrustlines = senderAccount.balances.map(
       (balance: Balance) => balance.asset_code
     );
@@ -197,13 +200,29 @@ function STKAqua() {
       transactionBuilder.addOperation(paymentOperation).setTimeout(180);
 
       const transaction = transactionBuilder.build();
-
       const transactionXDR = transaction.toXDR();
 
-      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-        address,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
+      let signedTxXdr: string = "";
+
+      if (user?.walletName === walletTypes.LOBSTR) {
+        signedTxXdr = await signTransaction(transactionXDR);
+      } else {
+        const kit: StellarWalletsKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transactionXDR,
+          {
+            address: user?.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+
+        signedTxXdr = signed;
+      }
 
       dispatch(
         mint({
@@ -211,7 +230,7 @@ function STKAqua() {
           assetIssuer: aquaAssetIssuer,
           amount: stakeAmount,
           signedTxXdr,
-          senderPublicKey: address,
+          senderPublicKey: user?.userWalletAddress,
         })
       );
 
@@ -294,6 +313,7 @@ function STKAqua() {
                     e.target.value ? Number(e.target.value) : null
                   )
                 }
+                value={`${aquaDepositAmount ?? ""}`}
               />
               <button
                 className="bg-[#3C404D] p-2 rounded-[4px]"
@@ -304,8 +324,13 @@ function STKAqua() {
             </div>
 
             <div className="flex items-center text-normal mt-6 space-x-1">
-              <div className="font-normal text-[#B1B3B8]">You will stake:</div>
-              <div className="font-medium">0 BLUB</div>
+              <div className="font-normal text-[#B1B3B8]">Your balance:</div>
+              <div className="font-medium">
+                {isNaN(parseFloat(`${userAquaBalance}`))
+                  ? "0.00"
+                  : parseFloat(`${userAquaBalance}`).toFixed(2)}{" "}
+                AQUA
+              </div>
             </div>
 
             <Button
@@ -336,7 +361,7 @@ function STKAqua() {
             </div>
 
             <div className="flex items-center bg-[#0E111B] px-5 py-2 mt-2 rounded-[8px] justify-between">
-              <div className="text-sm font-normal text-white">Daily</div>
+              {/* <div className="text-sm font-normal text-white">Daily</div> */}
               <div className="p-2 text-2xl font-normal">0 BLUB</div>
             </div>
 

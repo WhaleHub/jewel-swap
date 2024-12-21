@@ -7,15 +7,7 @@ import {
   TransactionData,
   UserRecords,
 } from "../../interfaces";
-import {
-  allowAllModules,
-  FREIGHTER_ID,
-  FreighterModule,
-  LOBSTR_ID,
-  LobstrModule,
-  StellarWalletsKit,
-  WalletNetwork,
-} from "@creit.tech/stellar-wallets-kit";
+import { FREIGHTER_ID, LOBSTR_ID } from "@creit.tech/stellar-wallets-kit";
 
 export interface User {
   userRecords: UserRecords;
@@ -343,6 +335,13 @@ export const userSlice = createSlice({
       ...state,
       walletConnected: payload,
     }),
+    setUserbalances: (state, { payload }) => ({
+      ...state,
+      userRecords: {
+        ...state.userRecords,
+        balances: payload,
+      },
+    }),
     logOut: (state) => ({
       ...state,
       userRecords: { balances: null, account: null },
@@ -434,7 +433,8 @@ export const userSlice = createSlice({
     builder.addCase(
       getLockedAquaRewardsForAccount.fulfilled,
       (state, { payload }) => {
-        state.userLockedRewardsAmount = payload.lockedAquaRewardEstimation;
+        console.log(payload);
+        // state.userLockedRewardsAmount = payload.lockedAquaRewardEstimation;
       }
     );
 
@@ -455,4 +455,5 @@ export const {
   setUserWalletAddress,
   walletSelectionAction,
   setWalletConnected,
+  setUserbalances,
 } = userSlice.actions;
