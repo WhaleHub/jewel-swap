@@ -8,8 +8,8 @@ const Stake = () => {
   return (
     <div className="w-full mt-[56px] md:mt-[64px] px-[10.5px]">
       <div className=" w-full">{tokenId == "aqua" && <NewStakelayout />}</div>
-      <div className="justify-between max-w-[1280px] mx-auto md:grid grid-cols-2 md:space-x-6 my-20 xs:space-y-[16px] md:space-y-0">
-        <div className="px-6 py-6 bg-[#2B3553] rounded-[15px]">
+      <div className="justify-between max-w-[1280px] mx-auto md:grid grid-cols-1 md:space-x-6 my-20 xs:space-y-[16px] md:space-y-0">
+        <div className="px-6 py-6 bg-[#2B3553] rounded-[15px] hidden">
           <div className="flex h-20 w-20 rounded-full bg-[#151A29] items-center justify-center">
             <img
               className="inline-block size-10 rounded-full"
@@ -29,7 +29,7 @@ const Stake = () => {
           </Button>
         </div>
 
-        <div className="px-6 py-6 bg-[#173A59] rounded-[15px]">
+        <div className="px-6 py-6 bg-[#173A59] rounded-[15px] ">
           <div className="flex h-20 w-20 rounded-full bg-[#151A29] items-center justify-center">
             <img
               className="inline-block size-10 rounded-full"
@@ -43,9 +43,10 @@ const Stake = () => {
           </div>
 
           <Button
-            className={
-              "mt-5 text-base font-semibold bg-[white] text-[#151A29] px-5 py-3 rounded-2xl"
-            }
+            as="a"
+            href="https://twitter.com/whalehubdefi"
+            target="_blank"
+            className="mt-5 text-base font-semibold bg-[white] text-[#151A29] px-5 py-3 rounded-2xl"
           >
             Follow on Twitter
           </Button>
