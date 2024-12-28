@@ -302,7 +302,17 @@ function STKAqua() {
               <div className="font-medium text-white xs:text-2xl">
                 Convert & Stake
               </div>
-              <InformationCircleIcon className="size-6" />
+              <div className="relative group">
+                <InformationCircleIcon className="h-[15px] w-[15px] text-white cursor-pointer" />
+
+                {/* Tooltip */}
+                <div className="absolute bottom-full mb-2 hidden w-48 rounded bg-black text-white text-xs p-2 opacity-0 group-hover:opacity-100 group-hover:block">
+                  Mint BLUB token by locking AQUA token and receive the share of
+                  AQUA governance and yield farming rewards. BLUB is
+                  automatically staked with an option to unstake and add
+                  liquidity in the AQUA-BLUB pool.
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center bg-[#0E111B]  py-2 space-x-2 mt-2 rounded-[8px]">
@@ -362,7 +372,15 @@ function STKAqua() {
 
             <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
               <div>Accumulated rewards</div>
-              <InformationCircleIcon className="size-6" />
+              <div className="relative group">
+                <InformationCircleIcon className="h-[15px] w-[15px] text-white cursor-pointer" />
+
+                {/* Tooltip */}
+                <div className="absolute bottom-full mb-2 hidden w-48 rounded bg-black text-white text-xs p-2 opacity-0 group-hover:opacity-100 group-hover:block">
+                  A total accumulated BLUB rewards, distributed automatically
+                  for all stakers of WhaleHub
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center bg-[#0E111B] px-5 py-2 mt-2 rounded-[8px] justify-between">
