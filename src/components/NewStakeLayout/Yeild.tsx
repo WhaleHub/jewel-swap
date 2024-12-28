@@ -51,7 +51,7 @@ function Yeild() {
 
   const user = useSelector((state: RootState) => state.user);
 
-  const whlAquaRecord = user?.userRecords?.balances?.find(
+  const blubRecord = user?.userRecords?.balances?.find(
     (balance) => balance.asset_code === "BLUB"
   );
 
@@ -60,8 +60,7 @@ function Yeild() {
   //   (balance) => balance.asset_code === "AQUA"
   // );
 
-  // const whlAquaBalance = whlAquaRecord?.balance;
-  const blubBalance = whlAquaRecord?.balance;
+  const blubBalance = blubRecord?.balance;
 
   // Calculate accountClaimableRecords
   const accountClaimableRecords =
@@ -141,18 +140,6 @@ function Yeild() {
   };
 
   const handleRestake = async () => {
-    // const selectedModule =
-    //   user?.walletName === LOBSTR_ID
-    //     ? new LobstrModule()
-    //     : new FreighterModule();
-
-    // const kit: StellarWalletsKit = new StellarWalletsKit({
-    //   network: WalletNetwork.PUBLIC,
-    //   selectedWalletId:
-    //     user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-    //   modules: [selectedModule],
-    // });
-
     if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
@@ -226,7 +213,7 @@ function Yeild() {
       }
       dispatch(
         restakeBlub({
-          assetCode: "WHLAQUA",
+          assetCode: "BLUB",
           assetIssuer: blubIssuerPublicKey,
           amount: `${blubStakeAmount}`,
           signedTxXdr,
