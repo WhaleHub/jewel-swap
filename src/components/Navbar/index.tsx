@@ -16,6 +16,7 @@ import { RootState } from "../../lib/store";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { XMarkIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
+import { getPublicKey } from "@lobstrco/signer-extension-api";
 import {
   FREIGHTER_ID,
   FreighterModule,
@@ -24,14 +25,10 @@ import {
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
 import clsx from "clsx";
-import { getPublicKey } from "@lobstrco/signer-extension-api";
 
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const [loading, setLoading] = useState<string | null>(null);
 
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
@@ -52,12 +49,10 @@ const Navbar = () => {
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(FREIGHTER_ID));
           dispatch(setWalletConnected(true));
-          setLoading(null);
           dispatch(walletSelectionAction(false));
         } else {
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(LOBSTR_ID));
-          setLoading(null);
           dispatch(walletSelectionAction(false));
           dispatch(setWalletConnected(true));
           const publicKey = await getPublicKey();
@@ -72,12 +67,26 @@ const Navbar = () => {
   );
 
   const handleDisconnect = useCallback(() => {
-    setDropdownOpen(false);
     dispatch(setUserWalletAddress(null));
     dispatch(fetchingWalletInfo(false));
     dispatch(setWalletConnectName(null));
     dispatch(setUserbalances(null));
   }, [dispatch]);
+
+  const onScrollToRwards = () => {
+    // @ts-expect-error: ignore
+    document?.getElementById("reward_section").scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+  const onScrollToYeild = () => {
+    // @ts-expect-error: ignore
+    document.getElementById("yeild_section").scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
 
   return (
     <nav className="fixed top-0 right-0 z-30 w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[32px] px-[15px] md:px-[32px] transition-all duration-300 font-inter">
@@ -93,8 +102,12 @@ const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-8 xs:hidden lg:block space-x-4">
-          <button className="font-medium text-base">Boost rewards</button>
-          <button className="font-medium text-base">Generate Yeild</button>
+          <button className="font-medium text-base" onClick={onScrollToRwards}>
+            Boost rewards
+          </button>
+          <button className="font-medium text-base" onClick={onScrollToYeild}>
+            Generate Yeild
+          </button>
         </div>
 
         <div className="flex justify-end items-center gap-[5.6px]">

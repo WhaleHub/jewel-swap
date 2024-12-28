@@ -75,7 +75,12 @@ function STKAqua() {
   };
 
   const handleSetMaxDeposit = () => {
-    setAquaDepositAmount(Number(userAquaBalance));
+    const depositAmount =
+      typeof userAquaBalance === "number" && !isNaN(userAquaBalance)
+        ? Number(userAquaBalance)
+        : 0;
+
+    setAquaDepositAmount(depositAmount);
   };
 
   const handleAddTrustline = async () => {
@@ -261,7 +266,7 @@ function STKAqua() {
   }, [user?.lockedAqua, user?.lockedAqua]);
 
   return (
-    <div>
+    <div id="reward_section">
       <div className="mx-auto">
         <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
           Elevate Rewards to Rise Above the Curve
