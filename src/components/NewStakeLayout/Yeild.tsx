@@ -45,24 +45,21 @@ import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 
 function Yeild() {
-  const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
-    useState<boolean>(false);
-  const [blubStakeAmount, setBlubStakeAmount] = useState<number | null>(0);
   const dispatch = useAppDispatch();
+  const [blubStakeAmount, setBlubStakeAmount] = useState<number | null>(0);
   const [blubUnstakeAmount, setBlubUnstakeAmount] = useState<number | null>(0);
 
   const user = useSelector((state: RootState) => state.user);
 
   const whlAquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "WHLAQUA"
+    (balance) => balance.asset_code === "BLUB"
   );
 
-  //get user aqua record
-  const aquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "AQUA"
-  );
+  // //get user aqua record
+  // const aquaRecord = user?.userRecords?.balances?.find(
+  //   (balance) => balance.asset_code === "AQUA"
+  // );
 
-  const userAquaBalance = aquaRecord?.balance;
   // const whlAquaBalance = whlAquaRecord?.balance;
   const blubBalance = whlAquaRecord?.balance;
 
@@ -88,7 +85,23 @@ function Yeild() {
     Number(userPoolBalances) + Number(accountClaimableRecords);
 
   const handleSetMaxDepositForBlub = () => {
-    setBlubUnstakeAmount(Number(accountClaimableRecords));
+    const depositAmount =
+      typeof accountClaimableRecords === "number" &&
+      !isNaN(accountClaimableRecords)
+        ? Number(accountClaimableRecords)
+        : 0;
+
+    setBlubStakeAmount(depositAmount);
+  };
+
+  const handleSetMaxDepositForUnstakeBlub = () => {
+    const depositAmount =
+      typeof accountClaimableRecords === "number" &&
+      !isNaN(accountClaimableRecords)
+        ? Number(accountClaimableRecords)
+        : 0;
+
+    setBlubUnstakeAmount(depositAmount);
   };
 
   const handleUnstakeAqua = async () => {
@@ -105,10 +118,6 @@ function Yeild() {
         amountToUnstake: Number(blubUnstakeAmount),
       })
     );
-  };
-
-  const handleSetRestakeMaxDeposit = () => {
-    setBlubStakeAmount(Number(blubBalance));
   };
 
   const updateWalletRecords = async () => {
@@ -248,7 +257,7 @@ function Yeild() {
   }, [user?.restaked, user?.unStakedAqua]);
 
   return (
-    <div>
+    <div id="yeild_section">
       <div className="max-w-[912px] mx-auto">
         <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
           Make Smart Yield Decisions to Maximize Returns
@@ -279,14 +288,13 @@ function Yeild() {
 
               <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
                 <Input
-                  placeholder="0 AQUA"
+                  placeholder="0 BLUB"
                   className={clsx(
                     "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",
                     "focus:outline-none data-[focus]:outline-2 data-[focus]:-outline-offset-2 data-[focus]:outline-[#3C404D]",
                     "w-full p-3 bg-none"
                   )}
-                  value={blubStakeAmount != null ? blubStakeAmount : ""}
-                  onClick={handleSetMaxDepositForBlub}
+                  value={blubStakeAmount !== null ? blubStakeAmount : ""}
                   onChange={(e) =>
                     setBlubStakeAmount(
                       e.target.value ? Number(e.target.value) : null
@@ -295,7 +303,7 @@ function Yeild() {
                 />
                 <button
                   className="bg-[#3C404D] p-2 rounded-[4px]"
-                  onClick={handleSetRestakeMaxDeposit}
+                  onClick={handleSetMaxDepositForBlub}
                 >
                   Max
                 </button>
@@ -354,12 +362,13 @@ function Yeild() {
                       e.target.value ? Number(e.target.value) : null
                     )
                   }
+                  value={blubUnstakeAmount !== null ? blubUnstakeAmount : ""}
                 />
                 <button
                   className="bg-[#3C404D] p-2 rounded-[4px]"
-                  onClick={handleSetMaxDepositForBlub}
+                  onClick={handleSetMaxDepositForUnstakeBlub}
                 >
-                  Max
+                  Max{" "}
                 </button>
               </div>
 
