@@ -106,7 +106,7 @@ const Navbar = () => {
             Boost rewards
           </button>
           <button className="font-medium text-base" onClick={onScrollToYeild}>
-            Generate Yeild
+            Yeild
           </button>
         </div>
 
