@@ -43,11 +43,15 @@ import AddLiquidity from "./AddLiquidity";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
+import DialogC from "./Dialog";
 
 function Yeild() {
   const dispatch = useAppDispatch();
   const [blubStakeAmount, setBlubStakeAmount] = useState<number | null>(0);
   const [blubUnstakeAmount, setBlubUnstakeAmount] = useState<number | null>(0);
+  const [dialogMsg, setDialogMsg] = useState<string>("");
+  const [openDialog, setOptDialog] = useState<boolean>(false);
+  const [dialogTitle, setDialogTitle] = useState<string>("");
 
   const user = useSelector((state: RootState) => state.user);
 
@@ -227,6 +231,35 @@ function Yeild() {
     }
   };
 
+  const onDialogOpen = (msg: string, title: string) => {
+    setOptDialog(true);
+    setDialogMsg(msg);
+    setDialogTitle(title);
+  };
+
+  const closeModal = () => {
+    setOptDialog(false);
+  };
+
+  // Close modal on ESC key press or click outside
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOptDialog(false);
+    }
+  };
+
+  useEffect(() => {
+    if (openDialog) {
+      window.addEventListener("keydown", handleKeyDown);
+    } else {
+      window.removeEventListener("keydown", handleKeyDown);
+    }
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openDialog]);
+
   useEffect(() => {
     if (user?.restaked) {
       updateWalletRecords();
@@ -270,7 +303,17 @@ function Yeild() {
               </div>
               <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
                 <div>Manage your earnings</div>
-                <InformationCircleIcon className="size-6" />
+                <InformationCircleIcon
+                  className="h-[15px] w-[15px] text-white cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      `Unstake: Free up your BLUB tokens to either restake them, use them in a liquidity pool to generate yield or withdraw it to your connected wallet where you later can exchange it to other tokens or stablecoins.
+                        \n
+                      Stake Back: Reinvest your BLUB to continue earning rewards.`,
+                      "Manage your earnings"
+                    )
+                  }
+                />
               </div>
 
               <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
@@ -393,6 +436,13 @@ function Yeild() {
         </div>
         <AddLiquidity />
       </div>
+
+      <DialogC
+        msg={dialogMsg}
+        dialogTitle={dialogTitle}
+        openDialog={openDialog}
+        closeModal={closeModal}
+      />
     </div>
   );
 }
