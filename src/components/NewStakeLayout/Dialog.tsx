@@ -13,7 +13,7 @@ function DialogC({ msg, openDialog, dialogTitle, closeModal }: DialogCProps) {
 
   return openDialog ? (
     <div
-      className="fixed inset-0 z-10 flex items-center justify-center backdrop-blur-sm"
+      className="fixed inset-0 z-10 flex items-end lg:items-center justify-center backdrop-blur-sm"
       aria-labelledby="modal-title"
       role="dialog"
       aria-modal="true"
@@ -26,7 +26,7 @@ function DialogC({ msg, openDialog, dialogTitle, closeModal }: DialogCProps) {
       ></div>
 
       {/* Modal Content */}
-      <div className="relative z-20 w-full max-w-md bg-[#3C404D] rounded-2xl shadow-xl sm:w-auto animate-slideIn">
+      <div className="relative z-20 w-full lg:max-w-md bg-[#3C404D] lg:rounded-2xl shadow-xl sm:w-auto animate-slideIn">
         <div className="border-b-[1px] border-b-[#fff]/75 py-[16px] text-white font-inter font-semiBold text-sm md:text-base px-6">
           {dialogTitle}
         </div>
