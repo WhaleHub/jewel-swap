@@ -44,6 +44,7 @@ import { toast } from "react-toastify";
 import { StellarService } from "../../services/stellar.service";
 import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
+import DialogC from "./Dialog";
 
 function AddLiquidity() {
   const poolRecords: Record<
@@ -67,6 +68,10 @@ function AddLiquidity() {
   const [lpAmount1, setLPDepositAmount1] = useState<number | null>();
   const [lpAmount2, setLPDepositAmount2] = useState<number | null>();
   const [activePool, setActivePool] = useState("");
+
+  const [dialogMsg, setDialogMsg] = useState<string>("");
+  const [dialogTitle, setDialogTitle] = useState<string>("");
+  const [openDialog, setOptDialog] = useState<boolean>(false);
 
   const poolImage1 = poolRecords[activePool]?.img1;
   const poolImage2 = poolRecords[activePool]?.img2;
@@ -213,6 +218,35 @@ function AddLiquidity() {
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };
 
+  const onDialogOpen = (msg: string, title: string) => {
+    setOptDialog(true);
+    setDialogMsg(msg);
+    setDialogTitle(title);
+  };
+
+  const closeModal = () => {
+    setOptDialog(false);
+  };
+
+  // Close modal on ESC key press or click outside
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOptDialog(false);
+    }
+  };
+
+  useEffect(() => {
+    if (openDialog) {
+      window.addEventListener("keydown", handleKeyDown);
+    } else {
+      window.removeEventListener("keydown", handleKeyDown);
+    }
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openDialog]);
+
   useEffect(() => {
     if (user?.providedLp) {
       updateWalletRecords();
@@ -241,7 +275,15 @@ function AddLiquidity() {
         </div>
         <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
           <div>Boost liquidity pool for yield</div>
-          <InformationCircleIcon className="size-6" />
+          <InformationCircleIcon
+            className="h-[15px] w-[15px] text-white cursor-pointer"
+            onClick={() =>
+              onDialogOpen(
+                `Maximize your earnings by locking an equal amount of BLUB and AQUA tokens in a liquidity pool. Both tokens are required to enhance your yield potential. This liquidity pool can also be found in AQUA AMM. Recommended for experienced users to utilize full cycle of investment opportunity.`,
+                "Boost liquidity pool for yield"
+              )
+            }
+          />
         </div>
 
         <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
@@ -310,6 +352,13 @@ function AddLiquidity() {
           )}
         </Button>
       </div>
+
+      <DialogC
+        msg={dialogMsg}
+        openDialog={openDialog}
+        dialogTitle={dialogTitle}
+        closeModal={closeModal}
+      />
     </div>
   );
 }
