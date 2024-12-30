@@ -41,11 +41,15 @@ import { MIN_DEPOSIT_AMOUNT } from "../../config";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
+import DialogC from "./Dialog";
 
 function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
+  const [dialogMsg, setDialogMsg] = useState<string>("");
+  const [dialogTitle, setDialogTitle] = useState<string>("");
+  const [openDialog, setOptDialog] = useState<boolean>(false);
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
@@ -247,6 +251,35 @@ function STKAqua() {
     }
   };
 
+  const onDialogOpen = (msg: string, title: string) => {
+    setOptDialog(true);
+    setDialogMsg(msg);
+    setDialogTitle(title);
+  };
+
+  const closeModal = () => {
+    setOptDialog(false);
+  };
+
+  // Close modal on ESC key press or click outside
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setOptDialog(false);
+    }
+  };
+
+  useEffect(() => {
+    if (openDialog) {
+      window.addEventListener("keydown", handleKeyDown);
+    } else {
+      window.removeEventListener("keydown", handleKeyDown);
+    }
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [openDialog]);
+
   useEffect(() => {
     if (user?.lockedAqua) {
       updateWalletRecords();
@@ -303,15 +336,22 @@ function STKAqua() {
                 Convert & Stake
               </div>
               <div className="relative group">
-                <InformationCircleIcon className="h-[15px] w-[15px] text-white cursor-pointer" />
+                <InformationCircleIcon
+                  className="h-[15px] w-[15px] text-white cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      "After you connected your wallet and have AQUA in it select the amount of AQUA tokens you wish to convert to BLUB. Once converted, your BLUB will be automatically staked to start earning boosted rewards.",
+                      "Convert & Stake"
+                    )
+                  }
+                />
 
-                {/* Tooltip */}
-                <div className="absolute bottom-full mb-2 hidden w-48 rounded bg-black text-white text-xs p-2 opacity-0 group-hover:opacity-100 group-hover:block">
+                {/* <div className="absolute bottom-full mb-2 hidden w-48 rounded bg-black text-white text-xs p-2 opacity-0 group-hover:opacity-100 group-hover:block">
                   Mint BLUB token by locking AQUA token and receive the share of
                   AQUA governance and yield farming rewards. BLUB is
                   automatically staked with an option to unstake and add
                   liquidity in the AQUA-BLUB pool.
-                </div>
+                </div> */}
               </div>
             </div>
 
@@ -373,13 +413,15 @@ function STKAqua() {
             <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
               <div>Accumulated rewards</div>
               <div className="relative group">
-                <InformationCircleIcon className="h-[15px] w-[15px] text-white cursor-pointer" />
-
-                {/* Tooltip */}
-                <div className="absolute bottom-full mb-2 hidden w-48 rounded bg-black text-white text-xs p-2 opacity-0 group-hover:opacity-100 group-hover:block">
-                  A total accumulated BLUB rewards, distributed automatically
-                  for all stakers of WhaleHub
-                </div>
+                <InformationCircleIcon
+                  className="h-[15px] w-[15px] text-white cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      "View your daily reward earnings in BLUB and track the total BLUB accumulated over time. Keep an eye on your growing rewards here.",
+                      "Accumulated rewards"
+                    )
+                  }
+                />
               </div>
             </div>
 
@@ -397,6 +439,13 @@ function STKAqua() {
           </div>
         </div>
       </div>
+
+      <DialogC
+        msg={dialogMsg}
+        openDialog={openDialog}
+        dialogTitle={dialogTitle}
+        closeModal={closeModal}
+      />
     </div>
   );
 }

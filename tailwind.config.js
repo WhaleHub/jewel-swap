@@ -3,6 +3,20 @@ module.exports = {
   content: ["./src/**/*.{js,ts,jsx,tsx,css,scss}"],
   theme: {
     extend: {
+      keyframes: {
+        fadeIn: {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        slideIn: {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+      },
+      animation: {
+        fadeIn: "fadeIn 0.3s ease-out",
+        slideIn: "slideIn 0.3s ease-out",
+      },
       fontFamily: {
         inter: ["Inter", "sans-serif"],
       },
