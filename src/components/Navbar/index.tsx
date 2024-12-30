@@ -80,9 +80,9 @@ const Navbar = () => {
       block: "start",
     });
   };
-  const onScrollToYeild = () => {
+  const onScrollToYield = () => {
     // @ts-expect-error: ignore
-    document.getElementById("yeild_section").scrollIntoView({
+    document.getElementById("Yield_section").scrollIntoView({
       behavior: "smooth",
       block: "start",
     });
@@ -105,8 +105,8 @@ const Navbar = () => {
           <button className="font-medium text-base" onClick={onScrollToRwards}>
             Boost rewards
           </button>
-          <button className="font-medium text-base" onClick={onScrollToYeild}>
-            Yeild
+          <button className="font-medium text-base" onClick={onScrollToYield}>
+            Yield
           </button>
         </div>
 

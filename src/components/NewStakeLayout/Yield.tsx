@@ -45,7 +45,7 @@ import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
 
-function Yeild() {
+function Yield() {
   const dispatch = useAppDispatch();
   const [blubStakeAmount, setBlubStakeAmount] = useState<number | null>(0);
   const [blubUnstakeAmount, setBlubUnstakeAmount] = useState<number | null>(0);
@@ -277,7 +277,7 @@ function Yeild() {
   }, [user?.restaked, user?.unStakedAqua]);
 
   return (
-    <div id="yeild_section">
+    <div id="Yield_section">
       <div className="max-w-[912px] mx-auto">
         <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
           Make Smart Yield Decisions to Maximize Returns
@@ -447,4 +447,4 @@ function Yeild() {
   );
 }
 
-export default Yeild;
+export default Yield;

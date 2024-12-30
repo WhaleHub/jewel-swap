@@ -334,7 +334,7 @@ function AddLiquidity() {
           disabled={user?.providingLp || !user?.userWalletAddress}
         >
           {!user?.providingLp ? (
-            <span>Yeild</span>
+            <span>Yield</span>
           ) : (
             <div className="flex justify-center items-center gap-[10px]">
               <span className="text-white">Processing...</span>
