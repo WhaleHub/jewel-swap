@@ -38,7 +38,7 @@ const Stake = () => {
             />
           </div>
 
-          <div className="div text-2xl font-medium">
+          <div className="div text-2xl font-medium xs:my-3 sm:my-0">
             Follow us on Twitter(X)
           </div>
 

@@ -87,5 +87,8 @@
     "tailwindcss": "^3.4.0",
     "webpack-dev-server": "^5.1.0"
   },
-  "proxy": "https://localhost:3000"
+  "proxy": "https://localhost:3000",
+  "resolutions": {
+    "@types/prop-types": "15.7.10"
+  }
 }
