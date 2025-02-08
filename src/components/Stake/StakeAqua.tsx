@@ -181,7 +181,7 @@ function StakeAqua() {
       (balance: Balance) => balance.asset_code
     );
 
-    // if (!existingTrustlines.includes(blubAssetCode)) {
+    if (!existingTrustlines.includes(blubAssetCode)) {
       try {
         await handleAddTrustline();
         toast.success("Trustline added successfully.");
@@ -189,7 +189,7 @@ function StakeAqua() {
         dispatch(lockingAqua(false));
         return toast.error("Failed to add trustline.");
       }
-  //  }
+   }
 
     try {
       const customAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
