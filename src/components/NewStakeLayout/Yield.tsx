@@ -64,6 +64,10 @@ function Yield() {
   //   (balance) => balance.asset_code === "AQUA"
   // );
 
+  const claimableBalance = user?.userRecords?.account?.claimableRecords
+    ?.filter((item: any) => item.claimed === "UNCLAIMED")
+    .reduce((total: any, item: any) => total + parseFloat(item.amount), 0);
+
   const blubBalance = blubRecord?.balance;
 
   // Calculate accountClaimableRecords
@@ -345,9 +349,9 @@ function Yield() {
                 </div>
                 <div className="font-medium">
                   {`${
-                    isNaN(Number(blubBalance))
+                    isNaN(Number(claimableBalance))
                       ? 0
-                      : Number(blubBalance).toFixed(2)
+                      : Number(claimableBalance).toFixed(2)
                   } BLUB`}
                 </div>
               </div>
@@ -404,9 +408,9 @@ function Yield() {
 
               <div className="flex items-center text-normal mt-6 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">
-                  Unstaked Balance::
+                  Unstake Balance:
                 </div>
-                <div className="font-medium">0 BLUB</div>
+                <div className="font-medium">{claimableBalance} BLUB</div>
               </div>
 
               <Button
