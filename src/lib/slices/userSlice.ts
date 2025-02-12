@@ -433,8 +433,8 @@ export const userSlice = createSlice({
     builder.addCase(
       getLockedAquaRewardsForAccount.fulfilled,
       (state, { payload }) => {
-        console.log(payload);
-        // state.userLockedRewardsAmount = payload.lockedAquaRewardEstimation;
+        // console.log(payload);
+        state.userLockedRewardsAmount = payload.lockedAquaRewardEstimation;
       }
     );
 

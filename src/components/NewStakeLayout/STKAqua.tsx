@@ -79,10 +79,16 @@ function STKAqua() {
   };
 
   const handleSetMaxDeposit = () => {
-    const depositAmount =
-      typeof userAquaBalance === "number" && !isNaN(userAquaBalance)
-        ? Number(userAquaBalance)
-        : 0;
+    let depositAmount = 0;
+
+    if (typeof userAquaBalance === "number" && !isNaN(userAquaBalance)) {
+      depositAmount = userAquaBalance;
+    } else if (typeof userAquaBalance === "string") {
+      const convertedAmount = parseFloat(userAquaBalance);
+      if (!isNaN(convertedAmount)) {
+        depositAmount = convertedAmount;
+      }
+    }
 
     setAquaDepositAmount(depositAmount);
   };
@@ -427,7 +433,7 @@ function STKAqua() {
 
             <div className="flex items-center bg-[#0E111B] px-5 py-2 mt-2 rounded-[8px] justify-between">
               {/* <div className="text-sm font-normal text-white">Daily</div> */}
-              <div className="p-2 text-2xl font-normal">0 BLUB</div>
+              <div className="p-2 text-2xl font-normal"></div>
             </div>
 
             <div className="flex items-center bg-[#0E111B] px-5 py-2 mt-5 rounded-[8px] justify-between">

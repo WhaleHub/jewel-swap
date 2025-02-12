@@ -189,7 +189,7 @@ function StakeAqua() {
         dispatch(lockingAqua(false));
         return toast.error("Failed to add trustline.");
       }
-   }
+    }
 
     try {
       const customAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
