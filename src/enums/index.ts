@@ -6,4 +6,5 @@ export enum DepositType {
 export enum walletTypes {
   LOBSTR = "lobstr",
   FREIGHTER = "freighter",
+  WALLETCONNECT = "walletconnect",
 }

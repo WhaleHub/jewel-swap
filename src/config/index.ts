@@ -1,4 +1,12 @@
 import { PublicKey } from "@solana/web3.js";
+import {
+  FreighterModule,
+  StellarWalletsKit,
+  WalletNetwork,
+  XBULL_ID,
+  allowAllModules,
+  xBullModule
+} from '@creit.tech/stellar-wallets-kit';
 
 export const isMainnet = true;
 export const MIN_DEPOSIT_AMOUNT = 0.01;

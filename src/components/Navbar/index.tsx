@@ -20,9 +20,12 @@ import { getPublicKey } from "@lobstrco/signer-extension-api";
 import {
   FREIGHTER_ID,
   FreighterModule,
+  ISupportedWallet,
   LOBSTR_ID,
   StellarWalletsKit,
   WalletNetwork,
+  XBULL_ID,
+  allowAllModules,
 } from "@creit.tech/stellar-wallets-kit";
 import clsx from "clsx";
 
@@ -30,6 +33,12 @@ const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
 
+  const kit: StellarWalletsKit = new StellarWalletsKit({
+    network: WalletNetwork.PUBLIC,
+    selectedWalletId: XBULL_ID,
+    modules: allowAllModules(),
+  });
+  
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
       try {
@@ -50,7 +59,28 @@ const Navbar = () => {
           dispatch(setWalletConnectName(FREIGHTER_ID));
           dispatch(setWalletConnected(true));
           dispatch(walletSelectionAction(false));
-        } else {
+        } 
+
+        else if (walletType === walletTypes.WALLETCONNECT) {
+          const kit: StellarWalletsKit = new StellarWalletsKit({
+            network: WalletNetwork.PUBLIC,
+            selectedWalletId: "WALLET_CONNECT_ID",
+            modules: allowAllModules(),
+          });
+
+          const { address } = await kit.getAddress();
+
+          await setAllowed();
+          await isAllowed();
+          dispatch(setUserWalletAddress(address));
+          dispatch(setConnectingWallet(false));
+          dispatch(setWalletConnectName("Wallet Connect"));
+          dispatch(setWalletConnected(true));
+          dispatch(walletSelectionAction(false));
+        } 
+        
+        
+        else {
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(LOBSTR_ID));
           dispatch(walletSelectionAction(false));
@@ -114,9 +144,17 @@ const Navbar = () => {
           <div className="fixed w-52 text-right">
             <Menu>
               <MenuButton
-                onClick={() =>
-                  user?.userWalletAddress ? handleDisconnect() : null
-                }
+                // onClick={async () =>
+                //  {
+                //   await kit.openModal({
+                //     onWalletSelected: async (option: ISupportedWallet) => {
+                //       kit.setWallet(option.id);
+                //       const { address } = await kit.getAddress();
+                //       // Do something else
+                //     }
+                //   });
+                //  }
+                // }
                 className={clsx(
                   `inline-flex items-center gap-2 py-3 px-8 text-sm/6 font-semibold text-white shadow-inner shadow-white/10 focus:outline-none data-[hover]:bg-gray-700 data-[open]:bg-gray-700 data-[focus]:outline-1 data-[focus]:outline-white rounded-lg text-base`,
                   `${
@@ -146,6 +184,7 @@ const Navbar = () => {
               >
                 <MenuItem>
                   <button
+                
                     className={clsx(
                       `group flex w-full items-center gap-2 py-4 px-4 data-[focus]:bg-white/10 justify-between border-t border-l border-r border-solid border-[#B1B3B8] text-base text-white font-semibold`
                     )}
@@ -174,6 +213,17 @@ const Navbar = () => {
                         }
                       >
                         LOBSTR wallet
+                      </button>
+                    </MenuItem>
+
+                    <MenuItem>
+                      <button
+                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
+                        onClick={() =>
+                          handleWalletConnections(walletTypes.WALLETCONNECT)
+                        }
+                      >
+                        Wallet connect
                       </button>
                     </MenuItem>
                   </div>
