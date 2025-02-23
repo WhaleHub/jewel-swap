@@ -83,8 +83,6 @@ const Navbar = () => {
             selectedWalletId: WALLET_CONNECT_ID,
             network: WalletNetwork.PUBLIC,
             modules: [
-              new xBullModule(),
-              new FreighterModule(),
               new WalletConnectModule({
                 url: 'app.whalehub.io',
                 projectId: '3dcbb538e6a1ff9db2cdbf0b1c209a9d',
@@ -102,7 +100,9 @@ const Navbar = () => {
                       kit.setWallet(option.id);
                       const { address } = await kit.getAddress();
                       console.log(address);
-
+                      
+                      setUserWalletAddress(address);
+                      setWalletConnected(true)
                       await setAllowed();
                       await isAllowed();
                       dispatch(setUserWalletAddress(address));
