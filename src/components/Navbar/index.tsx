@@ -97,19 +97,27 @@ const Navbar = () => {
             ],
           });
 
+             await kit.openModal({
+                    onWalletSelected: async (option: ISupportedWallet) => {
+                      kit.setWallet(option.id);
+                      const { address } = await kit.getAddress();
+                      console.log(address);
 
-          const { address } = await kit.getAddress();
+                      await setAllowed();
+                      await isAllowed();
+                      dispatch(setUserWalletAddress(address));
+                      dispatch(setConnectingWallet(false));
+                      dispatch(setWalletConnectName("Wallet Connect"));
+                      dispatch(setWalletConnected(true));
+                      dispatch(walletSelectionAction(false));
+                    },
+                  });
 
 
-          console.log(address);
+      
 
-          await setAllowed();
-          await isAllowed();
-          dispatch(setUserWalletAddress(address));
-          dispatch(setConnectingWallet(false));
-          dispatch(setWalletConnectName("Wallet Connect"));
-          dispatch(setWalletConnected(true));
-          dispatch(walletSelectionAction(false));
+
+       
         } else {
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(LOBSTR_ID));
