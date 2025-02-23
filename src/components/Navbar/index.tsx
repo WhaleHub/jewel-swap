@@ -34,6 +34,7 @@ import {
   WalletConnectModule,
 } from '@creit.tech/stellar-wallets-kit/modules/walletconnect.module';
 import clsx from "clsx";
+import { ToastContainer, toast } from "react-toastify";
 
 const Navbar = () => {
   const dispatch = useAppDispatch();
@@ -94,22 +95,20 @@ const Navbar = () => {
               }),
             ],
           });
+      
 
              await kit.openModal({
                     onWalletSelected: async (option: ISupportedWallet) => {
                       kit.setWallet(option.id);
                       const { address } = await kit.getAddress();
                       console.log(address);
-                      
-                      setUserWalletAddress(address);
-                      setWalletConnected(true)
-                      await setAllowed();
-                      await isAllowed();
-                      dispatch(setUserWalletAddress(address));
+                
                       dispatch(setConnectingWallet(false));
-                      dispatch(setWalletConnectName("Wallet Connect"));
-                      dispatch(setWalletConnected(true));
+                      dispatch(setWalletConnectName(LOBSTR_ID));
                       dispatch(walletSelectionAction(false));
+                      dispatch(setWalletConnected(true));
+                      // const publicKey = await getPublicKey();
+                      dispatch(setUserWalletAddress(address));
                     },
                   });
 
@@ -229,17 +228,18 @@ const Navbar = () => {
                   </button>
                 </MenuItem>
                 <div className="p-4 border border-solid border-[#B1B3B8]">
-                  <MenuItem>
-                    <button
-                      className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
-                      onClick={() =>
-                        handleWalletConnections(walletTypes.FREIGHTER)
-                      }
-                    >
-                      Freighter wallet
-                    </button>
-                  </MenuItem>
+              
                   <div className="my-2">
+                  <MenuItem>
+                      <button
+                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
+                        onClick={() =>
+                          handleWalletConnections(walletTypes.WALLETCONNECT)
+                        }
+                      >
+                        WalletConnect
+                      </button>
+                    </MenuItem>
                     <MenuItem>
                       <button
                         className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
@@ -252,15 +252,15 @@ const Navbar = () => {
                     </MenuItem>
 
                     <MenuItem>
-                      <button
-                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
-                        onClick={() =>
-                          handleWalletConnections(walletTypes.WALLETCONNECT)
-                        }
-                      >
-                        Wallet connect
-                      </button>
-                    </MenuItem>
+                    <button
+                      className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
+                      onClick={() =>
+                        handleWalletConnections(walletTypes.FREIGHTER)
+                      }
+                    >
+                      Freighter wallet
+                    </button>
+                  </MenuItem>
                   </div>
                   <div className="text-xs  font-normal text-[#B1B3B8]">
                     By connecting a wallet, you agree to WhaleHub Terms of
@@ -269,6 +269,7 @@ const Navbar = () => {
                 </div>
               </MenuItems>
             </Menu>
+            <ToastContainer />
           </div>
         </div>
       </div>
