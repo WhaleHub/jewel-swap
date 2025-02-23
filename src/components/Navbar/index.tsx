@@ -26,19 +26,37 @@ import {
   WalletNetwork,
   XBULL_ID,
   allowAllModules,
+  xBullModule,
 } from "@creit.tech/stellar-wallets-kit";
+import {
+  WALLET_CONNECT_ID,
+  WalletConnectAllowedMethods,
+  WalletConnectModule,
+} from '@creit.tech/stellar-wallets-kit/modules/walletconnect.module';
 import clsx from "clsx";
 
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
 
-  const kit: StellarWalletsKit = new StellarWalletsKit({
-    network: WalletNetwork.PUBLIC,
+  const kit = new StellarWalletsKit({
     selectedWalletId: XBULL_ID,
-    modules: allowAllModules(),
+    network: WalletNetwork.PUBLIC,
+    modules: [
+      new xBullModule(),
+      new FreighterModule(),
+      new WalletConnectModule({
+        url: 'app.whalehub.io',
+        projectId: '3dcbb538e6a1ff9db2cdbf0b1c209a9d',
+        method: WalletConnectAllowedMethods.SIGN,
+        description: `A DESCRIPTION TO SHOW USERS`,
+        name: 'Whalehub',
+        icons: ['A LOGO/ICON TO SHOW TO YOUR USERS'],
+        network: WalletNetwork.PUBLIC,
+      }),
+    ],
   });
-  
+
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
       try {
@@ -59,16 +77,31 @@ const Navbar = () => {
           dispatch(setWalletConnectName(FREIGHTER_ID));
           dispatch(setWalletConnected(true));
           dispatch(walletSelectionAction(false));
-        } 
-
-        else if (walletType === walletTypes.WALLETCONNECT) {
-          const kit: StellarWalletsKit = new StellarWalletsKit({
+        } else if (walletType === walletTypes.WALLETCONNECT) {
+          console.log("started");
+          const kit = new StellarWalletsKit({
+            selectedWalletId: WALLET_CONNECT_ID,
             network: WalletNetwork.PUBLIC,
-            selectedWalletId: "WALLET_CONNECT_ID",
-            modules: allowAllModules(),
+            modules: [
+              new xBullModule(),
+              new FreighterModule(),
+              new WalletConnectModule({
+                url: 'app.whalehub.io',
+                projectId: '3dcbb538e6a1ff9db2cdbf0b1c209a9d',
+                method: WalletConnectAllowedMethods.SIGN,
+                description: `A DESCRIPTION TO SHOW USERS`,
+                name: 'Whalehub',
+                icons: ['A LOGO/ICON TO SHOW TO YOUR USERS'],
+                network: WalletNetwork.PUBLIC,
+              }),
+            ],
           });
 
+
           const { address } = await kit.getAddress();
+
+
+          console.log(address);
 
           await setAllowed();
           await isAllowed();
@@ -77,10 +110,7 @@ const Navbar = () => {
           dispatch(setWalletConnectName("Wallet Connect"));
           dispatch(setWalletConnected(true));
           dispatch(walletSelectionAction(false));
-        } 
-        
-        
-        else {
+        } else {
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(LOBSTR_ID));
           dispatch(walletSelectionAction(false));
@@ -144,17 +174,15 @@ const Navbar = () => {
           <div className="fixed w-52 text-right">
             <Menu>
               <MenuButton
-                // onClick={async () =>
-                //  {
+                // onClick={async () => {
                 //   await kit.openModal({
                 //     onWalletSelected: async (option: ISupportedWallet) => {
                 //       kit.setWallet(option.id);
                 //       const { address } = await kit.getAddress();
                 //       // Do something else
-                //     }
+                //     },
                 //   });
-                //  }
-                // }
+                // }}
                 className={clsx(
                   `inline-flex items-center gap-2 py-3 px-8 text-sm/6 font-semibold text-white shadow-inner shadow-white/10 focus:outline-none data-[hover]:bg-gray-700 data-[open]:bg-gray-700 data-[focus]:outline-1 data-[focus]:outline-white rounded-lg text-base`,
                   `${
@@ -184,7 +212,6 @@ const Navbar = () => {
               >
                 <MenuItem>
                   <button
-                
                     className={clsx(
                       `group flex w-full items-center gap-2 py-4 px-4 data-[focus]:bg-white/10 justify-between border-t border-l border-r border-solid border-[#B1B3B8] text-base text-white font-semibold`
                     )}
