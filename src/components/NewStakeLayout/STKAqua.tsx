@@ -235,7 +235,6 @@ function STKAqua() {
       const transactionXDR = transaction.toXDR();
 
       let signedTxXdr: string = "";
-      toast.warn(user?.walletName);
 
       if (user?.walletName === walletTypes.LOBSTR) {
         signedTxXdr = await signTransaction(transactionXDR);
