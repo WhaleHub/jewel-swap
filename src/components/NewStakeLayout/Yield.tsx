@@ -44,6 +44,7 @@ import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
+import { kit } from "../Navbar";
 
 function Yield() {
   const dispatch = useAppDispatch();
@@ -91,14 +92,14 @@ function Yield() {
   const poolAndClaimBalance =
     Number(userPoolBalances) + Number(accountClaimableRecords);
 
-  const handleSetMaxDepositForBlub = () => {
-    const depositAmount =
-      typeof accountClaimableRecords === "number" &&
-      !isNaN(accountClaimableRecords)
-        ? Number(accountClaimableRecords)
-        : 0;
+  const handleSetMaxStakeBlub = () => {
+    // const depositAmount =
+    //   typeof blubBalance === "number" &&
+    //   !isNaN(blubBalance)
+    //     ? Number(blubBalance)
+    //     : 0;
 
-    setBlubStakeAmount(depositAmount);
+    setBlubStakeAmount(Number(blubBalance));
   };
 
   const handleSetMaxDepositForUnstakeBlub = () => {
@@ -202,7 +203,21 @@ function Yield() {
       let signedTxXdr: string = "";
       if (user?.walletName === walletTypes.LOBSTR) {
         signedTxXdr = await signTransaction(transaction.toXDR());
-      } else {
+      }
+      if (user?.walletName === walletTypes.WALLETCONNECT) {
+ const { signedTxXdr: signed } = await kit.signTransaction(
+           transaction.toXDR(),
+           {
+             address: user?.userWalletAddress || "",
+             networkPassphrase: WalletNetwork.PUBLIC,
+           }
+         );
+   
+         signedTxXdr = signed;
+      }
+
+      
+      else {
         const kit: StellarWalletsKit = new StellarWalletsKit({
           network: WalletNetwork.PUBLIC,
           selectedWalletId: FREIGHTER_ID,
@@ -337,7 +352,7 @@ function Yield() {
                 />
                 <button
                   className="bg-[#3C404D] p-2 rounded-[4px]"
-                  onClick={handleSetMaxDepositForBlub}
+                  onClick={handleSetMaxStakeBlub}
                 >
                   Max
                 </button>
@@ -345,13 +360,13 @@ function Yield() {
 
               <div className="flex items-center text-normal mt-6 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">
-                  Staked Balance:
+                  BLUB Balance:
                 </div>
                 <div className="font-medium">
                   {`${
-                    isNaN(Number(claimableBalance))
+                    isNaN(Number(blubBalance))
                       ? 0
-                      : Number(claimableBalance).toFixed(2)
+                      : Number(blubBalance).toFixed(2)
                   } BLUB`}
                 </div>
               </div>
@@ -408,9 +423,9 @@ function Yield() {
 
               <div className="flex items-center text-normal mt-6 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">
-                  Unstake Balance:
+                  Staked Balance:
                 </div>
-                <div className="font-medium">{claimableBalance} BLUB</div>
+                <div className="font-medium">{Number(claimableBalance).toFixed(2)} BLUB</div>
               </div>
 
               <Button

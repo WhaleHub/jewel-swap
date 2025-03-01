@@ -199,7 +199,6 @@ function STKAqua() {
     const senderAccount = await stellarService.loadAccount(
       user?.userWalletAddress
     );
-    toast.warn(senderAccount.accountId);;
     const existingTrustlines = senderAccount.balances.map(
       (balance: Balance) => balance.asset_code
     );
