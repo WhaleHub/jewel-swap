@@ -8,6 +8,7 @@ import {
   UserRecords,
 } from "../../interfaces";
 import { FREIGHTER_ID, LOBSTR_ID } from "@creit.tech/stellar-wallets-kit";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 
 export interface User {
   userRecords: UserRecords;
@@ -15,7 +16,7 @@ export interface User {
   walletSelectionOpen: boolean;
   userWalletAddress: string | null;
   connectingWallet: boolean;
-  walletName: typeof LOBSTR_ID | typeof FREIGHTER_ID | null;
+  walletName: typeof LOBSTR_ID | typeof FREIGHTER_ID | typeof WALLET_CONNECT_ID | null;
   fetchingWalletInfo: boolean;
   lockingAqua: boolean;
   unStakingAqua: boolean;

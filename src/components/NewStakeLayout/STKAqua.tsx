@@ -42,6 +42,8 @@ import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
+import { WALLET_CONNECT_ID, WalletConnectAllowedMethods, WalletConnectModule } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { kit } from "../Navbar";
 
 function STKAqua() {
   const dispatch = useAppDispatch();
@@ -123,12 +125,25 @@ function STKAqua() {
 
     if (user?.walletName === walletTypes.LOBSTR) {
       signedTxXdr = await signTransaction(transaction.toXDR());
-    } else {
+    } else if(user?.walletName === walletTypes.FREIGHTER) {
       const kit = new StellarWalletsKit({
         network: WalletNetwork.PUBLIC,
         selectedWalletId: FREIGHTER_ID,
         modules: [new FreighterModule()],
       });
+
+      const { signedTxXdr: signed } = await kit.signTransaction(
+        transaction.toXDR(),
+        {
+          address: user?.userWalletAddress || "",
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
+      );
+
+      signedTxXdr = signed;
+    }
+    else if(user?.walletName === walletTypes.WALLETCONNECT){
+    
 
       const { signedTxXdr: signed } = await kit.signTransaction(
         transaction.toXDR(),
@@ -180,9 +195,11 @@ function STKAqua() {
 
     const stellarService = new StellarService();
 
+    // toast.warn("Gloading account");
     const senderAccount = await stellarService.loadAccount(
       user?.userWalletAddress
     );
+    toast.warn(senderAccount.accountId);;
     const existingTrustlines = senderAccount.balances.map(
       (balance: Balance) => balance.asset_code
     );
@@ -218,10 +235,28 @@ function STKAqua() {
       const transactionXDR = transaction.toXDR();
 
       let signedTxXdr: string = "";
+      toast.warn(user?.walletName);
 
       if (user?.walletName === walletTypes.LOBSTR) {
         signedTxXdr = await signTransaction(transactionXDR);
-      } else {
+      } 
+
+      else if(user?.walletName === walletTypes.WALLETCONNECT){
+      
+   
+         const { signedTxXdr: signed } = await kit.signTransaction(
+           transaction.toXDR(),
+           {
+             address: user?.userWalletAddress || "",
+             networkPassphrase: WalletNetwork.PUBLIC,
+           }
+         );
+   
+         signedTxXdr = signed;
+       }
+      
+      
+      else {
         const kit: StellarWalletsKit = new StellarWalletsKit({
           network: WalletNetwork.PUBLIC,
           selectedWalletId: FREIGHTER_ID,

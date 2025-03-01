@@ -35,28 +35,26 @@ import {
 } from '@creit.tech/stellar-wallets-kit/modules/walletconnect.module';
 import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
-
+export const kit = new StellarWalletsKit({
+  selectedWalletId: WALLET_CONNECT_ID,
+  network: WalletNetwork.PUBLIC,
+  modules: [
+    new WalletConnectModule({
+      url: 'app.whalehub.io',
+      projectId: '3dcbb538e6a1ff9db2cdbf0b1c209a9d',
+      method: WalletConnectAllowedMethods.SIGN,
+      description: `A DESCRIPTION TO SHOW USERS`,
+      name: 'Whalehub',
+      icons: ['A LOGO/ICON TO SHOW TO YOUR USERS'],
+      network: WalletNetwork.PUBLIC,
+    }),
+  ],
+});
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
 
-  const kit = new StellarWalletsKit({
-    selectedWalletId: XBULL_ID,
-    network: WalletNetwork.PUBLIC,
-    modules: [
-      new xBullModule(),
-      new FreighterModule(),
-      new WalletConnectModule({
-        url: 'app.whalehub.io',
-        projectId: '3dcbb538e6a1ff9db2cdbf0b1c209a9d',
-        method: WalletConnectAllowedMethods.SIGN,
-        description: `A DESCRIPTION TO SHOW USERS`,
-        name: 'Whalehub',
-        icons: ['A LOGO/ICON TO SHOW TO YOUR USERS'],
-        network: WalletNetwork.PUBLIC,
-      }),
-    ],
-  });
+
 
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
@@ -80,22 +78,7 @@ const Navbar = () => {
           dispatch(walletSelectionAction(false));
         } else if (walletType === walletTypes.WALLETCONNECT) {
           console.log("started");
-          const kit = new StellarWalletsKit({
-            selectedWalletId: WALLET_CONNECT_ID,
-            network: WalletNetwork.PUBLIC,
-            modules: [
-              new WalletConnectModule({
-                url: 'app.whalehub.io',
-                projectId: '3dcbb538e6a1ff9db2cdbf0b1c209a9d',
-                method: WalletConnectAllowedMethods.SIGN,
-                description: `A DESCRIPTION TO SHOW USERS`,
-                name: 'Whalehub',
-                icons: ['A LOGO/ICON TO SHOW TO YOUR USERS'],
-                network: WalletNetwork.PUBLIC,
-              }),
-            ],
-          });
-      
+    
 
              await kit.openModal({
                     onWalletSelected: async (option: ISupportedWallet) => {
@@ -104,7 +87,7 @@ const Navbar = () => {
                       console.log(address);
                 
                       dispatch(setConnectingWallet(false));
-                      dispatch(setWalletConnectName(LOBSTR_ID));
+                      dispatch(setWalletConnectName(WALLET_CONNECT_ID));
                       dispatch(walletSelectionAction(false));
                       dispatch(setWalletConnected(true));
                       // const publicKey = await getPublicKey();
