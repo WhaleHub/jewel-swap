@@ -280,6 +280,8 @@ function Yield() {
   }, [openDialog]);
 
   useEffect(() => {
+    console.log("tst");
+    console.log(user?.userRecords?.account?.claimableRecords);
     if (user?.restaked) {
       updateWalletRecords();
       toast.success("BLUB Locked successfully!");

@@ -262,7 +262,9 @@ function AddLiquidity() {
 
   return (
     <div>
-      <div className="bg-[#0E111BCC] p-10 rounded-[16px]">
+      <div className="bg-[#0E111BCC] p-10 rounded-[16px]"   style={{
+            filter: "blur(1.5px)"
+          }}>
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <img
@@ -329,12 +331,15 @@ function AddLiquidity() {
         </div>
 
         <Button
-          className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold"
+          className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold backdrop-filter: blur(10px"
           onClick={handleProvideLiquidity}
-          disabled={user?.providingLp || !user?.userWalletAddress}
+          disabled={true}
+          // style={{
+          //   filter: "blur(1.5px)"
+          // }}
         >
           {!user?.providingLp ? (
-            <span>Generate Yield</span>
+            <span>Generate Yield (Coming soon)</span>
           ) : (
             <div className="flex justify-center items-center gap-[10px]">
               <span className="text-white">Processing...</span>

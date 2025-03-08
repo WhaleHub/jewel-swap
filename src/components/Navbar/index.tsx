@@ -200,16 +200,20 @@ const Navbar = () => {
                   }`
                 )}
               >
-                <MenuItem>
+                {user?.userWalletAddress!=null ? 
+               (<MenuItem>
+                
                   <button
+                  onClick={handleDisconnect}
                     className={clsx(
                       `group flex w-full items-center gap-2 py-4 px-4 data-[focus]:bg-white/10 justify-between border-t border-l border-r border-solid border-[#B1B3B8] text-base text-white font-semibold`
                     )}
                   >
-                    Connect wallet
+                    Disconnect wallet
                     <XMarkIcon className="size-6 fill-white/30" />
                   </button>
-                </MenuItem>
+                </MenuItem>) :<div></div>}
+
                 <div className="p-4 border border-solid border-[#B1B3B8]">
               
                   <div className="my-2">
