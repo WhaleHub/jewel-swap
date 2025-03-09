@@ -67,7 +67,7 @@ function Yield() {
   // );
 
   const claimableBalance = user?.userRecords?.account?.claimableRecords
-    ?.filter((item: any) => item.claimed === "UNCLAIMED")
+    // ?.filter((item: any) => item.claimed === "UNCLAIMED")
     .reduce((total: any, item: any) => total + parseFloat(item.amount), 0);
 
   const blubBalance = blubRecord?.balance;
@@ -75,7 +75,7 @@ function Yield() {
   // Calculate accountClaimableRecords
   const accountClaimableRecords =
     user?.userRecords?.account?.claimableRecords
-      ?.filter((record: any) => record.claimed === "UNCLAIMED")
+      // ?.filter((record: any) => record.claimed === "UNCLAIMED")
       ?.reduce((total, record: any) => {
         return Number(total) + Number(record.amount);
       }, 0) || 0;

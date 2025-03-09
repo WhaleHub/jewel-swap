@@ -78,7 +78,7 @@ function Restake() {
   // Calculate accountClaimableRecords
   const accountClaimableRecords =
     user?.userRecords?.account?.claimableRecords
-      ?.filter((record: any) => record.claimed === "UNCLAIMED")
+      // ?.filter((record: any) => record.claimed === "UNCLAIMED")
       ?.reduce((total, record: any) => {
         return Number(total) + Number(record.amount);
       }, 0) || 0;
