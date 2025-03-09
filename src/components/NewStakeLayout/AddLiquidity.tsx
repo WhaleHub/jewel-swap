@@ -300,6 +300,7 @@ function AddLiquidity() {
 
         <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
           <Input
+               disabled={true}
             placeholder="0 BLUB"
             className={clsx(
               "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",
@@ -321,6 +322,7 @@ function AddLiquidity() {
 
         <div className="flex items-center bg-[#0E111B]  py-2 space-x-2 mt-5 rounded-[8px]">
           <Input
+          disabled={true}
             placeholder="0 AQUA"
             className={clsx(
               "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",

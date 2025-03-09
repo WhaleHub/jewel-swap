@@ -99,6 +99,8 @@ export const restakeBlub = createAsyncThunk(
         `${BACKEND_API}/token/restake-blub`,
         values
       );
+      console.log("restaked");
+      console.log(data);
       return data;
     } catch (error: any) {
       const customError: CustomError = error;
@@ -390,6 +392,7 @@ export const userSlice = createSlice({
     });
 
     builder.addCase(restakeBlub.fulfilled, (state, {}) => {
+      console.log("restaked");
       state.restaked = true;
     });
 
