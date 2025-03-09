@@ -44,7 +44,8 @@ import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
-import { kit } from "../Navbar";
+import { kitWalletConnect } from "../Navbar";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 
 function Yield() {
   const dispatch = useAppDispatch();
@@ -129,26 +130,57 @@ function Yield() {
   };
 
   const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
-    const { address } = await kit.getAddress();
-    const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
-
-    dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
-  };
+        console.log("updateWalletRecords")
+        let kit:StellarWalletsKit;
+        if(user?.walletName !== WALLET_CONNECT_ID){
+        const selectedModule =
+          user?.walletName === LOBSTR_ID
+            ? new LobstrModule()
+            : new FreighterModule();
+    
+         kit = new StellarWalletsKit({
+             network: WalletNetwork.PUBLIC,
+             selectedWalletId:
+               user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+             modules: [selectedModule],
+           });
+          }
+    
+           const{ address} =
+                    user?.walletName === WALLET_CONNECT_ID
+                      ? await kitWalletConnect.getAddress()
+                      : await kit!.getAddress();
+    
+    
+        const stellarService = new StellarService();
+        const wrappedAccount = await stellarService.loadAccount(address);
+        console.log(wrappedAccount.balances);
+        console.log(getAccountInfo(address));
+        dispatch(getAccountInfo(address));
+        dispatch(storeAccountBalance(wrappedAccount.balances));
+      };
 
   const handleRestake = async () => {
+    console.log("handleRestake");
+     let kit:StellarWalletsKit;
+        if(user?.walletName !== WALLET_CONNECT_ID){
+        const selectedModule =
+          user?.walletName === LOBSTR_ID
+            ? new LobstrModule()
+            : new FreighterModule();
+    
+         kit = new StellarWalletsKit({
+             network: WalletNetwork.PUBLIC,
+             selectedWalletId:
+               user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+             modules: [selectedModule],
+           });
+          }
+    
+           const { address} =
+                    user?.walletName === WALLET_CONNECT_ID
+                      ? await kitWalletConnect.getAddress()
+                      : await kit!.getAddress();
     if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
@@ -172,7 +204,7 @@ function Yield() {
     dispatch(restaking(true));
     const stellarService = new StellarService();
     const senderAccount = await stellarService.loadAccount(
-      user?.userWalletAddress
+      address
     );
 
     const existingTrustlines = senderAccount.balances.map(
@@ -193,38 +225,48 @@ function Yield() {
         amount: stakeAmount,
       });
 
-      const transactionBuilder = new TransactionBuilder(senderAccount, {
-        fee: BASE_FEE,
-        networkPassphrase: Networks.PUBLIC,
-      });
+      // const transactionBuilder = new TransactionBuilder(senderAccount, {
+      //   fee: BASE_FEE,
+      //   networkPassphrase: Networks.PUBLIC,
+      // });
 
-      const transaction = transactionBuilder.setTimeout(3000).build();
+      // const transaction = transactionBuilder.setTimeout(180).build();
+      // const transactionXDR = transaction.toXDR();
+
+      const transactionBuilder = new TransactionBuilder(senderAccount, {
+              fee: BASE_FEE,
+              networkPassphrase: Networks.PUBLIC,
+            });
+      
+            transactionBuilder.addOperation(paymentOperation).setTimeout(180);
+      
+            const transaction = transactionBuilder.build();
+            const transactionXDR = transaction.toXDR();
+            console.log(transactionXDR)
+      console.log(transactionXDR)
 
       let signedTxXdr: string = "";
       if (user?.walletName === walletTypes.LOBSTR) {
-        signedTxXdr = await signTransaction(transaction.toXDR());
+        signedTxXdr = await signTransaction(transactionXDR);
       }
       if (user?.walletName === walletTypes.WALLETCONNECT) {
- const { signedTxXdr: signed } = await kit.signTransaction(
-           transaction.toXDR(),
-           {
-             address: user?.userWalletAddress || "",
-             networkPassphrase: WalletNetwork.PUBLIC,
-           }
-         );
-   
-         signedTxXdr = signed;
-      }
+        const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
+          transactionXDR,
+          {
+            address: user?.userWalletAddress || "",
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
 
-      
-      else {
+        signedTxXdr = signed;
+      } else {
         const kit: StellarWalletsKit = new StellarWalletsKit({
           network: WalletNetwork.PUBLIC,
           selectedWalletId: FREIGHTER_ID,
           modules: [new FreighterModule()],
         });
         transactionBuilder.addOperation(paymentOperation).setTimeout(180);
-        const transactionXDR = transaction.toXDR();
+     
         const { signedTxXdr: signed } = await kit.signTransaction(
           transactionXDR,
           {
@@ -361,9 +403,7 @@ function Yield() {
               </div>
 
               <div className="flex items-center text-normal mt-6 space-x-1">
-                <div className="font-normal text-[#B1B3B8]">
-                  BLUB Balance:
-                </div>
+                <div className="font-normal text-[#B1B3B8]">BLUB Balance:</div>
                 <div className="font-medium">
                   {`${
                     isNaN(Number(blubBalance))
@@ -427,7 +467,11 @@ function Yield() {
                 <div className="font-normal text-[#B1B3B8]">
                   Staked Balance:
                 </div>
-                <div className="font-medium">{Number(claimableBalance).toFixed(2)} BLUB</div>
+                <div className="font-medium">
+                   {isNaN(Number(claimableBalance))
+                        ? 0
+                        : Number(claimableBalance).toFixed(2)} BLUB
+                </div>
               </div>
 
               <Button

@@ -46,6 +46,8 @@ import {
 } from "../../utils/constants";
 import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { kitWalletConnect } from "../Navbar";
 
 const aquaAssetCode = "AQUA";
 const aquaAssetIssuer =
@@ -64,25 +66,36 @@ function StakeAqua() {
 
   const userAquaBalance = aquaRecord?.balance;
 
-  const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
-    const { address } = await kit.getAddress();
-    const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
-
-    dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
-  };
+    const updateWalletRecords = async () => {
+      console.log("updateWalletRecords")
+      let kit:StellarWalletsKit;
+      if(user?.walletName !== WALLET_CONNECT_ID){
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+  
+       kit = new StellarWalletsKit({
+           network: WalletNetwork.PUBLIC,
+           selectedWalletId:
+             user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+           modules: [selectedModule],
+         });
+        }
+  
+         const{ address} =
+                  user?.walletName === WALLET_CONNECT_ID
+                    ? await kitWalletConnect.getAddress()
+                    : await kit!.getAddress();
+  
+  
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
+      console.log(wrappedAccount.balances);
+      console.log(getAccountInfo(address));
+      dispatch(getAccountInfo(address));
+      dispatch(storeAccountBalance(wrappedAccount.balances));
+    };
 
   const handleSetMaxDeposit = () => {
     setAquaDepositAmount(Number(userAquaBalance));
@@ -102,7 +115,10 @@ function StakeAqua() {
     });
 
     const stellarService = new StellarService();
-    const { address } = await kit.getAddress();
+    const {address} =
+    user!.walletName === WALLET_CONNECT_ID
+      ? (await kitWalletConnect.getAddress())
+      : (await kit.getAddress());
     const senderAccount = await stellarService.loadAccount(address);
 
     const transactionBuilder = new TransactionBuilder(senderAccount, {
@@ -152,7 +168,10 @@ function StakeAqua() {
     dispatch(lockingAqua(true));
 
     const stellarService = new StellarService();
-    const { address } = await kit.getAddress();
+    const { address } =
+      user?.walletName === WALLET_CONNECT_ID
+        ? await kitWalletConnect.getAddress()
+        : await kit.getAddress();
 
     if (!address) {
       dispatch(lockingAqua(false));

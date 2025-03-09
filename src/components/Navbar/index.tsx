@@ -32,20 +32,20 @@ import {
   WALLET_CONNECT_ID,
   WalletConnectAllowedMethods,
   WalletConnectModule,
-} from '@creit.tech/stellar-wallets-kit/modules/walletconnect.module';
+} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
-export const kit = new StellarWalletsKit({
+export const kitWalletConnect = new StellarWalletsKit({
   selectedWalletId: WALLET_CONNECT_ID,
   network: WalletNetwork.PUBLIC,
   modules: [
     new WalletConnectModule({
-      url: 'app.whalehub.io',
-      projectId: '3dcbb538e6a1ff9db2cdbf0b1c209a9d',
+      url: "app.whalehub.io",
+      projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
       method: WalletConnectAllowedMethods.SIGN,
       description: `A DESCRIPTION TO SHOW USERS`,
-      name: 'Whalehub',
-      icons: ['A LOGO/ICON TO SHOW TO YOUR USERS'],
+      name: "Whalehub",
+      icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
       network: WalletNetwork.PUBLIC,
     }),
   ],
@@ -53,8 +53,6 @@ export const kit = new StellarWalletsKit({
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
-
-
 
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
@@ -78,28 +76,21 @@ const Navbar = () => {
           dispatch(walletSelectionAction(false));
         } else if (walletType === walletTypes.WALLETCONNECT) {
           console.log("started");
-    
 
-             await kit.openModal({
-                    onWalletSelected: async (option: ISupportedWallet) => {
-                      kit.setWallet(option.id);
-                      const { address } = await kit.getAddress();
-                      console.log(address);
-                
-                      dispatch(setConnectingWallet(false));
-                      dispatch(setWalletConnectName(WALLET_CONNECT_ID));
-                      dispatch(walletSelectionAction(false));
-                      dispatch(setWalletConnected(true));
-                      // const publicKey = await getPublicKey();
-                      dispatch(setUserWalletAddress(address));
-                    },
-                  });
+          await kitWalletConnect.openModal({
+            onWalletSelected: async (option: ISupportedWallet) => {
+              kitWalletConnect.setWallet(option.id);
+              const { address } = await kitWalletConnect.getAddress();
+              console.log(address);
 
-
-      
-
-
-       
+              dispatch(setConnectingWallet(false));
+              dispatch(setWalletConnectName(WALLET_CONNECT_ID));
+              dispatch(walletSelectionAction(false));
+              dispatch(setWalletConnected(true));
+              // const publicKey = await getPublicKey();
+              dispatch(setUserWalletAddress(address));
+            },
+          });
         } else {
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(LOBSTR_ID));
@@ -200,24 +191,26 @@ const Navbar = () => {
                   }`
                 )}
               >
-                {user?.userWalletAddress!=null ? 
-               (<MenuItem>
-                
-                  <button
-                  onClick={handleDisconnect}
-                    className={clsx(
-                      `group flex w-full items-center gap-2 py-4 px-4 data-[focus]:bg-white/10 justify-between border-t border-l border-r border-solid border-[#B1B3B8] text-base text-white font-semibold`
-                    )}
-                  >
-                    Disconnect wallet
-                    <XMarkIcon className="size-6 fill-white/30" />
-                  </button>
-                </MenuItem>) :<div></div>}
-
-                <div className="p-4 border border-solid border-[#B1B3B8]">
-              
-                  <div className="my-2">
+                {user?.userWalletAddress != null ? (
                   <MenuItem>
+                    <button
+                      onClick={handleDisconnect}
+                      className={clsx(
+                        `group flex w-full items-center gap-2 py-4 px-4 data-[focus]:bg-white/10 justify-between border-t border-l border-r border-solid border-[#B1B3B8] text-base text-white font-semibold`
+                      )}
+                    >
+                      Disconnect wallet
+                      <XMarkIcon className="size-6 fill-white/30" />
+                    </button>
+                  </MenuItem>
+                ) : (
+                  <div></div>
+                )}
+ 
+                <div className="p-4 border border-solid border-[#B1B3B8]">
+                {user?.userWalletAddress == null ? (
+                  <div className="my-2">
+                    <MenuItem>
                       <button
                         className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
                         onClick={() =>
@@ -239,21 +232,23 @@ const Navbar = () => {
                     </MenuItem>
 
                     <MenuItem>
-                    <button
-                      className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
-                      onClick={() =>
-                        handleWalletConnections(walletTypes.FREIGHTER)
-                      }
-                    >
-                      Freighter wallet
-                    </button>
-                  </MenuItem>
+                      <button
+                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
+                        onClick={() =>
+                          handleWalletConnections(walletTypes.FREIGHTER)
+                        }
+                      >
+                        Freighter wallet
+                      </button>
+                    </MenuItem>
                   </div>
+                  ):<div></div>}
                   <div className="text-xs  font-normal text-[#B1B3B8]">
                     By connecting a wallet, you agree to WhaleHub Terms of
                     Service and consent to its Privacy Policy.
                   </div>
                 </div>
+
               </MenuItems>
             </Menu>
             <ToastContainer />

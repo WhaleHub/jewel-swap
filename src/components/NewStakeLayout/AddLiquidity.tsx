@@ -45,6 +45,8 @@ import { StellarService } from "../../services/stellar.service";
 import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import DialogC from "./Dialog";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { kitWalletConnect } from "../Navbar";
 
 function AddLiquidity() {
   const poolRecords: Record<
@@ -96,7 +98,11 @@ function AddLiquidity() {
       modules: [selectedModule],
     });
 
-    const wallet = await kit.getAddress();
+    const wallet =
+    user?.walletName === WALLET_CONNECT_ID
+      ? await kitWalletConnect.getAddress()
+      : await kit.getAddress();
+    // const wallet = await kit.getAddress();
 
     if (!wallet.address) {
       dispatch(providingLp(false));
@@ -205,16 +211,20 @@ function AddLiquidity() {
         : new FreighterModule();
 
     const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId:
+          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+        modules: [selectedModule],
+      });
 
-    const { address } = await kit.getAddress();
+      const address =
+      user?.walletName === WALLET_CONNECT_ID
+        ? await kitWalletConnect.getAddress()
+        : await kit.getAddress();
     const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
+    const wrappedAccount = await stellarService.loadAccount(address.address);
 
-    dispatch(getAccountInfo(address));
+    dispatch(getAccountInfo(address.address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };
 

@@ -48,6 +48,10 @@ import {
 } from "../../utils/constants";
 import { StellarService } from "../../services/stellar.service";
 import { Balance } from "../../utils/interfaces";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { kitWalletConnect } from "../Navbar";
+import { signTransaction } from "@lobstrco/signer-extension-api";
+import { walletTypes } from "../../enums";
 
 function Restake() {
   const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
@@ -115,7 +119,10 @@ function Restake() {
       modules: [selectedModule],
     });
 
-    const { address } = await kit.getAddress();
+    const {address} =
+          user?.walletName === WALLET_CONNECT_ID
+            ? await kitWalletConnect.getAddress()
+            : await kit.getAddress();
     dispatch(unStakingAqua(true));
     dispatch(
       unStakeAqua({
@@ -129,40 +136,61 @@ function Restake() {
     setBlubStakeAmount(Number(blubBalance));
   };
 
-  const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+    const updateWalletRecords = async () => {
+      console.log("updateWalletRecords")
+      let kit:StellarWalletsKit;
+      if(user?.walletName !== WALLET_CONNECT_ID){
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+  
+       kit = new StellarWalletsKit({
+           network: WalletNetwork.PUBLIC,
+           selectedWalletId:
+             user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+           modules: [selectedModule],
+         });
+        }
+  
+         const{ address} =
+                  user?.walletName === WALLET_CONNECT_ID
+                    ? await kitWalletConnect.getAddress()
+                    : await kit!.getAddress();
+  
+  
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
+      console.log(wrappedAccount.balances);
+      console.log(getAccountInfo(address));
+      dispatch(getAccountInfo(address));
+      dispatch(storeAccountBalance(wrappedAccount.balances));
+    };
 
-    const { address } = await kit.getAddress();
-    const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
-
-    dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
-  };
 
   const handleRestake = async () => {
+    console.log("handleRestake")
+    
+    let kit:StellarWalletsKit;
+    if(user?.walletName !== WALLET_CONNECT_ID){
     const selectedModule =
       user?.walletName === LOBSTR_ID
         ? new LobstrModule()
         : new FreighterModule();
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+     kit = new StellarWalletsKit({
+         network: WalletNetwork.PUBLIC,
+         selectedWalletId:
+           user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+         modules: [selectedModule],
+       });
+      }
 
-    const { address } = await kit.getAddress();
+       const { address} =
+                user?.walletName === WALLET_CONNECT_ID
+                  ? await kitWalletConnect.getAddress()
+                  : await kit!.getAddress();
 
     if (!address) {
       dispatch(lockingAqua(false));
@@ -183,6 +211,7 @@ function Restake() {
       dispatch(lockingAqua(false));
       return toast.warn(`Your balance is low`);
     }
+    console.log("started restakje")
 
     dispatch(restaking(true));
     const stellarService = new StellarService();
@@ -195,6 +224,7 @@ function Restake() {
     if (!existingTrustlines.includes(blubAssetCode)) return;
 
     try {
+      console.log("start restake");
       const stakeAmount = blubStakeAmount.toFixed(7);
 
       const paymentOperation = Operation.payment({
@@ -213,15 +243,49 @@ function Restake() {
       const transaction = transactionBuilder.build();
 
       const transactionXDR = transaction.toXDR();
+      console.log(transactionXDR)
 
-      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-        address,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
+     
+    
+      // const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
+      //   address,
+      //   networkPassphrase: WalletNetwork.PUBLIC,
+      // });
+         // Sign transaction based on wallet type
+    let signedTxXdr: string = "";
+       if (user?.walletName === walletTypes.LOBSTR) {
+            signedTxXdr = await signTransaction(transactionXDR);
+          } else if (user?.walletName === walletTypes.FREIGHTER) {
+            const kit = new StellarWalletsKit({
+              network: WalletNetwork.PUBLIC,
+              selectedWalletId: FREIGHTER_ID,
+              modules: [new FreighterModule()],
+            });
+      
+            const { signedTxXdr: signed } = await kit.signTransaction(
+              transactionXDR,
+              {
+                address: user?.userWalletAddress || "",
+                networkPassphrase: WalletNetwork.PUBLIC,
+              }
+            );
+      
+            signedTxXdr = signed;
+          } else if (user?.walletName === walletTypes.WALLETCONNECT) {
+            const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
+              transactionXDR,
+              {
+                address: user?.userWalletAddress || "",
+                networkPassphrase: WalletNetwork.PUBLIC,
+              }
+            );
+      
+            signedTxXdr = signed;
+          }
 
       dispatch(
         restakeBlub({
-          assetCode: "WHLAQUA",
+          assetCode: "BLUB",
           assetIssuer: blubIssuerPublicKey,
           amount: `${blubStakeAmount}`,
           signedTxXdr,
