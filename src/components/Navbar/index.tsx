@@ -35,7 +35,7 @@ import {
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
-export const kitWalletConnect = new StellarWalletsKit({
+export let kitWalletConnect:StellarWalletsKit | any = new StellarWalletsKit({
   selectedWalletId: WALLET_CONNECT_ID,
   network: WalletNetwork.PUBLIC,
   modules: [

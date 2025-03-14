@@ -48,8 +48,9 @@ import {
   WalletConnectModule,
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { kitWalletConnect } from "../Navbar";
-
+export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 function STKAqua() {
+  
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
@@ -227,13 +228,14 @@ function STKAqua() {
     if (!existingTrustlines.includes(blubAssetCode)) {
       try {
         await handleAddTrustline();
+        await sleep(5000);
+      
         toast.success("Trustline added successfully.");
       } catch (error) {
         dispatch(lockingAqua(false));
         return toast.error("Failed to add trustline.");
       }
     }
-
     try {
       const customAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
       const stakeAmount = aquaDepositAmount.toFixed(7);
@@ -260,6 +262,23 @@ function STKAqua() {
         signedTxXdr = await signTransaction(transactionXDR);
       } else if (user?.walletName === walletTypes.WALLETCONNECT) {
         console.log("wallet connect");
+    
+        let kitWalletConnect = new StellarWalletsKit({
+          selectedWalletId: WALLET_CONNECT_ID,
+          network: WalletNetwork.PUBLIC,
+          modules: [
+            new WalletConnectModule({
+              url: "app.whalehub.io",
+              projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
+              method: WalletConnectAllowedMethods.SIGN,
+              description: `A DESCRIPTION TO SHOW USERS`,
+              name: "Whalehub",
+              icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+              network: WalletNetwork.PUBLIC,
+            }),
+          ],
+        });
+        await sleep(2000);
         const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
           transaction.toXDR(),
           {
@@ -287,6 +306,7 @@ function STKAqua() {
         signedTxXdr = signed;
       }
 
+      console.log(signedTxXdr);
       dispatch(
         mint({
           assetCode: aquaAssetCode,
