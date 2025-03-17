@@ -101,11 +101,11 @@ function Restake() {
   };
 
   const handleUnstakeAqua = async () => {
-    if (poolAndClaimBalance < 1 || Number(blubUnstakeAmount) < 1)
+    if (Number(blubUnstakeAmount) < 1)
       return toast.warn("Nothing to unstake");
 
-    if (Number(blubUnstakeAmount) > poolAndClaimBalance)
-      return toast.warn("Unstake amount exceeds the pool balance");
+    // if (Number(blubUnstakeAmount) > poolAndClaimBalance)
+    //   return toast.warn("Unstake amount exceeds the pool balance");
 
     const selectedModule =
       user?.walletName === LOBSTR_ID

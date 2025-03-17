@@ -114,11 +114,11 @@ function Yield() {
 
   const handleUnstakeAqua = async () => {
     console.log("handleUnstakeAqua");
-    if (poolAndClaimBalance < 1 || Number(blubUnstakeAmount) < 1)
+    if (Number(blubUnstakeAmount) < 1)
       return toast.warn("Nothing to unstake");
 
-    if (Number(blubUnstakeAmount) > poolAndClaimBalance)
-      return toast.warn("Unstake amount exceeds the pool balance");
+    // if (Number(blubUnstakeAmount) > poolAndClaimBalance)
+    //   return toast.warn("Unstake amount exceeds the pool balance");
 
     console.log(blubUnstakeAmount);
 
