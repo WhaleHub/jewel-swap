@@ -45,7 +45,8 @@ import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
 import { kitWalletConnect } from "../Navbar";
-import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { WALLET_CONNECT_ID, WalletConnectAllowedMethods, WalletConnectModule } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { sleep } from "./STKAqua";
 
 function Yield() {
   const dispatch = useAppDispatch();
@@ -227,13 +228,6 @@ function Yield() {
         amount: stakeAmount,
       });
 
-      // const transactionBuilder = new TransactionBuilder(senderAccount, {
-      //   fee: BASE_FEE,
-      //   networkPassphrase: Networks.PUBLIC,
-      // });
-
-      // const transaction = transactionBuilder.setTimeout(180).build();
-      // const transactionXDR = transaction.toXDR();
 
       const transactionBuilder = new TransactionBuilder(senderAccount, {
               fee: BASE_FEE,
@@ -245,13 +239,28 @@ function Yield() {
             const transaction = transactionBuilder.build();
             const transactionXDR = transaction.toXDR();
             console.log(transactionXDR)
-      console.log(transactionXDR)
 
       let signedTxXdr: string = "";
       if (user?.walletName === walletTypes.LOBSTR) {
         signedTxXdr = await signTransaction(transactionXDR);
       }
       if (user?.walletName === walletTypes.WALLETCONNECT) {
+          let kitWalletConnect = new StellarWalletsKit({
+                  selectedWalletId: WALLET_CONNECT_ID,
+                  network: WalletNetwork.PUBLIC,
+                  modules: [
+                    new WalletConnectModule({
+                      url: "app.whalehub.io",
+                      projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
+                      method: WalletConnectAllowedMethods.SIGN,
+                      description: `A DESCRIPTION TO SHOW USERS`,
+                      name: "Whalehub",
+                      icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+                      network: WalletNetwork.PUBLIC,
+                    }),
+                  ],
+                });
+                await sleep(1000);
         const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
           transactionXDR,
           {
