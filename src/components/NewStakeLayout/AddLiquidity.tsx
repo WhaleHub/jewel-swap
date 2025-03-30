@@ -46,7 +46,7 @@ import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import DialogC from "./Dialog";
 import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
-import { kitWalletConnect } from "../Navbar";
+import { kitWalletConnectGlobal } from "../Navbar";
 
 function AddLiquidity() {
   const poolRecords: Record<
@@ -99,9 +99,9 @@ function AddLiquidity() {
     });
 
     const wallet =
-    user?.walletName === WALLET_CONNECT_ID
-      ? await kitWalletConnect.getAddress()
-      : await kit.getAddress();
+      user?.walletName === WALLET_CONNECT_ID
+        ? await kitWalletConnectGlobal.getAddress()
+        : await kit.getAddress();
     // const wallet = await kit.getAddress();
 
     if (!wallet.address) {
@@ -211,15 +211,15 @@ function AddLiquidity() {
         : new FreighterModule();
 
     const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId:
-          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-        modules: [selectedModule],
-      });
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId:
+        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+      modules: [selectedModule],
+    });
 
-      const address =
+    const address =
       user?.walletName === WALLET_CONNECT_ID
-        ? await kitWalletConnect.getAddress()
+        ? await kitWalletConnectGlobal.getAddress()
         : await kit.getAddress();
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address.address);
@@ -272,9 +272,12 @@ function AddLiquidity() {
 
   return (
     <div>
-      <div className="bg-[#0E111BCC] p-10 rounded-[16px]"   style={{
-            filter: "blur(1.5px)"
-          }}>
+      <div
+        className="bg-[#0E111BCC] p-10 rounded-[16px]"
+        style={{
+          filter: "blur(1.5px)",
+        }}
+      >
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <img
@@ -300,7 +303,7 @@ function AddLiquidity() {
 
         <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
           <Input
-               disabled={true}
+            disabled={true}
             placeholder="0 BLUB"
             className={clsx(
               "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",
@@ -322,7 +325,7 @@ function AddLiquidity() {
 
         <div className="flex items-center bg-[#0E111B]  py-2 space-x-2 mt-5 rounded-[8px]">
           <Input
-          disabled={true}
+            disabled={true}
             placeholder="0 AQUA"
             className={clsx(
               "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",

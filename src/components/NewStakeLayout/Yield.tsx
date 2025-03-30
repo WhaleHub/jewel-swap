@@ -44,8 +44,12 @@ import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
-import { kitWalletConnect } from "../Navbar";
-import { WALLET_CONNECT_ID, WalletConnectAllowedMethods, WalletConnectModule } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { kitWalletConnectGlobal } from "../Navbar";
+import {
+  WALLET_CONNECT_ID,
+  WalletConnectAllowedMethods,
+  WalletConnectModule,
+} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { sleep } from "./STKAqua";
 
 function Yield() {
@@ -67,8 +71,10 @@ function Yield() {
   //   (balance) => balance.asset_code === "AQUA"
   // );
 
-  const claimableBalance = user?.userRecords?.account?.claimableRecords?.reduce
-((total: any, item: any) => total + parseFloat(item.amount), 0);
+  const claimableBalance = user?.userRecords?.account?.claimableRecords?.reduce(
+    (total: any, item: any) => total + parseFloat(item.amount),
+    0
+  );
 
   const blubBalance = blubRecord?.balance;
 
@@ -115,8 +121,7 @@ function Yield() {
 
   const handleUnstakeAqua = async () => {
     console.log("handleUnstakeAqua");
-    if (Number(blubUnstakeAmount) < 1)
-      return toast.warn("Nothing to unstake");
+    if (Number(blubUnstakeAmount) < 1) return toast.warn("Nothing to unstake");
 
     // if (Number(blubUnstakeAmount) > poolAndClaimBalance)
     //   return toast.warn("Unstake amount exceeds the pool balance");
@@ -133,57 +138,75 @@ function Yield() {
   };
 
   const updateWalletRecords = async () => {
-        console.log("updateWalletRecords")
-        let kit:StellarWalletsKit;
-        if(user?.walletName !== WALLET_CONNECT_ID){
-        const selectedModule =
-          user?.walletName === LOBSTR_ID
-            ? new LobstrModule()
-            : new FreighterModule();
-    
-         kit = new StellarWalletsKit({
-             network: WalletNetwork.PUBLIC,
-             selectedWalletId:
-               user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-             modules: [selectedModule],
-           });
-          }
-    
-           const{ address} =
-                    user?.walletName === WALLET_CONNECT_ID
-                      ? await kitWalletConnect.getAddress()
-                      : await kit!.getAddress();
-    
-    
-        const stellarService = new StellarService();
-        const wrappedAccount = await stellarService.loadAccount(address);
-        console.log(wrappedAccount.balances);
-        console.log(getAccountInfo(address));
-        dispatch(getAccountInfo(address));
-        dispatch(storeAccountBalance(wrappedAccount.balances));
-      };
+    console.log("updateWalletRecords");
+    let kit: StellarWalletsKit;
+    if (user?.walletName !== WALLET_CONNECT_ID) {
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+
+      kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId:
+          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+    }
+
+
+
+    const { address } =
+      user?.walletName === WALLET_CONNECT_ID
+        ? await kitWalletConnectGlobal.getAddress()
+        : await kit!.getAddress();
+
+    const stellarService = new StellarService();
+    const wrappedAccount = await stellarService.loadAccount(address);
+    console.log(wrappedAccount.balances);
+    console.log(getAccountInfo(address));
+    dispatch(getAccountInfo(address));
+    dispatch(storeAccountBalance(wrappedAccount.balances));
+  };
 
   const handleRestake = async () => {
     console.log("handleRestake");
-     let kit:StellarWalletsKit;
-        if(user?.walletName !== WALLET_CONNECT_ID){
-        const selectedModule =
-          user?.walletName === LOBSTR_ID
-            ? new LobstrModule()
-            : new FreighterModule();
-    
-         kit = new StellarWalletsKit({
-             network: WalletNetwork.PUBLIC,
-             selectedWalletId:
-               user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-             modules: [selectedModule],
-           });
-          }
-    
-           const { address} =
-                    user?.walletName === WALLET_CONNECT_ID
-                      ? await kitWalletConnect.getAddress()
-                      : await kit!.getAddress();
+    let kit: StellarWalletsKit;
+    if (user?.walletName !== WALLET_CONNECT_ID) {
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+
+      kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId:
+          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+    }
+     let kitWalletConnectGlobal:
+      | StellarWalletsKit
+      | any = new StellarWalletsKit({
+      selectedWalletId: WALLET_CONNECT_ID,
+      network: WalletNetwork.PUBLIC,
+      modules: [
+        new WalletConnectModule({
+          url: "app.whalehub.io",
+          projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
+          method: WalletConnectAllowedMethods.SIGN,
+          description: `A DESCRIPTION TO SHOW USERS`,
+          name: "Whalehub",
+          icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+          network: WalletNetwork.PUBLIC,
+        }),
+      ],
+    });
+
+    const { address } =
+      user?.walletName === WALLET_CONNECT_ID
+        ? await kitWalletConnectGlobal.getAddress()
+        : await kit!.getAddress();
     if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
@@ -206,9 +229,7 @@ function Yield() {
 
     dispatch(restaking(true));
     const stellarService = new StellarService();
-    const senderAccount = await stellarService.loadAccount(
-      address
-    );
+    const senderAccount = await stellarService.loadAccount(address);
 
     const existingTrustlines = senderAccount.balances.map(
       (balance: Balance) => balance.asset_code
@@ -228,39 +249,38 @@ function Yield() {
         amount: stakeAmount,
       });
 
-
       const transactionBuilder = new TransactionBuilder(senderAccount, {
-              fee: BASE_FEE,
-              networkPassphrase: Networks.PUBLIC,
-            });
-      
-            transactionBuilder.addOperation(paymentOperation).setTimeout(180);
-      
-            const transaction = transactionBuilder.build();
-            const transactionXDR = transaction.toXDR();
-            console.log(transactionXDR)
+        fee: BASE_FEE,
+        networkPassphrase: Networks.PUBLIC,
+      });
+
+      transactionBuilder.addOperation(paymentOperation).setTimeout(180);
+
+      const transaction = transactionBuilder.build();
+      const transactionXDR = transaction.toXDR();
+      console.log(transactionXDR);
 
       let signedTxXdr: string = "";
       if (user?.walletName === walletTypes.LOBSTR) {
         signedTxXdr = await signTransaction(transactionXDR);
       }
       if (user?.walletName === walletTypes.WALLETCONNECT) {
-          let kitWalletConnect = new StellarWalletsKit({
-                  selectedWalletId: WALLET_CONNECT_ID,
-                  network: WalletNetwork.PUBLIC,
-                  modules: [
-                    new WalletConnectModule({
-                      url: "app.whalehub.io",
-                      projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
-                      method: WalletConnectAllowedMethods.SIGN,
-                      description: `A DESCRIPTION TO SHOW USERS`,
-                      name: "Whalehub",
-                      icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
-                      network: WalletNetwork.PUBLIC,
-                    }),
-                  ],
-                });
-                await sleep(1000);
+        let kitWalletConnect = new StellarWalletsKit({
+          selectedWalletId: WALLET_CONNECT_ID,
+          network: WalletNetwork.PUBLIC,
+          modules: [
+            new WalletConnectModule({
+              url: "app.whalehub.io",
+              projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
+              method: WalletConnectAllowedMethods.SIGN,
+              description: `A DESCRIPTION TO SHOW USERS`,
+              name: "Whalehub",
+              icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+              network: WalletNetwork.PUBLIC,
+            }),
+          ],
+        });
+        await sleep(1000);
         const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
           transactionXDR,
           {
@@ -277,7 +297,7 @@ function Yield() {
           modules: [new FreighterModule()],
         });
         transactionBuilder.addOperation(paymentOperation).setTimeout(180);
-     
+
         const { signedTxXdr: signed } = await kit.signTransaction(
           transactionXDR,
           {
@@ -479,9 +499,10 @@ function Yield() {
                   Staked Balance:
                 </div>
                 <div className="font-medium">
-                   {isNaN(Number(claimableBalance))
-                        ? 0
-                        : Number(claimableBalance).toFixed(2)} BLUB
+                  {isNaN(Number(claimableBalance))
+                    ? 0
+                    : Number(claimableBalance).toFixed(2)}{" "}
+                  BLUB
                 </div>
               </div>
 

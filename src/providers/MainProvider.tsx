@@ -32,7 +32,7 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { aquaAssetCode, aquaAssetIssuer } from "../utils/constants";
-import { kitWalletConnect } from "../components/Navbar";
+import { kitWalletConnectGlobal } from "../components/Navbar";
 
 interface MainProviderProps {
   children: ReactNode;
@@ -70,11 +70,8 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
       dispatch(getAccountInfo(address));
       dispatch(fetchingWalletInfo(false));
       dispatch(getLockedAquaRewardsForAccount(address));
-    }
-
-    else if (user?.walletName === walletTypes.WALLETCONNECT) {
-
-      const { address } = await kitWalletConnect.getAddress();
+    } else if (user?.walletName === walletTypes.WALLETCONNECT) {
+      const { address } = await kitWalletConnectGlobal.getAddress();
       const wrappedAccount = await stellarService.loadAccount(address);
 
       dispatch(getAppData());
@@ -99,18 +96,15 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
           selectedWalletId: FREIGHTER_ID,
           modules: [new FreighterModule()],
         });
-        const address =
-              await kit.getAddress();
+        const address = await kit.getAddress();
         dispatch(setUserWalletAddress(address));
       } else if (walletTypes.LOBSTR === user?.walletName) {
         if (user?.walletName) return;
         const publicKey = await getPublicKey();
         dispatch(setUserWalletAddress(publicKey));
-      }
-      else if (walletTypes.WALLETCONNECT === user?.walletName) {
+      } else if (walletTypes.WALLETCONNECT === user?.walletName) {
         if (user?.walletName) return;
-        const address =
-        await kitWalletConnect.getAddress();
+        const address = await kitWalletConnectGlobal.getAddress();
         dispatch(setUserWalletAddress(address));
       }
     } catch (err) {

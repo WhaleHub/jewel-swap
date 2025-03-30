@@ -47,7 +47,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { kitWalletConnect } from "../Navbar";
+import { kitWalletConnectGlobal } from "../Navbar";
 import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 
 type PoolType = {
@@ -159,9 +159,9 @@ function BlubAqua() {
     });
 
     const wallet =
-          user?.walletName === WALLET_CONNECT_ID
-            ? await kitWalletConnect.getAddress()
-            : await kit.getAddress();
+      user?.walletName === WALLET_CONNECT_ID
+        ? await kitWalletConnectGlobal.getAddress()
+        : await kit.getAddress();
 
     if (!wallet.address) {
       dispatch(providingLp(false));
@@ -269,17 +269,17 @@ function BlubAqua() {
         ? new LobstrModule()
         : new FreighterModule();
 
-        const kit: StellarWalletsKit = new StellarWalletsKit({
-          network: WalletNetwork.PUBLIC,
-          selectedWalletId:
-            user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-          modules: [selectedModule],
-        });
+    const kit: StellarWalletsKit = new StellarWalletsKit({
+      network: WalletNetwork.PUBLIC,
+      selectedWalletId:
+        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+      modules: [selectedModule],
+    });
 
-   const address =
-         user?.walletName === WALLET_CONNECT_ID
-           ? await kitWalletConnect.getAddress()
-           : await kit.getAddress();
+    const address =
+      user?.walletName === WALLET_CONNECT_ID
+        ? await kitWalletConnectGlobal.getAddress()
+        : await kit.getAddress();
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address.address);
 

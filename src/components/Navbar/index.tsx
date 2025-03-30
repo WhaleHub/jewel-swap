@@ -22,6 +22,7 @@ import {
   FreighterModule,
   ISupportedWallet,
   LOBSTR_ID,
+  LobstrModule,
   StellarWalletsKit,
   WalletNetwork,
   XBULL_ID,
@@ -35,10 +36,14 @@ import {
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
-export let kitWalletConnect:StellarWalletsKit | any = new StellarWalletsKit({
+export let kitWalletConnectGlobal:
+  | StellarWalletsKit
+  | any = new StellarWalletsKit({
   selectedWalletId: WALLET_CONNECT_ID,
   network: WalletNetwork.PUBLIC,
   modules: [
+    new LobstrModule(),
+    new FreighterModule(),
     new WalletConnectModule({
       url: "app.whalehub.io",
       projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
@@ -77,10 +82,10 @@ const Navbar = () => {
         } else if (walletType === walletTypes.WALLETCONNECT) {
           console.log("started");
 
-          await kitWalletConnect.openModal({
+          await kitWalletConnectGlobal.openModal({
             onWalletSelected: async (option: ISupportedWallet) => {
-              kitWalletConnect.setWallet(option.id);
-              const { address } = await kitWalletConnect.getAddress();
+              kitWalletConnectGlobal.setWallet(option.id);
+              const { address } = await kitWalletConnectGlobal.getAddress();
               console.log(address);
 
               dispatch(setConnectingWallet(false));
@@ -206,49 +211,50 @@ const Navbar = () => {
                 ) : (
                   <div></div>
                 )}
- 
-                <div className="p-4 border border-solid border-[#B1B3B8]">
-                {user?.userWalletAddress == null ? (
-                  <div className="my-2">
-                    <MenuItem>
-                      <button
-                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
-                        onClick={() =>
-                          handleWalletConnections(walletTypes.WALLETCONNECT)
-                        }
-                      >
-                        WalletConnect
-                      </button>
-                    </MenuItem>
-                    <MenuItem>
-                      <button
-                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
-                        onClick={() =>
-                          handleWalletConnections(walletTypes.LOBSTR)
-                        }
-                      >
-                        LOBSTR wallet
-                      </button>
-                    </MenuItem>
 
-                    <MenuItem>
-                      <button
-                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
-                        onClick={() =>
-                          handleWalletConnections(walletTypes.FREIGHTER)
-                        }
-                      >
-                        Freighter wallet
-                      </button>
-                    </MenuItem>
-                  </div>
-                  ):<div></div>}
+                <div className="p-4 border border-solid border-[#B1B3B8]">
+                  {user?.userWalletAddress == null ? (
+                    <div className="my-2">
+                      <MenuItem>
+                        <button
+                          className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
+                          onClick={() =>
+                            handleWalletConnections(walletTypes.WALLETCONNECT)
+                          }
+                        >
+                          WalletConnect
+                        </button>
+                      </MenuItem>
+                      <MenuItem>
+                        <button
+                          className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
+                          onClick={() =>
+                            handleWalletConnections(walletTypes.LOBSTR)
+                          }
+                        >
+                          LOBSTR wallet
+                        </button>
+                      </MenuItem>
+
+                      <MenuItem>
+                        <button
+                          className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
+                          onClick={() =>
+                            handleWalletConnections(walletTypes.FREIGHTER)
+                          }
+                        >
+                          Freighter wallet
+                        </button>
+                      </MenuItem>
+                    </div>
+                  ) : (
+                    <div></div>
+                  )}
                   <div className="text-xs  font-normal text-[#B1B3B8]">
                     By connecting a wallet, you agree to WhaleHub Terms of
                     Service and consent to its Privacy Policy.
                   </div>
                 </div>
-
               </MenuItems>
             </Menu>
             <ToastContainer />

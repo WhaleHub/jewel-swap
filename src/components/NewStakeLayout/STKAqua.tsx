@@ -47,10 +47,10 @@ import {
   WalletConnectAllowedMethods,
   WalletConnectModule,
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
-import { kitWalletConnect } from "../Navbar";
-export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+import { kitWalletConnectGlobal } from "../Navbar";
+import { TailSpin } from "react-loader-spinner";
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function STKAqua() {
-  
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
@@ -58,42 +58,58 @@ function STKAqua() {
   const [dialogTitle, setDialogTitle] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
 
-
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
     (balance) => balance.asset_code === "AQUA"
   );
 
-    useEffect(() => {
-      console.log('balance');
-      console.log(user?.userRecords?.balances);
-     
-    }, [user]);
+  useEffect(() => {
+    console.log("balance");
+    console.log(user?.userRecords?.balances);
+    console.log(user.lockingAqua);
+  }, [user, user.lockingAqua]);
 
   const userAquaBalance = aquaRecord?.balance;
 
   const updateWalletRecords = async () => {
-    console.log("updateWalletRecords")
-    let kit:StellarWalletsKit;
-    if(user?.walletName !== WALLET_CONNECT_ID){
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
+    console.log("updateWalletRecords");
+    let kit: StellarWalletsKit;
+    if (user?.walletName !== WALLET_CONNECT_ID) {
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
 
-     kit = new StellarWalletsKit({
-         network: WalletNetwork.PUBLIC,
-         selectedWalletId:
-           user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-         modules: [selectedModule],
-       });
-      }
+      kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId:
+          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+    }
 
-       const{ address} =
-                user?.walletName === WALLET_CONNECT_ID
-                  ? await kitWalletConnect.getAddress()
-                  : await kit!.getAddress();
+    let kitWalletConnectGlobal:
+  | StellarWalletsKit
+  | any = new StellarWalletsKit({
+  selectedWalletId: WALLET_CONNECT_ID,
+  network: WalletNetwork.PUBLIC,
+  modules: [
+    new WalletConnectModule({
+      url: "app.whalehub.io",
+      projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
+      method: WalletConnectAllowedMethods.SIGN,
+      description: `A DESCRIPTION TO SHOW USERS`,
+      name: "Whalehub",
+      icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+      network: WalletNetwork.PUBLIC,
+    }),
+  ],
+});
 
+    const { address } =
+      user?.walletName === WALLET_CONNECT_ID
+        ? await kitWalletConnectGlobal.getAddress()
+        : await kit!.getAddress();
 
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
@@ -147,7 +163,21 @@ function STKAqua() {
     let signedTxXdr: string = "";
 
     if (user?.walletName === walletTypes.LOBSTR) {
-      signedTxXdr = await signTransaction(transaction.toXDR());
+      const kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [new LobstrModule()],
+      });
+
+      const { signedTxXdr: signed } = await kit.signTransaction(
+        transaction.toXDR(),
+        {
+          address: user?.userWalletAddress || "",
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
+      );
+
+      signedTxXdr = signed;
     } else if (user?.walletName === walletTypes.FREIGHTER) {
       const kit = new StellarWalletsKit({
         network: WalletNetwork.PUBLIC,
@@ -165,13 +195,12 @@ function STKAqua() {
 
       signedTxXdr = signed;
     } else if (user?.walletName === walletTypes.WALLETCONNECT) {
-      const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
-        transaction.toXDR(),
-        {
-          address: user?.userWalletAddress || "",
-          networkPassphrase: WalletNetwork.PUBLIC,
-        }
-      );
+      const {
+        signedTxXdr: signed,
+      } = await kitWalletConnectGlobal.signTransaction(transaction.toXDR(), {
+        address: user?.userWalletAddress || "",
+        networkPassphrase: WalletNetwork.PUBLIC,
+      });
 
       signedTxXdr = signed;
     }
@@ -222,14 +251,12 @@ function STKAqua() {
     const existingTrustlines = senderAccount.balances.map(
       (balance: Balance) => balance.asset_code
     );
-    console.log("trustlines");
-    console.log(existingTrustlines);
 
     if (!existingTrustlines.includes(blubAssetCode)) {
       try {
         await handleAddTrustline();
-        await sleep(5000);
-      
+        await sleep(1000);
+
         toast.success("Trustline added successfully.");
       } catch (error) {
         dispatch(lockingAqua(false));
@@ -262,7 +289,7 @@ function STKAqua() {
         signedTxXdr = await signTransaction(transactionXDR);
       } else if (user?.walletName === walletTypes.WALLETCONNECT) {
         console.log("wallet connect");
-    
+
         let kitWalletConnect = new StellarWalletsKit({
           selectedWalletId: WALLET_CONNECT_ID,
           network: WalletNetwork.PUBLIC,
@@ -278,15 +305,15 @@ function STKAqua() {
             }),
           ],
         });
-        await sleep(2000);
-        const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
+    
+        await sleep(1500);
+        let { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
           transaction.toXDR(),
           {
             address: user?.userWalletAddress || "",
             networkPassphrase: WalletNetwork.PUBLIC,
           }
         );
-
         signedTxXdr = signed;
       } else {
         const kit: StellarWalletsKit = new StellarWalletsKit({
@@ -306,7 +333,6 @@ function STKAqua() {
         signedTxXdr = signed;
       }
 
-      console.log(signedTxXdr);
       dispatch(
         mint({
           assetCode: aquaAssetCode,
@@ -419,13 +445,6 @@ function STKAqua() {
                     )
                   }
                 />
-
-                {/* <div className="absolute bottom-full mb-2 hidden w-48 rounded bg-black text-white text-xs p-2 opacity-0 group-hover:opacity-100 group-hover:block">
-                  Mint BLUB token by locking AQUA token and receive the share of
-                  AQUA governance and yield farming rewards. BLUB is
-                  automatically staked with an option to unstake and add
-                  liquidity in the AQUA-BLUB pool.
-                </div> */}
               </div>
             </div>
 
@@ -467,7 +486,23 @@ function STKAqua() {
               onClick={handleLockAqua}
               disabled={user?.lockingAqua}
             >
-              Convert & Stake
+              {!user?.lockingAqua ? (
+                <span> Convert & Stake </span>
+              ) : (
+                <div className="flex justify-center items-center gap-[10px]">
+                  <span className="text-white">Processing...</span>
+                  <TailSpin
+                    height="18"
+                    width="18"
+                    color="#ffffff"
+                    ariaLabel="tail-spin-loading"
+                    radius="1"
+                    wrapperStyle={{}}
+                    wrapperClass=""
+                    visible={true}
+                  />
+                </div>
+              )}
             </Button>
           </div>
         </div>
