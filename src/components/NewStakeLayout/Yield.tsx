@@ -139,27 +139,31 @@ function Yield() {
 
   const updateWalletRecords = async () => {
     console.log("updateWalletRecords");
-    let kit: StellarWalletsKit;
-    if (user?.walletName !== WALLET_CONNECT_ID) {
-      const selectedModule =
-        user?.walletName === LOBSTR_ID
-          ? new LobstrModule()
-          : new FreighterModule();
+    // let kit: StellarWalletsKit;
+    // if (user?.walletName !== WALLET_CONNECT_ID) {
+    //   const selectedModule =
+    //     user?.walletName === LOBSTR_ID
+    //       ? new LobstrModule()
+    //       : new FreighterModule();
 
-      kit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId:
-          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-        modules: [selectedModule],
-      });
-    }
+    //   kit = new StellarWalletsKit({
+    //     network: WalletNetwork.PUBLIC,
+    //     selectedWalletId:
+    //       user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+    //     modules: [selectedModule],
+    //   });
+    // }
 
 
 
-    const { address } =
-      user?.walletName === WALLET_CONNECT_ID
-        ? await kitWalletConnectGlobal.getAddress()
-        : await kit!.getAddress();
+    // const { address } =
+    //   user?.walletName === WALLET_CONNECT_ID
+    //     ? await kitWalletConnectGlobal.getAddress()
+    //     : await kit!.getAddress();
+
+     const { address } =
+     await kitWalletConnectGlobal.getAddress();
+
 
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
@@ -172,41 +176,10 @@ function Yield() {
   const handleRestake = async () => {
     console.log("handleRestake");
     let kit: StellarWalletsKit;
-    if (user?.walletName !== WALLET_CONNECT_ID) {
-      const selectedModule =
-        user?.walletName === LOBSTR_ID
-          ? new LobstrModule()
-          : new FreighterModule();
 
-      kit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId:
-          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-        modules: [selectedModule],
-      });
-    }
-     let kitWalletConnectGlobal:
-      | StellarWalletsKit
-      | any = new StellarWalletsKit({
-      selectedWalletId: WALLET_CONNECT_ID,
-      network: WalletNetwork.PUBLIC,
-      modules: [
-        new WalletConnectModule({
-          url: "app.whalehub.io",
-          projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
-          method: WalletConnectAllowedMethods.SIGN,
-          description: `A DESCRIPTION TO SHOW USERS`,
-          name: "Whalehub",
-          icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
-          network: WalletNetwork.PUBLIC,
-        }),
-      ],
-    });
-
-    const { address } =
-      user?.walletName === WALLET_CONNECT_ID
-        ? await kitWalletConnectGlobal.getAddress()
-        : await kit!.getAddress();
+        const { address } =
+     await kitWalletConnectGlobal.getAddress()
+    
     if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
@@ -262,7 +235,14 @@ function Yield() {
 
       let signedTxXdr: string = "";
       if (user?.walletName === walletTypes.LOBSTR) {
-        signedTxXdr = await signTransaction(transactionXDR);
+        const { signedTxXdr: signed } = await kitWalletConnectGlobal.signTransaction(
+          transactionXDR,
+          {
+            address: `${user?.userWalletAddress}`,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
       }
       if (user?.walletName === walletTypes.WALLETCONNECT) {
         let kitWalletConnect = new StellarWalletsKit({
@@ -291,14 +271,8 @@ function Yield() {
 
         signedTxXdr = signed;
       } else {
-        const kit: StellarWalletsKit = new StellarWalletsKit({
-          network: WalletNetwork.PUBLIC,
-          selectedWalletId: FREIGHTER_ID,
-          modules: [new FreighterModule()],
-        });
-        transactionBuilder.addOperation(paymentOperation).setTimeout(180);
 
-        const { signedTxXdr: signed } = await kit.signTransaction(
+        const { signedTxXdr: signed } = await kitWalletConnectGlobal.signTransaction(
           transactionXDR,
           {
             address: `${user?.userWalletAddress}`,
