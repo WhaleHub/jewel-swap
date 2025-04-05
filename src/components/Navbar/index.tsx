@@ -239,7 +239,7 @@ const Navbar = () => {
                           WalletConnect
                         </button>
                       </MenuItem>
-                      <MenuItem>
+                      {/* <MenuItem>
                         <button
                           className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
                           onClick={() =>
@@ -248,7 +248,7 @@ const Navbar = () => {
                         >
                           LOBSTR wallet
                         </button>
-                      </MenuItem>
+                      </MenuItem> */}
 
                       <MenuItem>
                         <button

@@ -64,6 +64,7 @@ function STKAqua() {
   );
 
   useEffect(() => {
+
     console.log("balance");
     console.log(user?.userRecords?.balances);
     console.log(user.lockingAqua);
@@ -108,10 +109,17 @@ function STKAqua() {
 
     const { address } =
     kitWalletConnectGlobal.getAddress()
+    console.log("got address" + address);
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
     console.log(wrappedAccount.balances);
     console.log(getAccountInfo(address));
+
+    const claimable = user?.userRecords?.account?.claimableRecords?.reduce(
+      (total: any, item: any) => total + parseFloat(item.amount),
+      0
+    );
+    console.log("claimable" + claimable);
     dispatch(getAccountInfo(address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };

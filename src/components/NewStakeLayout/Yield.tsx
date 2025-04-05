@@ -66,11 +66,6 @@ function Yield() {
     (balance) => balance.asset_code === "BLUB"
   );
 
-  // //get user aqua record
-  // const aquaRecord = user?.userRecords?.balances?.find(
-  //   (balance) => balance.asset_code === "AQUA"
-  // );
-
   const claimableBalance = user?.userRecords?.account?.claimableRecords?.reduce(
     (total: any, item: any) => total + parseFloat(item.amount),
     0
@@ -95,16 +90,12 @@ function Yield() {
         return Number(total) + Number(record.assetBAmount);
       }, 0) || 0;
 
-  // Add the two calculated values
-  const poolAndClaimBalance =
-    Number(userPoolBalances) + Number(accountClaimableRecords);
+  // // Add the two calculated values
+  // const poolAndClaimBalance =
+  //   Number(userPoolBalances) + Number(accountClaimableRecords);
 
   const handleSetMaxStakeBlub = () => {
-    // const depositAmount =
-    //   typeof blubBalance === "number" &&
-    //   !isNaN(blubBalance)
-    //     ? Number(blubBalance)
-    //     : 0;
+
 
     setBlubStakeAmount(Number(blubBalance));
   };
@@ -328,7 +319,8 @@ function Yield() {
 
   useEffect(() => {
     console.log("tst");
-    console.log(user?.userRecords?.account?.claimableRecords);
+    console.log("record" + user?.userRecords?.account?.claimableRecords);
+    console.log("record" + claimableBalance);
     if (user?.restaked) {
       updateWalletRecords();
       toast.success("BLUB Locked successfully!");
@@ -342,7 +334,9 @@ function Yield() {
       dispatch(resetStateValues());
       dispatch(unStakingAqua(false));
     }
-  }, [user?.restaked, user?.unStakedAqua]);
+  }, [user?.restaked, user?.unStakedAqua, user?.userRecords, user]);
+
+
 
   return (
     <div id="Yield_section">
