@@ -301,6 +301,7 @@ function STKAqua() {
           signedTxXdr = signed;
         }
         else{
+         
         const { signedTxXdr: signed } = await kitWalletConnectGlobal.signTransaction(
           transactionXDR,
           {
@@ -349,6 +350,7 @@ function STKAqua() {
              new FreighterModule()
             ],
           });
+          await sleep(750);
           const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
             transactionXDR,
             {
