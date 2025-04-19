@@ -356,7 +356,7 @@ function STKAqua() {
           ],
         });
     
-        await sleep(1500);
+        await sleep(3000);
         let { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
           transaction.toXDR(),
           {
