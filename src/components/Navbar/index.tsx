@@ -42,7 +42,7 @@ export let kitWalletConnectGlobal:
   selectedWalletId: WALLET_CONNECT_ID,
   network: WalletNetwork.PUBLIC,
   modules: [
-    new LobstrModule(),
+    // new LobstrModule(),
     new FreighterModule(),
     new WalletConnectModule({
       url: "app.whalehub.io",
