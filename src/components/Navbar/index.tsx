@@ -84,7 +84,7 @@ const Navbar = () => {
       
         } else if (walletType === walletTypes.WALLETCONNECT) {
       
-
+      
           kitWalletConnectGlobal.setWallet(WALLET_CONNECT_ID);
           await kitWalletConnectGlobal.openModal({
             onWalletSelected: async (option: ISupportedWallet) => {

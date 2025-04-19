@@ -191,14 +191,39 @@ function STKAqua() {
 
       signedTxXdr = signed;
     } else if (user?.walletName === walletTypes.WALLETCONNECT) {
+      // const {
+      //   signedTxXdr: signed,
+      // } = await kitWalletConnectGlobal.signTransaction(transaction.toXDR(), {
+      //   address: user?.userWalletAddress || "",
+      //   networkPassphrase: WalletNetwork.PUBLIC,
+      // });
+
+      // signedTxXdr = signed;
+
+      let kitWalletConnect = new StellarWalletsKit({
+        selectedWalletId: WALLET_CONNECT_ID,
+        network: WalletNetwork.PUBLIC,
+        modules: [
+          new WalletConnectModule({
+            url: "app.whalehub.io",
+            projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
+            method: WalletConnectAllowedMethods.SIGN,
+            description: `A DESCRIPTION TO SHOW USERS`,
+            name: "Whalehub",
+            icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+            network: WalletNetwork.PUBLIC,
+          }),
+        ],
+      });
       const {
         signedTxXdr: signed,
-      } = await kitWalletConnectGlobal.signTransaction(transaction.toXDR(), {
+      } = await kitWalletConnect.signTransaction(transaction.toXDR(), {
         address: user?.userWalletAddress || "",
         networkPassphrase: WalletNetwork.PUBLIC,
       });
 
       signedTxXdr = signed;
+
     }
 
     const HORIZON_SERVER = "https://horizon.stellar.org";
@@ -300,6 +325,7 @@ function STKAqua() {
           );
           signedTxXdr = signed;
         }
+    
         else{
          
         const { signedTxXdr: signed } = await kitWalletConnectGlobal.signTransaction(
