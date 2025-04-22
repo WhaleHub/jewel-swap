@@ -363,7 +363,7 @@ export const userSlice = createSlice({
       state.lockingAqua = false;
     });
 
-    builder.addCase(mint.fulfilled, (state, {}) => {
+    builder.addCase(mint.fulfilled, (state, { }) => {
       state.lockedAqua = true;
     });
 
@@ -376,7 +376,7 @@ export const userSlice = createSlice({
       state.unStakingAqua = true;
     });
 
-    builder.addCase(unStakeAqua.fulfilled, (state, {}) => {
+    builder.addCase(unStakeAqua.fulfilled, (state, { }) => {
       state.unStakedAqua = true;
       state.unStakingAqua = false;
       state.userLockedRewardsAmount = 0;
@@ -391,7 +391,7 @@ export const userSlice = createSlice({
       state.restaking = false;
     });
 
-    builder.addCase(restakeBlub.fulfilled, (state, {}) => {
+    builder.addCase(restakeBlub.fulfilled, (state, { }) => {
       console.log("restaked");
       state.restaked = true;
     });
@@ -405,7 +405,7 @@ export const userSlice = createSlice({
       state.providedLp = false;
     });
 
-    builder.addCase(provideLiquidity.fulfilled, (state, {}) => {
+    builder.addCase(provideLiquidity.fulfilled, (state, { }) => {
       state.providedLp = true;
     });
 
@@ -414,25 +414,25 @@ export const userSlice = createSlice({
     });
 
     //store account
-    builder.addCase(storeAccountBalance.pending, () => {});
+    builder.addCase(storeAccountBalance.pending, () => { });
 
     builder.addCase(storeAccountBalance.fulfilled, (state, { payload }) => {
       state.userRecords.balances = payload;
     });
 
-    builder.addCase(storeAccountBalance.rejected, () => {});
+    builder.addCase(storeAccountBalance.rejected, () => { });
 
     //get user account details from db
-    builder.addCase(getAccountInfo.pending, () => {});
+    builder.addCase(getAccountInfo.pending, () => { });
 
     builder.addCase(getAccountInfo.fulfilled, (state, { payload }) => {
       state.userRecords.account = payload;
     });
 
-    builder.addCase(getAccountInfo.rejected, () => {});
+    builder.addCase(getAccountInfo.rejected, () => { });
 
     //get user locked aqua rewards
-    builder.addCase(getLockedAquaRewardsForAccount.pending, () => {});
+    builder.addCase(getLockedAquaRewardsForAccount.pending, () => { });
 
     builder.addCase(
       getLockedAquaRewardsForAccount.fulfilled,
@@ -442,7 +442,7 @@ export const userSlice = createSlice({
       }
     );
 
-    builder.addCase(getLockedAquaRewardsForAccount.rejected, () => {});
+    builder.addCase(getLockedAquaRewardsForAccount.rejected, () => { });
   },
 });
 

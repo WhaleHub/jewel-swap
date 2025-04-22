@@ -36,25 +36,24 @@ import {
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
-export let kitWalletConnectGlobal:
-  | StellarWalletsKit
-  | any = new StellarWalletsKit({
-  selectedWalletId: WALLET_CONNECT_ID,
-  network: WalletNetwork.PUBLIC,
-  modules: [
-    // new LobstrModule(),
-    new FreighterModule(),
-    new WalletConnectModule({
-      url: "app.whalehub.io",
-      projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
-      method: WalletConnectAllowedMethods.SIGN,
-      description: `A DESCRIPTION TO SHOW USERS`,
-      name: "Whalehub",
-      icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
-      network: WalletNetwork.PUBLIC,
-    }),
-  ],
-});
+export let kitWalletConnectGlobal: StellarWalletsKit | any =
+  new StellarWalletsKit({
+    selectedWalletId: WALLET_CONNECT_ID,
+    network: WalletNetwork.PUBLIC,
+    modules: [
+      // new LobstrModule(),
+      new FreighterModule(),
+      new WalletConnectModule({
+        url: "app.whalehub.io",
+        projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
+        method: WalletConnectAllowedMethods.SIGN,
+        description: `A DESCRIPTION TO SHOW USERS`,
+        name: "Whalehub",
+        icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+        network: WalletNetwork.PUBLIC,
+      }),
+    ],
+  });
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
@@ -64,7 +63,6 @@ const Navbar = () => {
       try {
         if (user?.connectingWallet) return;
         if (walletType === walletTypes.FREIGHTER) {
-        
           kitWalletConnectGlobal.setWallet(FREIGHTER_ID);
           await kitWalletConnectGlobal.openModal({
             onWalletSelected: async (option: ISupportedWallet) => {
@@ -77,14 +75,9 @@ const Navbar = () => {
               dispatch(setWalletConnectName(FREIGHTER_ID));
               dispatch(setWalletConnected(true));
               dispatch(walletSelectionAction(false));
-            }
+            },
           });
-        
-
-      
         } else if (walletType === walletTypes.WALLETCONNECT) {
-      
-      
           kitWalletConnectGlobal.setWallet(WALLET_CONNECT_ID);
           await kitWalletConnectGlobal.openModal({
             onWalletSelected: async (option: ISupportedWallet) => {
@@ -96,7 +89,7 @@ const Navbar = () => {
               dispatch(setWalletConnectName(WALLET_CONNECT_ID));
               dispatch(walletSelectionAction(false));
               dispatch(setWalletConnected(true));
-    
+
               dispatch(setUserWalletAddress(address));
             },
           });
@@ -115,7 +108,6 @@ const Navbar = () => {
               dispatch(setUserWalletAddress(address));
             },
           });
-      
         }
       } catch (err) {
         dispatch(setWalletConnectName(null));
