@@ -1,5 +1,4 @@
-import { useCallback, useRef } from "react";
-import { useState } from "react";
+import { useCallback } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import {
   fetchingWalletInfo,
@@ -16,18 +15,13 @@ import { RootState } from "../../lib/store";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
 import { XMarkIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
-import { getPublicKey } from "@lobstrco/signer-extension-api";
 import {
   FREIGHTER_ID,
   FreighterModule,
   ISupportedWallet,
   LOBSTR_ID,
-  LobstrModule,
   StellarWalletsKit,
   WalletNetwork,
-  XBULL_ID,
-  allowAllModules,
-  xBullModule,
 } from "@creit.tech/stellar-wallets-kit";
 import {
   WALLET_CONNECT_ID,
@@ -35,8 +29,9 @@ import {
   WalletConnectModule,
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import clsx from "clsx";
-import { ToastContainer, toast } from "react-toastify";
-export let kitWalletConnectGlobal: StellarWalletsKit | any =
+import { ToastContainer } from "react-toastify";
+
+export const kitWalletConnectGlobal: StellarWalletsKit | any =
   new StellarWalletsKit({
     selectedWalletId: WALLET_CONNECT_ID,
     network: WalletNetwork.PUBLIC,
@@ -54,6 +49,7 @@ export let kitWalletConnectGlobal: StellarWalletsKit | any =
       }),
     ],
   });
+
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);

@@ -5,10 +5,6 @@ import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
 import { useEffect, useState } from "react";
-import {
-  StellarWalletsKit,
-  WalletNetwork,
-} from "@creit.tech/stellar-wallets-kit";
 import { StellarService } from "../../services/stellar.service";
 import {
   getAccountInfo,
@@ -36,13 +32,7 @@ import { toast } from "react-toastify";
 import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
-import { walletTypes } from "../../enums";
 import DialogC from "./Dialog";
-import {
-  WALLET_CONNECT_ID,
-  WalletConnectAllowedMethods,
-  WalletConnectModule,
-} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { kitWalletConnectGlobal } from "../Navbar";
 import { TailSpin } from "react-loader-spinner";
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -71,11 +61,12 @@ function STKAqua() {
 
   const updateWalletRecords = async () => {
     console.log("updateWalletRecords");
-    const { address } = kitWalletConnectGlobal.getAddress();
+    const { address } = await kitWalletConnectGlobal.getAddress();
+    console.log("my address:", address);
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
-    console.log(wrappedAccount.balances);
-    console.log(getAccountInfo(address));
+    console.log("updateWalletRecords ===>", wrappedAccount.balances);
+    console.log("updateWalletRecords ===>", getAccountInfo(address));
 
     const claimable = user?.userRecords?.account?.claimableRecords?.reduce(
       (total: any, item: any) => total + parseFloat(item.amount),
@@ -183,10 +174,10 @@ function STKAqua() {
       ).unwrap();
 
       console.log("mint result:", result);
-      dispatch(lockingAqua(false));
-      updateWalletRecords();
       toast.success("Aqua locked successfully!");
       setAquaDepositAmount(0);
+      updateWalletRecords();
+      dispatch(lockingAqua(false));
       dispatch(resetStateValues());
     } catch (err) {
       console.error("Transaction failed:", err);
