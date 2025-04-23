@@ -6,10 +6,6 @@ import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
 import { useEffect, useState } from "react";
 import {
-  FREIGHTER_ID,
-  FreighterModule,
-  LOBSTR_ID,
-  LobstrModule,
   StellarWalletsKit,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
@@ -19,6 +15,7 @@ import {
   lockingAqua,
   mint,
   resetStateValues,
+  setUserbalances,
   storeAccountBalance,
 } from "../../lib/slices/userSlice";
 import {
@@ -40,7 +37,6 @@ import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
-import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
 import {
   WALLET_CONNECT_ID,
@@ -57,24 +53,25 @@ function STKAqua() {
   const [dialogMsg, setDialogMsg] = useState<string>("");
   const [dialogTitle, setDialogTitle] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
+  const [userAquaBalance, setUserAquaBalance] = useState<string>("0");
 
   //get user aqua record
-  const aquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "AQUA"
-  );
+  useEffect(() => {
+    const aquaRecord = user?.userRecords?.balances?.find(
+      (balance) => balance.asset_code === "AQUA"
+    );
+    setUserAquaBalance(aquaRecord?.balance || "0");
+  }, [user?.userRecords?.balances]);
 
   useEffect(() => {
-    console.log("balance");
-    console.log(user?.userRecords?.balances);
-    console.log(user.lockingAqua);
+    console.log("balance:", user?.userRecords?.balances);
+    console.log("lockingAqua:", user.lockingAqua);
   }, [user, user.lockingAqua]);
 
-  const userAquaBalance = aquaRecord?.balance;
 
   const updateWalletRecords = async () => {
     console.log("updateWalletRecords");
     const { address } = kitWalletConnectGlobal.getAddress();
-    console.log("got address" + address);
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
     console.log(wrappedAccount.balances);
@@ -87,6 +84,7 @@ function STKAqua() {
     console.log("claimable" + claimable);
     dispatch(getAccountInfo(address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
+    dispatch(setUserbalances(wrappedAccount.balances));
   };
 
   const handleSetMaxDeposit = () => {
@@ -104,96 +102,8 @@ function STKAqua() {
     setAquaDepositAmount(depositAmount);
   };
 
-  const handleAddTrustline = async () => {
-    const stellarService = new StellarService();
-
-    // Load sender's Stellar account
-    const senderAccount = await stellarService.loadAccount(
-      user?.userWalletAddress as string
-    );
-
-    // Build transaction
-    const transactionBuilder = new TransactionBuilder(senderAccount, {
-      fee: BASE_FEE,
-      networkPassphrase: Networks.PUBLIC,
-    });
-
-    // Add trustline operation
-    transactionBuilder.addOperation(
-      Operation.changeTrust({
-        asset: new Asset(blubAssetCode, blubIssuer),
-        limit: "1000000000",
-      })
-    );
-
-    // Set timeout and build transaction
-    const transaction = transactionBuilder.setTimeout(3000).build();
-
-    // Sign transaction based on wallet type
-    let signedTxXdr: string = "";
-
-    if (user?.walletName === walletTypes.LOBSTR) {
-      const { signedTxXdr: signed } =
-        await kitWalletConnectGlobal.signTransaction(transaction.toXDR(), {
-          address: user?.userWalletAddress || "",
-          networkPassphrase: WalletNetwork.PUBLIC,
-        });
-
-      signedTxXdr = signed;
-    } else if (user?.walletName === walletTypes.FREIGHTER) {
-      const { signedTxXdr: signed } =
-        await kitWalletConnectGlobal.signTransaction(transaction.toXDR(), {
-          address: user?.userWalletAddress || "",
-          networkPassphrase: WalletNetwork.PUBLIC,
-        });
-
-      signedTxXdr = signed;
-    } else if (user?.walletName === walletTypes.WALLETCONNECT) {
-      // const {
-      //   signedTxXdr: signed,
-      // } = await kitWalletConnectGlobal.signTransaction(transaction.toXDR(), {
-      //   address: user?.userWalletAddress || "",
-      //   networkPassphrase: WalletNetwork.PUBLIC,
-      // });
-
-      // signedTxXdr = signed;
-
-      let kitWalletConnect = new StellarWalletsKit({
-        selectedWalletId: WALLET_CONNECT_ID,
-        network: WalletNetwork.PUBLIC,
-        modules: [
-          new WalletConnectModule({
-            url: "app.whalehub.io",
-            projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
-            method: WalletConnectAllowedMethods.SIGN,
-            description: `A DESCRIPTION TO SHOW USERS`,
-            name: "Whalehub",
-            icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
-            network: WalletNetwork.PUBLIC,
-          }),
-        ],
-      });
-      const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
-        transaction.toXDR(),
-        {
-          address: user?.userWalletAddress || "",
-          networkPassphrase: WalletNetwork.PUBLIC,
-        }
-      );
-
-      signedTxXdr = signed;
-    }
-
-    const HORIZON_SERVER = "https://horizon.stellar.org";
-    const transactionToSubmit = TransactionBuilder.fromXDR(
-      signedTxXdr,
-      HORIZON_SERVER
-    );
-
-    await stellarService?.server?.submitTransaction(transactionToSubmit);
-  };
-
   const handleLockAqua = async () => {
+    dispatch(lockingAqua(true));
     if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
@@ -230,19 +140,6 @@ function STKAqua() {
       (balance: Balance) => balance.asset_code
     );
 
-    let addedTrustline = false;
-
-    if (!existingTrustlines.includes(blubAssetCode)) {
-      try {
-        await handleAddTrustline();
-        await sleep(1000);
-        addedTrustline = true;
-        toast.success("Trustline added successfully.");
-      } catch (error) {
-        dispatch(lockingAqua(false));
-        return toast.error("Failed to add trustline.");
-      }
-    }
     try {
       const customAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
       const stakeAmount = aquaDepositAmount.toFixed(7);
@@ -257,6 +154,15 @@ function STKAqua() {
         fee: BASE_FEE,
         networkPassphrase: Networks.PUBLIC,
       });
+
+      if (!existingTrustlines.includes(blubAssetCode)) {
+        transactionBuilder.addOperation(
+          Operation.changeTrust({
+            asset: new Asset(blubAssetCode, blubIssuer),
+            limit: "1000000000",
+          })
+        )
+      }
 
       transactionBuilder.addOperation(paymentOperation).setTimeout(180);
 
@@ -276,8 +182,12 @@ function STKAqua() {
         })
       ).unwrap();
 
-      dispatch(lockingAqua(true));
-      toast.success("Transaction sent!");
+      console.log("mint result:", result);
+      dispatch(lockingAqua(false));
+      updateWalletRecords();
+      toast.success("Aqua locked successfully!");
+      setAquaDepositAmount(0);
+      dispatch(resetStateValues());
     } catch (err) {
       console.error("Transaction failed:", err);
       toast.error("Try again!");
@@ -313,16 +223,6 @@ function STKAqua() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [openDialog]);
-
-  useEffect(() => {
-    if (user?.lockedAqua) {
-      updateWalletRecords();
-      toast.success("Aqua locked successfully!");
-      setAquaDepositAmount(0);
-      dispatch(lockingAqua(false));
-      dispatch(resetStateValues());
-    }
-  }, [user?.lockedAqua, user?.lockedAqua]);
 
   return (
     <div id="reward_section">

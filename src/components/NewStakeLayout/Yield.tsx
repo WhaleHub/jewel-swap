@@ -334,7 +334,8 @@ function Yield() {
       dispatch(resetStateValues());
       dispatch(unStakingAqua(false));
     }
-  }, [user?.restaked, user?.unStakedAqua, user?.userRecords, user]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.restaked, user?.unStakedAqua, user?.userRecords]);
 
 
 

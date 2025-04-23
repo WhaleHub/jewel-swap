@@ -363,7 +363,7 @@ export const userSlice = createSlice({
       state.lockingAqua = false;
     });
 
-    builder.addCase(mint.fulfilled, (state, { }) => {
+    builder.addCase(mint.fulfilled, (state) => {
       state.lockedAqua = true;
     });
 
@@ -376,7 +376,7 @@ export const userSlice = createSlice({
       state.unStakingAqua = true;
     });
 
-    builder.addCase(unStakeAqua.fulfilled, (state, { }) => {
+    builder.addCase(unStakeAqua.fulfilled, (state) => {
       state.unStakedAqua = true;
       state.unStakingAqua = false;
       state.userLockedRewardsAmount = 0;
@@ -391,7 +391,7 @@ export const userSlice = createSlice({
       state.restaking = false;
     });
 
-    builder.addCase(restakeBlub.fulfilled, (state, { }) => {
+    builder.addCase(restakeBlub.fulfilled, (state) => {
       console.log("restaked");
       state.restaked = true;
     });
@@ -405,7 +405,7 @@ export const userSlice = createSlice({
       state.providedLp = false;
     });
 
-    builder.addCase(provideLiquidity.fulfilled, (state, { }) => {
+    builder.addCase(provideLiquidity.fulfilled, (state) => {
       state.providedLp = true;
     });
 
