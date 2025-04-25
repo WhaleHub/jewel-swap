@@ -50,16 +50,9 @@ function STKAqua() {
       (balance) => balance.asset_code === "AQUA"
     );
     setUserAquaBalance(aquaRecord?.balance || "0");
-    console.log("balance:", user?.userRecords?.balances);
   }, [user?.userRecords?.balances]);
 
-  useEffect(() => {
-    console.log("lockingAqua:", user?.lockingAqua);
-  }, [user?.lockingAqua]);
-
-
   const updateWalletRecords = async () => {
-    console.log("updateWalletRecords");
     const { address } = await kitWalletConnectGlobal.getAddress();
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
@@ -158,7 +151,7 @@ function STKAqua() {
       const { signedTxXdr: signedTx } =
         await kitWalletConnectGlobal.signTransaction(transactionXDR);
 
-      const result = await dispatch(
+      await dispatch(
         mint({
           assetCode: aquaAssetCode,
           assetIssuer: aquaAssetIssuer,
@@ -168,7 +161,6 @@ function STKAqua() {
         })
       ).unwrap();
 
-      console.log("mint result:", result);
       toast.success("Aqua locked successfully!");
       setAquaDepositAmount(0);
       updateWalletRecords();
@@ -187,7 +179,7 @@ function STKAqua() {
     setDialogTitle(title);
   };
 
-  const closeModal = () => {
+  const closeDialog = () => {
     setOptDialog(false);
   };
 
@@ -365,7 +357,7 @@ function STKAqua() {
         msg={dialogMsg}
         openDialog={openDialog}
         dialogTitle={dialogTitle}
-        closeModal={closeModal}
+        closeModal={closeDialog}
       />
     </div>
   );
