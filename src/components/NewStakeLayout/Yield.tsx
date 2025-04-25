@@ -74,18 +74,6 @@ function Yield() {
         return Number(total) + Number(record.amount);
       }, 0) || 0;
 
-  const userPoolBalances =
-    user?.userRecords?.account?.pools
-      ?.filter((pool: any) => pool.claimed === "UNCLAIMED")
-      ?.filter((pool: any) => pool.depositType === "LOCKER")
-      ?.filter((pool: any) => pool.assetB.code === "AQUA")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.assetBAmount);
-      }, 0) || 0;
-
-  // // Add the two calculated values
-  // const poolAndClaimBalance =
-  //   Number(userPoolBalances) + Number(accountClaimableRecords);
 
   const handleSetMaxStakeBlub = () => {
     setBlubStakeAmount(Number(userBlubBalance));
@@ -103,9 +91,6 @@ function Yield() {
 
   const handleUnstakeAqua = async () => {
     if (Number(blubUnstakeAmount) < 1) return toast.warn("Nothing to unstake");
-
-    // if (Number(blubUnstakeAmount) > poolAndClaimBalance)
-    //   return toast.warn("Unstake amount exceeds the pool balance");
 
     if (!user?.userWalletAddress) {
       return toast.warn("Please connect wallet.");
@@ -241,6 +226,7 @@ function Yield() {
       updateWalletRecords();
       setIsRestaking(false);
       dispatch(resetStateValues());
+      setBlubStakeAmount(0);
       toast.success("BLUB Locked successfully!");
     }
 
@@ -248,6 +234,7 @@ function Yield() {
       updateWalletRecords();
       setIsUnstaking(false);
       dispatch(resetStateValues());
+      setBlubUnstakeAmount(0);
       toast.success("Blub unstaked successfully!");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
