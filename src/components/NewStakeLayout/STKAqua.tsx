@@ -8,7 +8,6 @@ import { useEffect, useState } from "react";
 import { StellarService } from "../../services/stellar.service";
 import {
   getAccountInfo,
-  lockingAqua,
   mint,
   resetStateValues,
   setUserbalances,
@@ -44,6 +43,7 @@ function STKAqua() {
   const [dialogTitle, setDialogTitle] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
   const [userAquaBalance, setUserAquaBalance] = useState<string>("0");
+  const [isLockingAqua, setIsLockingAqua] = useState<boolean>(false);
 
   //get user aqua record
   useEffect(() => {
@@ -51,28 +51,25 @@ function STKAqua() {
       (balance) => balance.asset_code === "AQUA"
     );
     setUserAquaBalance(aquaRecord?.balance || "0");
+    console.log("balance:", user?.userRecords?.balances);
   }, [user?.userRecords?.balances]);
 
   useEffect(() => {
-    console.log("balance:", user?.userRecords?.balances);
-    console.log("lockingAqua:", user.lockingAqua);
-  }, [user, user.lockingAqua]);
+    console.log("lockingAqua:", user?.lockingAqua);
+  }, [user?.lockingAqua]);
 
 
   const updateWalletRecords = async () => {
     console.log("updateWalletRecords");
     const { address } = await kitWalletConnectGlobal.getAddress();
-    console.log("my address:", address);
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
-    console.log("updateWalletRecords ===>", wrappedAccount.balances);
-    console.log("updateWalletRecords ===>", getAccountInfo(address));
 
     const claimable = user?.userRecords?.account?.claimableRecords?.reduce(
       (total: any, item: any) => total + parseFloat(item.amount),
       0
     );
-    console.log("claimable" + claimable);
+    console.log("claimable:" + claimable);
     dispatch(getAccountInfo(address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
     dispatch(setUserbalances(wrappedAccount.balances));
@@ -94,29 +91,29 @@ function STKAqua() {
   };
 
   const handleLockAqua = async () => {
-    dispatch(lockingAqua(true));
+    setIsLockingAqua(true);
     if (!user?.userWalletAddress) {
-      dispatch(lockingAqua(false));
+      setIsLockingAqua(false);
       return toast.warn("Please connect wallet.");
     }
 
     if (!userAquaBalance) {
-      dispatch(lockingAqua(false));
+      setIsLockingAqua(false);
       return toast.warn("Balance is low");
     }
 
     if (!user) {
-      dispatch(lockingAqua(false));
+      setIsLockingAqua(false);
       return toast.warn("Global state not initialized.");
     }
 
     if (!aquaDepositAmount) {
-      dispatch(lockingAqua(false));
+      setIsLockingAqua(false);
       return toast.warn("Please input amount to stake.");
     }
 
     if (aquaDepositAmount < MIN_DEPOSIT_AMOUNT) {
-      dispatch(lockingAqua(false));
+      setIsLockingAqua(false);
       return toast.warn(
         `Deposit amount should be higher than ${MIN_DEPOSIT_AMOUNT}.`
       );
@@ -177,12 +174,12 @@ function STKAqua() {
       toast.success("Aqua locked successfully!");
       setAquaDepositAmount(0);
       updateWalletRecords();
-      dispatch(lockingAqua(false));
+      setIsLockingAqua(false);
       dispatch(resetStateValues());
     } catch (err) {
       console.error("Transaction failed:", err);
       toast.error("Try again!");
-      dispatch(lockingAqua(false));
+      setIsLockingAqua(false);
     }
   };
 
@@ -301,9 +298,9 @@ function STKAqua() {
             <Button
               className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold cursor-pointer"
               onClick={handleLockAqua}
-              disabled={user?.lockingAqua}
+              disabled={isLockingAqua}
             >
-              {!user?.lockingAqua ? (
+              {!isLockingAqua ? (
                 <span> Convert & Stake </span>
               ) : (
                 <div className="flex justify-center items-center gap-[10px]">

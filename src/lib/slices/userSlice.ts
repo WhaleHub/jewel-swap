@@ -360,11 +360,12 @@ export const userSlice = createSlice({
   extraReducers(builder) {
     //mint
     builder.addCase(mint.pending, (state) => {
-      state.lockingAqua = false;
+      state.lockingAqua = true;
     });
 
     builder.addCase(mint.fulfilled, (state) => {
       state.lockedAqua = true;
+      state.lockingAqua = false;
     });
 
     builder.addCase(mint.rejected, (state) => {
