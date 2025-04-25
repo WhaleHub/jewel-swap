@@ -5,23 +5,15 @@ import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
 import {
-  FREIGHTER_ID,
-  FreighterModule,
-  LOBSTR_ID,
-  LobstrModule,
-  StellarWalletsKit,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
 import { toast } from "react-toastify";
 import {
   getAccountInfo,
-  lockingAqua,
   resetStateValues,
   restakeBlub,
-  restaking,
   setUserbalances,
   unStakeAqua,
-  unStakingAqua,
 } from "../../lib/slices/userSlice";
 import { StellarService } from "../../services/stellar.service";
 import { Balance } from "../../utils/interfaces";
@@ -41,16 +33,8 @@ import {
 import { TailSpin } from "react-loader-spinner";
 import AddLiquidity from "./AddLiquidity";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
-import { walletTypes } from "../../enums";
-import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
 import { kitWalletConnectGlobal } from "../Navbar";
-import {
-  WALLET_CONNECT_ID,
-  WalletConnectAllowedMethods,
-  WalletConnectModule,
-} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
-import { sleep } from "./STKAqua";
 
 function Yield() {
   const dispatch = useAppDispatch();

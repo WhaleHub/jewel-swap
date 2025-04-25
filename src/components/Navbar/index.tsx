@@ -73,7 +73,6 @@ const Navbar = () => {
           await kitWalletConnectGlobal.openModal({
             onWalletSelected: async (option: ISupportedWallet) => {
               kitWalletConnectGlobal.setWallet(option.id);
-              console.log("option.id:", option.id);
               const { address } = await kitWalletConnectGlobal.getAddress();
 
               dispatch(setConnectingWallet(false));
