@@ -42,7 +42,7 @@ export const getAppData = createAsyncThunk(
 );
 
 export const appSlice = createSlice({
-  name: "user",
+  name: "app",
   initialState,
   reducers: {},
   extraReducers(builder) {
@@ -54,7 +54,7 @@ export const appSlice = createSlice({
       state.pools = payload.pools;
     });
 
-    builder.addCase(getAppData.rejected, (state, action) => {});
+    builder.addCase(getAppData.rejected, () => {});
   },
 });
 

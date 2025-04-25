@@ -59,19 +59,12 @@ function Yield() {
   const [dialogMsg, setDialogMsg] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
   const [dialogTitle, setDialogTitle] = useState<string>("");
+  const [userBlubBalance, setUserBlubBalance] = useState<string>("0");
+  const [userClaimableBalance, setUserClaimableBalance] = useState<string>("0");
+  const [isRestaking, setIsRestaking] = useState<boolean>(false);
+  const [isUnstaking, setIsUnstaking] = useState<boolean>(false);
 
   const user = useSelector((state: RootState) => state.user);
-
-  const blubRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "BLUB"
-  );
-
-  const claimableBalance = user?.userRecords?.account?.claimableRecords?.reduce(
-    (total: any, item: any) => total + parseFloat(item.amount),
-    0
-  );
-
-  const blubBalance = blubRecord?.balance;
 
   // Calculate accountClaimableRecords
   const accountClaimableRecords =
@@ -95,15 +88,13 @@ function Yield() {
   //   Number(userPoolBalances) + Number(accountClaimableRecords);
 
   const handleSetMaxStakeBlub = () => {
-
-
-    setBlubStakeAmount(Number(blubBalance));
+    setBlubStakeAmount(Number(userBlubBalance));
   };
 
   const handleSetMaxDepositForUnstakeBlub = () => {
     const depositAmount =
       typeof accountClaimableRecords === "number" &&
-      !isNaN(accountClaimableRecords)
+        !isNaN(accountClaimableRecords)
         ? Number(accountClaimableRecords)
         : 0;
 
@@ -111,87 +102,58 @@ function Yield() {
   };
 
   const handleUnstakeAqua = async () => {
-    console.log("handleUnstakeAqua");
     if (Number(blubUnstakeAmount) < 1) return toast.warn("Nothing to unstake");
 
     // if (Number(blubUnstakeAmount) > poolAndClaimBalance)
     //   return toast.warn("Unstake amount exceeds the pool balance");
 
-    console.log(blubUnstakeAmount);
-
-    dispatch(unStakingAqua(true));
-    dispatch(
-      unStakeAqua({
-        senderPublicKey: `${user?.userWalletAddress}`,
-        amountToUnstake: Number(blubUnstakeAmount),
-      })
-    );
+    if (!user?.userWalletAddress) {
+      return toast.warn("Please connect wallet.");
+    }
+    setIsUnstaking(true);
+    try {
+      dispatch(
+        unStakeAqua({
+          senderPublicKey: `${user.userWalletAddress}`,
+          amountToUnstake: Number(blubUnstakeAmount),
+        })
+      ).unwrap();
+    } catch (err) {
+      console.log(err);
+      setIsUnstaking(false);
+    }
   };
 
   const updateWalletRecords = async () => {
-    console.log("updateWalletRecords");
-    // let kit: StellarWalletsKit;
-    // if (user?.walletName !== WALLET_CONNECT_ID) {
-    //   const selectedModule =
-    //     user?.walletName === LOBSTR_ID
-    //       ? new LobstrModule()
-    //       : new FreighterModule();
-
-    //   kit = new StellarWalletsKit({
-    //     network: WalletNetwork.PUBLIC,
-    //     selectedWalletId:
-    //       user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-    //     modules: [selectedModule],
-    //   });
-    // }
-
-
-
-    // const { address } =
-    //   user?.walletName === WALLET_CONNECT_ID
-    //     ? await kitWalletConnectGlobal.getAddress()
-    //     : await kit!.getAddress();
-
-     const { address } =
-     await kitWalletConnectGlobal.getAddress();
-
+    const { address } =
+      await kitWalletConnectGlobal.getAddress();
 
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
-    console.log(wrappedAccount.balances);
-    console.log(getAccountInfo(address));
     dispatch(getAccountInfo(address));
     dispatch(setUserbalances(wrappedAccount.balances));
   };
 
   const handleRestake = async () => {
-    console.log("handleRestake");
-    let kit: StellarWalletsKit;
-
-        const { address } =
-     await kitWalletConnectGlobal.getAddress()
-    
     if (!user?.userWalletAddress) {
-      dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
     }
 
     if (!user) {
-      dispatch(lockingAqua(false));
       return toast.warn("Global state not initialized.");
     }
 
     if (!blubStakeAmount) {
-      dispatch(lockingAqua(false));
       return toast.warn("Please input amount to stake.");
     }
 
-    if (Number(blubBalance) < blubStakeAmount || !blubBalance) {
-      dispatch(lockingAqua(false));
+    if (Number(userBlubBalance) < blubStakeAmount || !userBlubBalance) {
       return toast.warn(`Your balance is low`);
     }
 
-    dispatch(restaking(true));
+    setIsRestaking(true);
+    const { address } =
+      await kitWalletConnectGlobal.getAddress()
     const stellarService = new StellarService();
     const senderAccount = await stellarService.loadAccount(address);
 
@@ -200,7 +162,7 @@ function Yield() {
     );
 
     if (!existingTrustlines.includes(blubAssetCode)) {
-      dispatch(restaking(false));
+      setIsRestaking(false);
       return toast.warn(`You need trustline for ${blubAssetCode}`);
     }
 
@@ -222,56 +184,14 @@ function Yield() {
 
       const transaction = transactionBuilder.build();
       const transactionXDR = transaction.toXDR();
-      console.log(transactionXDR);
 
-      let signedTxXdr: string = "";
-      if (user?.walletName === walletTypes.LOBSTR) {
-        const { signedTxXdr: signed } = await kitWalletConnectGlobal.signTransaction(
-          transactionXDR,
-          {
-            address: `${user?.userWalletAddress}`,
-            networkPassphrase: WalletNetwork.PUBLIC,
-          }
-        );
-        signedTxXdr = signed;
-      }
-      if (user?.walletName === walletTypes.WALLETCONNECT) {
-        let kitWalletConnect = new StellarWalletsKit({
-          selectedWalletId: WALLET_CONNECT_ID,
-          network: WalletNetwork.PUBLIC,
-          modules: [
-            new WalletConnectModule({
-              url: "app.whalehub.io",
-              projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
-              method: WalletConnectAllowedMethods.SIGN,
-              description: `A DESCRIPTION TO SHOW USERS`,
-              name: "Whalehub",
-              icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
-              network: WalletNetwork.PUBLIC,
-            }),
-          ],
-        });
-        await sleep(1000);
-        const { signedTxXdr: signed } = await kitWalletConnect.signTransaction(
-          transactionXDR,
-          {
-            address: user?.userWalletAddress || "",
-            networkPassphrase: WalletNetwork.PUBLIC,
-          }
-        );
-
-        signedTxXdr = signed;
-      } else {
-
-        const { signedTxXdr: signed } = await kitWalletConnectGlobal.signTransaction(
-          transactionXDR,
-          {
-            address: `${user?.userWalletAddress}`,
-            networkPassphrase: WalletNetwork.PUBLIC,
-          }
-        );
-        signedTxXdr = signed;
-      }
+      const { signedTxXdr: signedTxXdr } = await kitWalletConnectGlobal.signTransaction(
+        transactionXDR,
+        {
+          address: `${user?.userWalletAddress}`,
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
+      )
       dispatch(
         restakeBlub({
           assetCode: "BLUB",
@@ -280,11 +200,10 @@ function Yield() {
           signedTxXdr,
           senderPublicKey: `${user?.userWalletAddress}`,
         })
-      );
-      dispatch(restaking(true));
+      ).unwrap();
     } catch (err) {
       console.log(err);
-      dispatch(restaking(false));
+      setIsRestaking(false);
     }
   };
 
@@ -294,7 +213,7 @@ function Yield() {
     setDialogTitle(title);
   };
 
-  const closeModal = () => {
+  const closeDialog = () => {
     setOptDialog(false);
   };
 
@@ -318,26 +237,35 @@ function Yield() {
   }, [openDialog]);
 
   useEffect(() => {
-    console.log("tst");
-    console.log("claimableRecords:" + user?.userRecords?.account?.claimableRecords);
-    console.log("claimableBalance:" + claimableBalance);
     if (user?.restaked) {
       updateWalletRecords();
-      toast.success("BLUB Locked successfully!");
+      setIsRestaking(false);
       dispatch(resetStateValues());
-      dispatch(restaking(false));
+      toast.success("BLUB Locked successfully!");
     }
 
     if (user?.unStakedAqua) {
       updateWalletRecords();
-      toast.success("Blub unstaked successfully!");
+      setIsUnstaking(false);
       dispatch(resetStateValues());
-      dispatch(unStakingAqua(false));
+      toast.success("Blub unstaked successfully!");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.restaked, user?.unStakedAqua, user?.userRecords]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.restaked, user?.unStakedAqua]);
 
+  useEffect(() => {
+    const blubRecord = user?.userRecords?.balances?.find(
+      (balance) => balance.asset_code === "BLUB"
+    );
+    const blubBalance = blubRecord?.balance;
+    const claimableBalance = user?.userRecords?.account?.claimableRecords?.reduce(
+      (total: any, item: any) => total + parseFloat(item.amount),
+      0
+    );
 
+    setUserBlubBalance(blubBalance ?? '0');
+    setUserClaimableBalance(claimableBalance ?? '0');
+  }, [user?.userRecords?.balances, user?.userRecords?.account?.claimableRecords]);
 
   return (
     <div id="Yield_section">
@@ -405,11 +333,10 @@ function Yield() {
               <div className="flex items-center text-normal mt-6 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">BLUB Balance:</div>
                 <div className="font-medium">
-                  {`${
-                    isNaN(Number(blubBalance))
-                      ? 0
-                      : Number(blubBalance).toFixed(2)
-                  } BLUB`}
+                  {`${isNaN(Number(userBlubBalance))
+                    ? 0
+                    : Number(userBlubBalance).toFixed(2)
+                    } BLUB`}
                 </div>
               </div>
 
@@ -417,7 +344,7 @@ function Yield() {
                 className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold"
                 onClick={handleRestake}
               >
-                {!user?.restaking ? (
+                {!isRestaking ? (
                   <span>Stake </span>
                 ) : (
                   <div className="flex justify-center items-center gap-[10px]">
@@ -468,9 +395,9 @@ function Yield() {
                   Staked Balance:
                 </div>
                 <div className="font-medium">
-                  {isNaN(Number(claimableBalance))
+                  {isNaN(Number(userClaimableBalance))
                     ? 0
-                    : Number(claimableBalance).toFixed(2)}{" "}
+                    : Number(userClaimableBalance).toFixed(2)}{" "}
                   BLUB
                 </div>
               </div>
@@ -479,7 +406,7 @@ function Yield() {
                 className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold"
                 onClick={handleUnstakeAqua}
               >
-                {!user?.unStakingAqua ? (
+                {!isUnstaking ? (
                   <span>Unstake</span>
                 ) : (
                   <div className="flex justify-center items-center gap-[10px]">
@@ -507,7 +434,7 @@ function Yield() {
         msg={dialogMsg}
         dialogTitle={dialogTitle}
         openDialog={openDialog}
-        closeModal={closeModal}
+        closeModal={closeDialog}
       />
     </div>
   );

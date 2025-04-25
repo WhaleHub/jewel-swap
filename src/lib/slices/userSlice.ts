@@ -372,11 +372,11 @@ export const userSlice = createSlice({
 
     //mint
     builder.addCase(restakeBlub.pending, (state) => {
-      state.restaking = false;
+      state.restaking = true;
     });
 
     builder.addCase(restakeBlub.fulfilled, (state) => {
-      console.log("restaked");
+      state.restaking = false;
       state.restaked = true;
     });
 
@@ -412,7 +412,6 @@ export const userSlice = createSlice({
     builder.addCase(
       getLockedAquaRewardsForAccount.fulfilled,
       (state, { payload }) => {
-        // console.log(payload);
         state.userLockedRewardsAmount = payload.lockedAquaRewardEstimation;
       }
     );

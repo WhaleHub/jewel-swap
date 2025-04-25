@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { StellarService } from "../../services/stellar.service";
 import {
   getAccountInfo,
+  getLockedAquaRewardsForAccount,
   mint,
   resetStateValues,
   setUserbalances,
@@ -56,13 +57,9 @@ function STKAqua() {
     const { address } = await kitWalletConnectGlobal.getAddress();
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
-
-    const claimable = user?.userRecords?.account?.claimableRecords?.reduce(
-      (total: any, item: any) => total + parseFloat(item.amount),
-      0
-    );
-    console.log("claimable:" + claimable);
+    
     dispatch(getAccountInfo(address));
+    dispatch(getLockedAquaRewardsForAccount(address))
     dispatch(setUserbalances(wrappedAccount.balances));
   };
 
@@ -82,34 +79,29 @@ function STKAqua() {
   };
 
   const handleLockAqua = async () => {
-    setIsLockingAqua(true);
     if (!user?.userWalletAddress) {
-      setIsLockingAqua(false);
       return toast.warn("Please connect wallet.");
     }
 
     if (!userAquaBalance) {
-      setIsLockingAqua(false);
       return toast.warn("Balance is low");
     }
 
     if (!user) {
-      setIsLockingAqua(false);
       return toast.warn("Global state not initialized.");
     }
 
     if (!aquaDepositAmount) {
-      setIsLockingAqua(false);
       return toast.warn("Please input amount to stake.");
     }
 
     if (aquaDepositAmount < MIN_DEPOSIT_AMOUNT) {
-      setIsLockingAqua(false);
       return toast.warn(
         `Deposit amount should be higher than ${MIN_DEPOSIT_AMOUNT}.`
       );
     }
 
+    setIsLockingAqua(true);
     const stellarService = new StellarService();
 
     const senderAccount = await stellarService.loadAccount(
@@ -151,7 +143,7 @@ function STKAqua() {
       const { signedTxXdr: signedTx } =
         await kitWalletConnectGlobal.signTransaction(transactionXDR);
 
-      await dispatch(
+      dispatch(
         mint({
           assetCode: aquaAssetCode,
           assetIssuer: aquaAssetIssuer,
@@ -160,12 +152,6 @@ function STKAqua() {
           senderPublicKey: user?.userWalletAddress,
         })
       ).unwrap();
-
-      toast.success("Aqua locked successfully!");
-      setAquaDepositAmount(0);
-      updateWalletRecords();
-      setIsLockingAqua(false);
-      dispatch(resetStateValues());
     } catch (err) {
       console.error("Transaction failed:", err);
       toast.error("Try again!");
@@ -201,6 +187,16 @@ function STKAqua() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [openDialog]);
+
+  useEffect(() => {
+    if (user?.lockedAqua) {
+      toast.success("Aqua locked successfully!");
+      setAquaDepositAmount(0);
+      updateWalletRecords();
+      setIsLockingAqua(false);
+      dispatch(resetStateValues());
+    }
+  }, [user?.lockedAqua]);
 
   return (
     <div id="reward_section">
@@ -346,7 +342,7 @@ function STKAqua() {
             <div className="flex items-center bg-[#0E111B] px-5 py-2 mt-5 rounded-[8px] justify-between">
               <div className="text-sm font-normal text-white">Total</div>
               <div className="p-2 text-2xl font-normal">
-                {user?.userLockedRewardsAmount ?? 0} BLUB
+                {isNaN(Number(user?.userLockedRewardsAmount)) ? 0 : Number(user?.userLockedRewardsAmount).toFixed(4)} BLUB
               </div>
             </div>
           </div>
