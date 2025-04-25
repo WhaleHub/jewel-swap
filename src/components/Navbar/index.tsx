@@ -60,32 +60,26 @@ const Navbar = () => {
         if (user?.connectingWallet) return;
         if (walletType === walletTypes.FREIGHTER) {
           kitWalletConnectGlobal.setWallet(FREIGHTER_ID);
-          await kitWalletConnectGlobal.openModal({
-            onWalletSelected: async (option: ISupportedWallet) => {
-              const { address } = await kitWalletConnectGlobal.getAddress();
-
-              await setAllowed();
-              await isAllowed();
-              dispatch(setUserWalletAddress(address));
-              dispatch(setConnectingWallet(false));
-              dispatch(setWalletConnectName(FREIGHTER_ID));
-              dispatch(setWalletConnected(true));
-              dispatch(walletSelectionAction(false));
-            },
-          });
+          const { address } = await kitWalletConnectGlobal.getAddress();
+          await setAllowed();
+          await isAllowed();
+          dispatch(setConnectingWallet(false));
+          dispatch(setWalletConnectName(FREIGHTER_ID));
+          dispatch(walletSelectionAction(false));
+          dispatch(setWalletConnected(true));
+          dispatch(setUserWalletAddress(address));
         } else if (walletType === walletTypes.WALLETCONNECT) {
           kitWalletConnectGlobal.setWallet(WALLET_CONNECT_ID);
           await kitWalletConnectGlobal.openModal({
             onWalletSelected: async (option: ISupportedWallet) => {
               kitWalletConnectGlobal.setWallet(option.id);
+              console.log("option.id:", option.id);
               const { address } = await kitWalletConnectGlobal.getAddress();
-              console.log(address);
 
               dispatch(setConnectingWallet(false));
               dispatch(setWalletConnectName(WALLET_CONNECT_ID));
               dispatch(walletSelectionAction(false));
               dispatch(setWalletConnected(true));
-
               dispatch(setUserWalletAddress(address));
             },
           });
@@ -118,7 +112,7 @@ const Navbar = () => {
     dispatch(fetchingWalletInfo(false));
     dispatch(setWalletConnectName(null));
     dispatch(setUserbalances(null));
-    kitWalletConnectGlobal.handleDisconnect();
+    kitWalletConnectGlobal.disconnect();
   }, [dispatch]);
 
   const onScrollToRwards = () => {
@@ -173,10 +167,9 @@ const Navbar = () => {
                 // }}
                 className={clsx(
                   `inline-flex items-center gap-2 py-3 px-8 text-sm/6 font-semibold text-white shadow-inner shadow-white/10 focus:outline-none data-[hover]:bg-gray-700 data-[open]:bg-gray-700 data-[focus]:outline-1 data-[focus]:outline-white rounded-lg text-base`,
-                  `${
-                    !user?.userWalletAddress && !user?.walletConnected
-                      ? "bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)]"
-                      : "b-[#3C404D]"
+                  `${!user?.userWalletAddress && !user?.walletConnected
+                    ? "bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)]"
+                    : "b-[#3C404D]"
                   }`,
                   `${user?.userWalletAddress ? "border border-[#B1B3B8]" : ""}`
                 )}
@@ -191,10 +184,9 @@ const Navbar = () => {
                 anchor="bottom end"
                 className={clsx(
                   "w-96 origin-top-right border bg-[#151A29] border-white/5  text-sm/6 text-white transition duration-100 ease-out [--anchor-gap:var(--spacing-1)] focus:outline-none data-[closed]:scale-95 data-[closed]:opacity-0 z-40 mt-3",
-                  `${
-                    user?.userWalletAddress && user?.walletConnected
-                      ? "hidden"
-                      : "block"
+                  `${user?.userWalletAddress && user?.walletConnected
+                    ? "hidden"
+                    : "block"
                   }`
                 )}
               >
