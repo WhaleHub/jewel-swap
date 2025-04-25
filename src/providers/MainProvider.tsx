@@ -16,7 +16,6 @@ import {
   setUserWalletAddress,
   setWalletConnected,
   setWalletConnectName,
-  storeAccountBalance,
 } from "../lib/slices/userSlice";
 import { useSelector } from "react-redux";
 import { RootState } from "../lib/store";

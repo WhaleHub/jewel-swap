@@ -29,7 +29,7 @@ import {
   resetStateValues,
   restakeBlub,
   restaking,
-  storeAccountBalance,
+  setUserbalances,
   unStakeAqua,
   unStakingAqua,
 } from "../../lib/slices/userSlice";
@@ -163,7 +163,7 @@ function Restake() {
     console.log(wrappedAccount.balances);
     console.log(getAccountInfo(address));
     dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+    dispatch(setUserbalances(wrappedAccount.balances));
   };
 
   const handleRestake = async () => {

@@ -15,7 +15,7 @@ import {
   provideLiquidity,
   providingLp,
   resetStateValues,
-  storeAccountBalance,
+  setUserbalances,
 } from "../../lib/slices/userSlice";
 import { useAppDispatch } from "../../lib/hooks";
 import { StellarService } from "../../services/stellar.service";
@@ -284,7 +284,7 @@ function BlubAqua() {
     const wrappedAccount = await stellarService.loadAccount(address.address);
 
     dispatch(getAccountInfo(address.address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+    dispatch(setUserbalances(wrappedAccount.balances));
   };
 
   const openModal = (pool: string) => {

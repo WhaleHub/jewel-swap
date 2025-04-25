@@ -11,7 +11,6 @@ import {
   mint,
   resetStateValues,
   setUserbalances,
-  storeAccountBalance,
 } from "../../lib/slices/userSlice";
 import {
   Asset,
@@ -71,7 +70,6 @@ function STKAqua() {
     );
     console.log("claimable:" + claimable);
     dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
     dispatch(setUserbalances(wrappedAccount.balances));
   };
 

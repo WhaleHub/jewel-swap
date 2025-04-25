@@ -38,7 +38,7 @@ import {
   provideLiquidity,
   providingLp,
   resetStateValues,
-  storeAccountBalance,
+  setUserbalances,
 } from "../../lib/slices/userSlice";
 import { toast } from "react-toastify";
 import { StellarService } from "../../services/stellar.service";
@@ -225,7 +225,7 @@ function AddLiquidity() {
     const wrappedAccount = await stellarService.loadAccount(address.address);
 
     dispatch(getAccountInfo(address.address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+    dispatch(setUserbalances(wrappedAccount.balances));
   };
 
   const onDialogOpen = (msg: string, title: string) => {

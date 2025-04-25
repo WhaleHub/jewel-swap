@@ -134,23 +134,6 @@ export const getAccountInfo = createAsyncThunk(
   }
 );
 
-export const storeAccountBalance = createAsyncThunk(
-  "user/record",
-  async (values: any[], { rejectWithValue }) => {
-    try {
-      return values;
-    } catch (error: any) {
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
-  }
-);
-
 export const addLP = createAsyncThunk(
   "lock/mint",
   async (values: TransactionData, { rejectWithValue }) => {
@@ -413,15 +396,6 @@ export const userSlice = createSlice({
     builder.addCase(provideLiquidity.rejected, (state) => {
       state.providedLp = false;
     });
-
-    //store account
-    builder.addCase(storeAccountBalance.pending, () => { });
-
-    builder.addCase(storeAccountBalance.fulfilled, (state, { payload }) => {
-      state.userRecords.balances = payload;
-    });
-
-    builder.addCase(storeAccountBalance.rejected, () => { });
 
     //get user account details from db
     builder.addCase(getAccountInfo.pending, () => { });

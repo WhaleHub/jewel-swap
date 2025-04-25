@@ -19,7 +19,7 @@ import {
   resetStateValues,
   restakeBlub,
   restaking,
-  storeAccountBalance,
+  setUserbalances,
   unStakeAqua,
   unStakingAqua,
 } from "../../lib/slices/userSlice";
@@ -161,7 +161,7 @@ function Yield() {
     console.log(wrappedAccount.balances);
     console.log(getAccountInfo(address));
     dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+    dispatch(setUserbalances(wrappedAccount.balances));
   };
 
   const handleRestake = async () => {
@@ -319,8 +319,8 @@ function Yield() {
 
   useEffect(() => {
     console.log("tst");
-    console.log("record" + user?.userRecords?.account?.claimableRecords);
-    console.log("record" + claimableBalance);
+    console.log("claimableRecords:" + user?.userRecords?.account?.claimableRecords);
+    console.log("claimableBalance:" + claimableBalance);
     if (user?.restaked) {
       updateWalletRecords();
       toast.success("BLUB Locked successfully!");

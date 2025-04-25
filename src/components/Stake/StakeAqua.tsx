@@ -28,7 +28,7 @@ import {
   lockingAqua,
   mint,
   resetStateValues,
-  storeAccountBalance,
+  setUserbalances,
 } from "../../lib/slices/userSlice";
 import { useAppDispatch } from "../../lib/hooks";
 import { StellarService } from "../../services/stellar.service";
@@ -93,7 +93,7 @@ function StakeAqua() {
     console.log(wrappedAccount.balances);
     console.log(getAccountInfo(address));
     dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+    dispatch(setUserbalances(wrappedAccount.balances));
   };
 
   const handleSetMaxDeposit = () => {
