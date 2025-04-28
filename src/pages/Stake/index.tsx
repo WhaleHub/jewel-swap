@@ -34,12 +34,12 @@ const Stake = () => {
             <img
               className="inline-block size-10 rounded-full"
               src={"/x_icon.svg"}
-              alt="Twitter(X)"
+              alt="X"
             />
           </div>
 
           <div className="div text-2xl font-medium xs:my-3 sm:my-0">
-            Follow us on Twitter(X)
+            Follow us on X
           </div>
 
           <Button
@@ -48,7 +48,7 @@ const Stake = () => {
             target="_blank"
             className="mt-5 text-base font-semibold bg-[white] text-[#151A29] px-5 py-3 rounded-2xl"
           >
-            Follow on Twitter
+            Follow on X
           </Button>
         </div>
       </div>
