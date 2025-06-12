@@ -358,11 +358,12 @@ export const userSlice = createSlice({
   extraReducers(builder) {
     //mint
     builder.addCase(mint.pending, (state) => {
-      state.lockingAqua = false;
+      state.lockingAqua = true;
     });
 
     builder.addCase(mint.fulfilled, (state, {}) => {
       state.lockedAqua = true;
+      state.lockingAqua = false;
     });
 
     builder.addCase(mint.rejected, (state) => {
@@ -384,13 +385,14 @@ export const userSlice = createSlice({
       state.unStakingAqua = false;
     });
 
-    //mint
+    //restake
     builder.addCase(restakeBlub.pending, (state) => {
-      state.restaking = false;
+      state.restaking = true;
     });
 
     builder.addCase(restakeBlub.fulfilled, (state, {}) => {
       state.restaked = true;
+      state.restaking = false;
     });
 
     builder.addCase(restakeBlub.rejected, (state) => {
@@ -399,15 +401,16 @@ export const userSlice = createSlice({
 
     //provide lp
     builder.addCase(provideLiquidity.pending, (state) => {
-      state.providedLp = false;
+      state.providingLp = true;
     });
 
     builder.addCase(provideLiquidity.fulfilled, (state, {}) => {
       state.providedLp = true;
+      state.providingLp = false;
     });
 
     builder.addCase(provideLiquidity.rejected, (state) => {
-      state.providedLp = false;
+      state.providingLp = false;
     });
 
     //store account
