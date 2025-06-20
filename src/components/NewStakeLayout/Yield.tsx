@@ -15,6 +15,7 @@ import {
 import { toast } from "react-toastify";
 import {
   getAccountInfo,
+  getLockedAquaRewardsForAccount,
   lockingAqua,
   resetStateValues,
   restakeBlub,
@@ -60,16 +61,19 @@ function Yield() {
     (balance) => balance.asset_code === "BLUB"
   );
 
-  // //get user aqua record
-  // const aquaRecord = user?.userRecords?.balances?.find(
-  //   (balance) => balance.asset_code === "AQUA"
-  // );
+  // Get the actual BLUB balance from user's wallet (this is what shows the deposited AQUA as BLUB)
+  const actualBlubBalance = blubRecord?.balance || 0;
 
+  // Get claimable balance (rewards/unstakeable amount)
   const claimableBalance = user?.userRecords?.account?.claimableRecords
     ?.filter((item: any) => item.claimed === "UNCLAIMED")
-    .reduce((total: any, item: any) => total + parseFloat(item.amount), 0);
+    .reduce((total: any, item: any) => total + parseFloat(item.amount), 0) || 0;
 
-  const blubBalance = blubRecord?.balance;
+  // For display purposes, combine actual balance and claimable balance for total BLUB
+  const totalBlubBalance = Number(actualBlubBalance) + Number(claimableBalance);
+  
+  // Use actual balance for staking operations
+  const blubBalance = actualBlubBalance;
 
   // Calculate accountClaimableRecords
   const accountClaimableRecords =
@@ -129,23 +133,39 @@ function Yield() {
   };
 
   const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
+    try {
+      let address = user?.userWalletAddress;
+      
+      if (user?.walletName === LOBSTR_ID) {
+        // For Lobstr, use the stored address
+        address = user?.userWalletAddress;
+      } else if (user?.walletName === FREIGHTER_ID) {
+        const kit: StellarWalletsKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const walletData = await kit.getAddress();
+        address = walletData.address;
+      }
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+      if (!address) {
+        console.error('No wallet address available');
+        return;
+      }
 
-    const { address } = await kit.getAddress();
-    const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
 
-    dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+      // Force refresh both account info and balances
+      await Promise.all([
+        dispatch(getAccountInfo(address)),
+        dispatch(storeAccountBalance(wrappedAccount.balances)),
+        dispatch(getLockedAquaRewardsForAccount(address))
+      ]);
+    } catch (error) {
+      console.error('Error updating wallet records:', error);
+    }
   };
 
   const handleRestake = async () => {
@@ -366,10 +386,15 @@ function Yield() {
                 </div>
                 <div className="font-medium">
                   {`${
-                    isNaN(Number(blubBalance))
+                    isNaN(Number(totalBlubBalance))
                       ? 0
-                      : Number(blubBalance).toFixed(2)
+                      : Number(totalBlubBalance).toFixed(2)
                   } BLUB`}
+                </div>
+              </div>
+              <div className="flex items-center text-xs mt-1 space-x-1">
+                <div className="font-normal text-[#6B7280]">
+                  Available: {Number(blubBalance).toFixed(2)} | Staked: {Number(claimableBalance).toFixed(2)}
                 </div>
               </div>
 

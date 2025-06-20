@@ -16,6 +16,7 @@ import {
 import { StellarService } from "../../services/stellar.service";
 import {
   getAccountInfo,
+  getLockedAquaRewardsForAccount,
   lockingAqua,
   mint,
   resetStateValues,
@@ -61,23 +62,42 @@ function STKAqua() {
   const userAquaBalance = aquaRecord?.balance;
 
   const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
+    try {
+      let address = user?.userWalletAddress;
+      
+      if (user?.walletName === walletTypes.LOBSTR) {
+        // For Lobstr, use the stored address
+        address = user?.userWalletAddress;
+      } else if (user?.walletName === walletTypes.FREIGHTER) {
+        const kit: StellarWalletsKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const walletData = await kit.getAddress();
+        address = walletData.address;
+      } else if (user?.walletName === walletTypes.WALLETCONNECT) {
+        const walletData = await kit.getAddress();
+        address = walletData.address;
+      }
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+      if (!address) {
+        console.error('No wallet address available');
+        return;
+      }
 
-    const { address } = await kit.getAddress();
-    const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
 
-    dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+      // Force refresh both account info and balances
+      await Promise.all([
+        dispatch(getAccountInfo(address)),
+        dispatch(storeAccountBalance(wrappedAccount.balances)),
+        dispatch(getLockedAquaRewardsForAccount(address))
+      ]);
+    } catch (error) {
+      console.error('Error updating wallet records:', error);
+    }
   };
 
   const handleSetMaxDeposit = () => {
@@ -417,14 +437,23 @@ function STKAqua() {
               </button>
             </div>
 
-            <div className="flex items-center text-normal mt-6 space-x-1">
-              <div className="font-normal text-[#B1B3B8]">Your balance:</div>
-              <div className="font-medium">
-                {isNaN(parseFloat(`${userAquaBalance}`))
-                  ? "0.00"
-                  : parseFloat(`${userAquaBalance}`).toFixed(2)}{" "}
-                AQUA
+            <div className="flex items-center justify-between text-normal mt-6">
+              <div className="flex items-center space-x-1">
+                <div className="font-normal text-[#B1B3B8]">Your balance:</div>
+                <div className="font-medium">
+                  {isNaN(parseFloat(`${userAquaBalance}`))
+                    ? "0.00"
+                    : parseFloat(`${userAquaBalance}`).toFixed(2)}{" "}
+                  AQUA
+                </div>
               </div>
+              <button
+                onClick={updateWalletRecords}
+                className="text-xs text-[#00CC99] hover:text-[#00AA88] underline"
+                title="Refresh balance"
+              >
+                Refresh
+              </button>
             </div>
 
             <Button

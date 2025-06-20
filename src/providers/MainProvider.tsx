@@ -42,33 +42,29 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
   const user = useSelector((state: RootState) => state.user);
 
   const getWalletInfo = async () => {
-    if (!user?.walletName) return;
-    const stellarService = new StellarService();
-
-    if (user?.walletName === walletTypes.FREIGHTER) {
-      const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: FREIGHTER_ID,
-        modules: [new FreighterModule()],
-      });
-      const { address } = await kit.getAddress();
+    if (!user?.walletName || !user?.userWalletAddress) return;
+    
+    try {
+      const stellarService = new StellarService();
+      const address = user.userWalletAddress;
+      
+      console.log('Fetching wallet info for:', address, 'with wallet:', user.walletName);
+      
       const wrappedAccount = await stellarService.loadAccount(address);
-      console.log(wrappedAccount.balances);
+      console.log('Account balances:', wrappedAccount.balances);
 
-      dispatch(getAppData());
-      dispatch(setUserbalances(wrappedAccount.balances));
-      dispatch(getAccountInfo(address));
+      // Force refresh all user data
+      await Promise.all([
+        dispatch(getAppData()),
+        dispatch(setUserbalances(wrappedAccount.balances)),
+        dispatch(getAccountInfo(address)),
+        dispatch(getLockedAquaRewardsForAccount(address))
+      ]);
+      
       dispatch(fetchingWalletInfo(false));
-      // dispatch(getLockedAquaRewardsForAccount(address));
-    } else if (user?.walletName === walletTypes.LOBSTR) {
-      const address = `${user.userWalletAddress}`;
-      const wrappedAccount = await stellarService.loadAccount(address);
-
-      dispatch(getAppData());
-      dispatch(setUserbalances(wrappedAccount.balances));
-      dispatch(getAccountInfo(address));
+    } catch (error) {
+      console.error('Error fetching wallet info:', error);
       dispatch(fetchingWalletInfo(false));
-      dispatch(getLockedAquaRewardsForAccount(address));
     }
   };
 
@@ -165,6 +161,24 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
       // handleAddTrustline();
     }
   }, [user?.walletConnected, user?.userWalletAddress]);
+
+  // Add auto-refresh for balances every 30 seconds when wallet is connected
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
+    if (user?.userWalletAddress && user?.walletName) {
+      intervalId = setInterval(() => {
+        console.log('Auto-refreshing wallet balances...');
+        getWalletInfo();
+      }, 30000); // 30 seconds
+    }
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [user?.userWalletAddress, user?.walletName]);
 
   return <Fragment>{children}</Fragment>;
 }

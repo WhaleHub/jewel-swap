@@ -40,6 +40,7 @@ module.exports = function (config, env) {
         devServer: {
             hot: true,
             liveReload: true,
+            allowedHosts: ['localhost', '127.0.0.1', '::1']
         },
     };
 };

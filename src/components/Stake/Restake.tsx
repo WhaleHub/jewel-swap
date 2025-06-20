@@ -25,6 +25,7 @@ import {
 } from "@creit.tech/stellar-wallets-kit";
 import {
   getAccountInfo,
+  getLockedAquaRewardsForAccount,
   lockingAqua,
   resetStateValues,
   restakeBlub,
@@ -130,23 +131,39 @@ function Restake() {
   };
 
   const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
+    try {
+      let address = user?.userWalletAddress;
+      
+      if (user?.walletName === LOBSTR_ID) {
+        // For Lobstr, use the stored address
+        address = user?.userWalletAddress;
+      } else if (user?.walletName === FREIGHTER_ID) {
+        const kit: StellarWalletsKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const walletData = await kit.getAddress();
+        address = walletData.address;
+      }
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+      if (!address) {
+        console.error('No wallet address available');
+        return;
+      }
 
-    const { address } = await kit.getAddress();
-    const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
 
-    dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+      // Force refresh both account info and balances
+      await Promise.all([
+        dispatch(getAccountInfo(address)),
+        dispatch(storeAccountBalance(wrappedAccount.balances)),
+        dispatch(getLockedAquaRewardsForAccount(address))
+      ]);
+    } catch (error) {
+      console.error('Error updating wallet records:', error);
+    }
   };
 
   const handleRestake = async () => {
