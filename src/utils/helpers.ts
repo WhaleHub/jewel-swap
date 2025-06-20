@@ -14,6 +14,12 @@ export const refreshWalletBalances = async (
   retryCount: number = 3,
   delayMs: number = 2000
 ): Promise<void> => {
+  // Validate wallet address before attempting any operations
+  if (!userWalletAddress || userWalletAddress === 'null' || userWalletAddress === 'undefined' || userWalletAddress.trim() === '') {
+    console.warn('Invalid wallet address provided to refreshWalletBalances:', userWalletAddress);
+    throw new Error('Invalid wallet address');
+  }
+
   for (let attempt = 1; attempt <= retryCount; attempt++) {
     try {
       const stellarService = new StellarService();
@@ -52,6 +58,12 @@ export const enhancedBalanceRefresh = async (
   immediateDelay: number = 1000,
   secondaryDelay: number = 3000
 ): Promise<void> => {
+  // Validate wallet address before attempting any operations
+  if (!userWalletAddress || userWalletAddress === 'null' || userWalletAddress === 'undefined' || userWalletAddress.trim() === '') {
+    console.warn('Invalid wallet address provided to enhancedBalanceRefresh:', userWalletAddress);
+    return;
+  }
+
   // Immediate refresh with short delay
   setTimeout(async () => {
     try {
