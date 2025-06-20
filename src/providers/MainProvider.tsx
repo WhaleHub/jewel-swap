@@ -45,30 +45,60 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     if (!user?.walletName) return;
     const stellarService = new StellarService();
 
-    if (user?.walletName === walletTypes.FREIGHTER) {
-      const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: FREIGHTER_ID,
-        modules: [new FreighterModule()],
-      });
-      const { address } = await kit.getAddress();
-      const wrappedAccount = await stellarService.loadAccount(address);
-      console.log(wrappedAccount.balances);
+    try {
+      if (user?.walletName === walletTypes.FREIGHTER) {
+        const kit: StellarWalletsKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const { address } = await kit.getAddress();
+        const wrappedAccount = await stellarService.loadAccount(address);
+        console.log(wrappedAccount.balances);
 
-      dispatch(getAppData());
-      dispatch(setUserbalances(wrappedAccount.balances));
-      dispatch(getAccountInfo(address));
-      dispatch(fetchingWalletInfo(false));
-      // dispatch(getLockedAquaRewardsForAccount(address));
-    } else if (user?.walletName === walletTypes.LOBSTR) {
-      const address = `${user.userWalletAddress}`;
-      const wrappedAccount = await stellarService.loadAccount(address);
+        dispatch(getAppData());
+        dispatch(setUserbalances(wrappedAccount.balances));
+        dispatch(getAccountInfo(address));
+        dispatch(fetchingWalletInfo(false));
+        // dispatch(getLockedAquaRewardsForAccount(address));
+      } else if (user?.walletName === walletTypes.LOBSTR) {
+        const address = `${user.userWalletAddress}`;
+        const wrappedAccount = await stellarService.loadAccount(address);
 
-      dispatch(getAppData());
-      dispatch(setUserbalances(wrappedAccount.balances));
-      dispatch(getAccountInfo(address));
+        dispatch(getAppData());
+        dispatch(setUserbalances(wrappedAccount.balances));
+        dispatch(getAccountInfo(address));
+        dispatch(fetchingWalletInfo(false));
+        dispatch(getLockedAquaRewardsForAccount(address));
+      }
+    } catch (error) {
+      console.error("Error fetching wallet info:", error);
       dispatch(fetchingWalletInfo(false));
-      dispatch(getLockedAquaRewardsForAccount(address));
+      
+      // Retry after a short delay
+      setTimeout(() => {
+        if (user?.walletName) {
+          console.log("Retrying wallet info fetch...");
+          getWalletInfo();
+        }
+      }, 2000);
+    }
+  };
+
+  // Enhanced wallet refresh function for manual refresh
+  const refreshWalletInfo = async () => {
+    if (!user?.walletName || !user?.userWalletAddress) return;
+    
+    try {
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(user.userWalletAddress);
+      
+      dispatch(setUserbalances(wrappedAccount.balances));
+      dispatch(getAccountInfo(user.userWalletAddress));
+      
+      console.log("Wallet info refreshed successfully");
+    } catch (error) {
+      console.error("Error refreshing wallet info:", error);
     }
   };
 

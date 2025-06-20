@@ -44,6 +44,7 @@ import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
 import { WALLET_CONNECT_ID, WalletConnectAllowedMethods, WalletConnectModule } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { kit } from "../Navbar";
+import { enhancedBalanceRefresh } from "../../utils/helpers";
 
 function STKAqua() {
   const dispatch = useAppDispatch();
@@ -78,6 +79,47 @@ function STKAqua() {
 
     dispatch(getAccountInfo(address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
+  };
+
+  // Add delay-based balance refresh for better sync with backend
+  const updateWalletRecordsWithDelay = async (delayMs: number = 3000) => {
+    // Wait for backend to complete BLUB minting
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    
+    try {
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+
+      const kit: StellarWalletsKit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      const { address } = await kit.getAddress();
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
+
+      dispatch(getAccountInfo(address));
+      dispatch(storeAccountBalance(wrappedAccount.balances));
+      
+      // Double-check after another short delay to ensure BLUB tokens are visible
+      setTimeout(async () => {
+        try {
+          const freshAccount = await stellarService.loadAccount(address);
+          dispatch(storeAccountBalance(freshAccount.balances));
+        } catch (error) {
+          console.warn("Secondary balance refresh failed:", error);
+        }
+      }, 2000);
+      
+    } catch (error) {
+      console.error("Error updating wallet records:", error);
+      // Fallback to regular update
+      updateWalletRecords();
+    }
   };
 
   const handleSetMaxDeposit = () => {
@@ -320,22 +362,15 @@ function STKAqua() {
   }, [openDialog]);
 
   useEffect(() => {
-    if (user?.lockedAqua) {
-      updateWalletRecords();
+    if (user?.lockedAqua && user?.userWalletAddress) {
+      // Use the enhanced balance refresh utility for better reliability
+      enhancedBalanceRefresh(user.userWalletAddress, dispatch, 1000, 4000);
       toast.success("Aqua locked successfully!");
       setAquaDepositAmount(0);
       dispatch(lockingAqua(false));
       dispatch(resetStateValues());
     }
-
-    if (user?.lockedAqua) {
-      updateWalletRecords();
-      toast.success("Aqua locked successfully!");
-      setAquaDepositAmount(0);
-      dispatch(lockingAqua(false));
-      dispatch(resetStateValues());
-    }
-  }, [user?.lockedAqua, user?.lockedAqua]);
+  }, [user?.lockedAqua]);
 
   return (
     <div id="reward_section">

@@ -148,6 +148,47 @@ function Yield() {
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };
 
+  // Add delay-based balance refresh for better sync with backend
+  const updateWalletRecordsWithDelay = async (delayMs: number = 3000) => {
+    // Wait for backend to complete transaction processing
+    await new Promise(resolve => setTimeout(resolve, delayMs));
+    
+    try {
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+
+      const kit: StellarWalletsKit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      const { address } = await kit.getAddress();
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
+
+      dispatch(getAccountInfo(address));
+      dispatch(storeAccountBalance(wrappedAccount.balances));
+      
+      // Double-check after another short delay to ensure balance changes are visible
+      setTimeout(async () => {
+        try {
+          const freshAccount = await stellarService.loadAccount(address);
+          dispatch(storeAccountBalance(freshAccount.balances));
+        } catch (error) {
+          console.warn("Secondary balance refresh failed:", error);
+        }
+      }, 2000);
+      
+    } catch (error) {
+      console.error("Error updating wallet records:", error);
+      // Fallback to regular update
+      updateWalletRecords();
+    }
+  };
+
   const handleRestake = async () => {
     if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
@@ -283,14 +324,14 @@ function Yield() {
     console.log("tst");
     console.log(user?.userRecords?.account?.claimableRecords);
     if (user?.restaked) {
-      updateWalletRecords();
+      updateWalletRecordsWithDelay(3000); // Add delay for backend processing
       toast.success("BLUB Locked successfully!");
       dispatch(resetStateValues());
       dispatch(restaking(false));
     }
 
     if (user?.unStakedAqua) {
-      updateWalletRecords();
+      updateWalletRecordsWithDelay(3000); // Add delay for backend processing
       toast.success("Blub unstaked successfully!");
       dispatch(resetStateValues());
       dispatch(unStakingAqua(false));
