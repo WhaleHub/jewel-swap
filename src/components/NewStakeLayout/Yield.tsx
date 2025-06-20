@@ -67,7 +67,7 @@ function Yield() {
 
   const claimableBalance = user?.userRecords?.account?.claimableRecords
     ?.filter((item: any) => item.claimed === "UNCLAIMED")
-    .reduce((total: any, item: any) => total + parseFloat(item.amount), 0);
+    .reduce((total: any, item: any) => total + parseFloat(item.amount), 0) || 0;
 
   const blubBalance = blubRecord?.balance;
 
@@ -468,7 +468,13 @@ function Yield() {
                 <div className="font-normal text-[#B1B3B8]">
                   Staked Balance:
                 </div>
-                <div className="font-medium">{Number(claimableBalance).toFixed(2)} BLUB</div>
+                <div className="font-medium">
+                  {`${
+                    isNaN(Number(claimableBalance))
+                      ? 0
+                      : Number(claimableBalance).toFixed(2)
+                  } BLUB`}
+                </div>
               </div>
 
               <Button
