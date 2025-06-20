@@ -239,35 +239,36 @@ function Yield() {
         networkPassphrase: Networks.PUBLIC,
       });
 
-      const transaction = transactionBuilder.setTimeout(3000).build();
+      // Add the operation and set timeout once
+      const transaction = transactionBuilder
+        .addOperation(paymentOperation)
+        .setTimeout(180)
+        .build();
 
       let signedTxXdr: string = "";
       if (user?.walletName === walletTypes.LOBSTR) {
         signedTxXdr = await signTransaction(transaction.toXDR());
       }
-      if (user?.walletName === walletTypes.WALLETCONNECT) {
- const { signedTxXdr: signed } = await kit.signTransaction(
-           transaction.toXDR(),
-           {
-             address: user?.userWalletAddress || "",
-             networkPassphrase: WalletNetwork.PUBLIC,
-           }
-         );
-   
-         signedTxXdr = signed;
-      }
+      else if (user?.walletName === walletTypes.WALLETCONNECT) {
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user?.userWalletAddress || "",
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
 
-      
+        signedTxXdr = signed;
+      }
       else {
         const kit: StellarWalletsKit = new StellarWalletsKit({
           network: WalletNetwork.PUBLIC,
           selectedWalletId: FREIGHTER_ID,
           modules: [new FreighterModule()],
         });
-        transactionBuilder.addOperation(paymentOperation).setTimeout(180);
-        const transactionXDR = transaction.toXDR();
+        
         const { signedTxXdr: signed } = await kit.signTransaction(
-          transactionXDR,
+          transaction.toXDR(),
           {
             address: `${user?.userWalletAddress}`,
             networkPassphrase: WalletNetwork.PUBLIC,
