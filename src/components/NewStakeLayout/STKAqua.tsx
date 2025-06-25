@@ -60,6 +60,21 @@ function STKAqua() {
   );
 
   const userAquaBalance = aquaRecord?.balance;
+  
+  // Debug logging for balance display
+  console.log("💎 [STKAqua] Balance state debug:", {
+    userConnected: !!user,
+    walletName: user?.walletName,
+    userWalletAddress: user?.userWalletAddress,
+    totalBalances: user?.userRecords?.balances?.length || 0,
+    allBalances: user?.userRecords?.balances?.map((b: any) => ({
+      asset_code: b.asset_code || 'XLM',
+      balance: b.balance
+    })),
+    aquaRecord: aquaRecord,
+    userAquaBalance: userAquaBalance,
+    timestamp: new Date().toISOString()
+  });
 
   const updateWalletRecords = async () => {
     const selectedModule =

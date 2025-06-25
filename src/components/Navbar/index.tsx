@@ -101,11 +101,20 @@ const Navbar = () => {
 
        
         } else {
+          console.log("🦞 [Navbar] Connecting LOBSTR wallet");
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(LOBSTR_ID));
           dispatch(walletSelectionAction(false));
           dispatch(setWalletConnected(true));
           const publicKey = await getPublicKey();
+          
+          console.log("📍 [Navbar] LOBSTR public key received:", {
+            publicKey: publicKey,
+            keyLength: publicKey?.length,
+            isValidFormat: publicKey ? /^G[A-Z0-9]{55}$/.test(publicKey) : false,
+            timestamp: new Date().toISOString()
+          });
+          
           dispatch(setUserWalletAddress(publicKey));
         }
       } catch (err) {
