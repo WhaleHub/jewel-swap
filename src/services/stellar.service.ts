@@ -22,6 +22,37 @@ export class StellarService {
     if (!this.server) {
       throw new Error("Horizon server isn't started");
     }
-    return this.server.loadAccount(publicKey);
+    
+    console.log("🔍 [StellarService] Loading account for wallet:", {
+      publicKey: publicKey,
+      keyLength: publicKey?.length,
+      isValidFormat: /^G[A-Z0-9]{55}$/.test(publicKey)
+    });
+    
+    return this.server.loadAccount(publicKey)
+      .then(account => {
+        console.log("✅ [StellarService] Account loaded successfully:", {
+          publicKey: publicKey,
+          balanceCount: account.balances?.length || 0,
+          balances: account.balances?.map((b: any) => ({
+            asset_type: b.asset_type,
+            asset_code: b.asset_code,
+            balance: b.balance,
+            limit: b.limit,
+            asset_issuer: b.asset_issuer
+          })),
+          sequence: account.sequence,
+          account_id: account.account_id
+        });
+        return account;
+      })
+      .catch(error => {
+        console.error("❌ [StellarService] Failed to load account:", {
+          publicKey: publicKey,
+          error: error.message,
+          errorDetails: error
+        });
+        throw error;
+      });
   }
 }

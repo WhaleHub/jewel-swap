@@ -70,6 +70,23 @@ function Yield() {
     .reduce((total: any, item: any) => total + parseFloat(item.amount), 0) || 0;
 
   const blubBalance = blubRecord?.balance;
+  
+  // Debug logging for balance display
+  console.log("💎 [Yield] Balance state debug:", {
+    userConnected: !!user,
+    walletName: user?.walletName,
+    userWalletAddress: user?.userWalletAddress,
+    totalBalances: user?.userRecords?.balances?.length || 0,
+    allBalances: user?.userRecords?.balances?.map((b: any) => ({
+      asset_code: b.asset_code || 'XLM',
+      balance: b.balance
+    })),
+    blubRecord: blubRecord,
+    blubBalance: blubBalance,
+    claimableBalance: claimableBalance,
+    claimableRecordsCount: user?.userRecords?.account?.claimableRecords?.length || 0,
+    timestamp: new Date().toISOString()
+  });
 
   // Calculate accountClaimableRecords
   const accountClaimableRecords =
@@ -250,15 +267,15 @@ function Yield() {
         signedTxXdr = await signTransaction(transaction.toXDR());
       }
       else if (user?.walletName === walletTypes.WALLETCONNECT) {
-        const { signedTxXdr: signed } = await kit.signTransaction(
-          transaction.toXDR(),
-          {
-            address: user?.userWalletAddress || "",
-            networkPassphrase: WalletNetwork.PUBLIC,
-          }
-        );
-
-        signedTxXdr = signed;
+ const { signedTxXdr: signed } = await kit.signTransaction(
+           transaction.toXDR(),
+           {
+             address: user?.userWalletAddress || "",
+             networkPassphrase: WalletNetwork.PUBLIC,
+           }
+         );
+   
+         signedTxXdr = signed;
       }
       else {
         const kit: StellarWalletsKit = new StellarWalletsKit({

@@ -116,11 +116,38 @@ export const getAccountInfo = createAsyncThunk(
   "user/info",
   async (account: string, { rejectWithValue }) => {
     try {
+      console.log("🌐 [userSlice] Fetching account info from backend:", {
+        account: account,
+        accountLength: account?.length,
+        isValidFormat: account ? /^G[A-Z0-9]{55}$/.test(account) : false,
+        backendUrl: `${BACKEND_API}/token/user?userPublicKey=${account}`,
+        timestamp: new Date().toISOString()
+      });
+      
       const { data } = await axios.get(
         `${BACKEND_API}/token/user?userPublicKey=${account}`
       );
+      
+      console.log("✅ [userSlice] Account info received from backend:", {
+        account: account,
+        hasData: !!data,
+        dataKeys: data ? Object.keys(data) : [],
+        balancesCount: data?.balances?.length || 0,
+        claimableRecordsCount: data?.claimableRecords?.length || 0,
+        poolsCount: data?.pools?.length || 0,
+        accountData: data
+      });
+      
       return data;
     } catch (error: any) {
+      console.error("❌ [userSlice] Error fetching account info:", {
+        account: account,
+        error: error,
+        errorMessage: error?.message,
+        response: error?.response?.data,
+        status: error?.response?.status
+      });
+      
       const customError: CustomError = error;
 
       if (customError.response && customError.response.data.error.message) {
@@ -136,8 +163,23 @@ export const storeAccountBalance = createAsyncThunk(
   "user/record",
   async (values: any[], { rejectWithValue }) => {
     try {
+      console.log("💾 [userSlice] Storing account balances:", {
+        balanceCount: values?.length || 0,
+        balances: values?.map((balance: any) => ({
+          asset_type: balance.asset_type,
+          asset_code: balance.asset_code || 'XLM',
+          balance: balance.balance,
+          limit: balance.limit,
+          buying_liabilities: balance.buying_liabilities,
+          selling_liabilities: balance.selling_liabilities,
+          asset_issuer: balance.asset_issuer
+        })),
+        timestamp: new Date().toISOString()
+      });
+      
       return values;
     } catch (error: any) {
+      console.error("❌ [userSlice] Error storing account balances:", error);
       const customError: CustomError = error;
 
       if (customError.response && customError.response.data.error.message) {
@@ -336,13 +378,27 @@ export const userSlice = createSlice({
       ...state,
       walletConnected: payload,
     }),
-    setUserbalances: (state, { payload }) => ({
-      ...state,
-      userRecords: {
-        ...state.userRecords,
-        balances: payload,
-      },
-    }),
+    setUserbalances: (state, { payload }) => {
+      console.log("💾 [userSlice] setUserbalances reducer called:", {
+        payloadCount: payload?.length || 0,
+        payload: payload?.map((balance: any) => ({
+          asset_type: balance.asset_type,
+          asset_code: balance.asset_code || 'XLM',
+          balance: balance.balance,
+          limit: balance.limit
+        })),
+        existingBalances: state.userRecords?.balances?.length || 0,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        ...state,
+        userRecords: {
+          ...state.userRecords,
+          balances: payload,
+        },
+      };
+    },
     logOut: (state) => ({
       ...state,
       userRecords: { balances: null, account: null },
