@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import {
   fetchingWalletInfo,
+  logOut,
   setConnectingWallet,
   setUserbalances,
   setUserWalletAddress,
@@ -35,6 +36,8 @@ import {
 } from '@creit.tech/stellar-wallets-kit/modules/walletconnect.module';
 import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
+import { persistor } from "../../lib/store";
+
 export const kit = new StellarWalletsKit({
   selectedWalletId: WALLET_CONNECT_ID,
   network: WalletNetwork.PUBLIC,
@@ -50,11 +53,10 @@ export const kit = new StellarWalletsKit({
     }),
   ],
 });
+
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
-
-
 
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
@@ -125,11 +127,20 @@ const Navbar = () => {
     [user?.walletConnected, user?.connectingWallet, dispatch]
   );
 
-  const handleDisconnect = useCallback(() => {
-    dispatch(setUserWalletAddress(null));
-    dispatch(fetchingWalletInfo(false));
-    dispatch(setWalletConnectName(null));
-    dispatch(setUserbalances(null));
+  const handleDisconnect = useCallback(async () => {
+    // Clear all user-related Redux state
+    dispatch(logOut());
+    
+    // Clear persisted Redux state from localStorage
+    try {
+      await persistor.purge();
+      localStorage.removeItem('persist:root');
+    } catch (error) {
+      console.error('Error clearing persisted state:', error);
+    }
+    
+    // Force a page reload to ensure clean state
+    window.location.reload();
   }, [dispatch]);
 
   const onScrollToRwards = () => {
