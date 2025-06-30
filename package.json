@@ -60,7 +60,7 @@
   },
   "scripts": {
     "start": "node --max-old-space-size=4096 node_modules/.bin/react-app-rewired start",
-    "build": "node --max-old-space-size=4096 --env DISABLE_ESLINT_PLUGIN=true node_modules/.bin/react-app-rewired build",
+    "build": "react-app-rewired build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },

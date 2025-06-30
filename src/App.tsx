@@ -9,6 +9,7 @@ import { PersistGate } from "redux-persist/integration/react";
 import MainProvider from "./providers/MainProvider";
 import Vote from "./components/Vote/Vote";
 
+
 const theme = createTheme({
   palette: {
     mode: "dark",
