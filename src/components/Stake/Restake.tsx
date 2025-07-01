@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -71,26 +71,55 @@ function Restake() {
   // const whlAquaBalance = whlAquaRecord?.balance;
   const blubBalance = whlAquaRecord?.balance;
 
-  // Calculate accountClaimableRecords
-  const accountClaimableRecords =
-    user?.userRecords?.account?.claimableRecords
-      ?.filter((record: any) => record.claimed === "UNCLAIMED")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.amount);
-      }, 0) || 0;
+  // Calculate accountClaimableRecords with defensive programming
+  const accountClaimableRecords = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.claimableRecords) {
+        console.warn("🔄 [Restake] No claimable records found for accountClaimableRecords");
+        return 0;
+      }
+      
+      const result = user.userRecords.account.claimableRecords
+        .filter((record: any) => record && record.claimed === "UNCLAIMED")
+        .reduce((total, record: any) => {
+          const amount = Number(record.amount) || 0;
+          return Number(total) + amount;
+        }, 0);
+      
+      return result || 0;
+    } catch (error) {
+      console.error("🔄 [Restake] Error calculating accountClaimableRecords:", error);
+      return 0;
+    }
+  }, [user?.userRecords?.account?.claimableRecords]);
 
-  const userPoolBalances =
-    user?.userRecords?.account?.pools
-      ?.filter((pool: any) => pool.claimed === "UNCLAIMED")
-      ?.filter((pool: any) => pool.depositType === "LOCKER")
-      ?.filter((pool: any) => pool.assetB.code === "AQUA")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.assetBAmount);
-      }, 0) || 0;
+  const userPoolBalances = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.pools) {
+        console.warn("🔄 [Restake] No pools found for userPoolBalances");
+        return 0;
+      }
+      
+      const result = user.userRecords.account.pools
+        .filter((pool: any) => pool && pool.claimed === "UNCLAIMED")
+        .filter((pool: any) => pool.depositType === "LOCKER")
+        .filter((pool: any) => pool.assetB && pool.assetB.code === "AQUA")
+        .reduce((total, record: any) => {
+          const amount = Number(record.assetBAmount) || 0;
+          return Number(total) + amount;
+        }, 0);
+      
+      return result || 0;
+    } catch (error) {
+      console.error("🔄 [Restake] Error calculating userPoolBalances:", error);
+      return 0;
+    }
+  }, [user?.userRecords?.account?.pools]);
 
   // Add the two calculated values
-  const poolAndClaimBalance =
-    Number(userPoolBalances) + Number(accountClaimableRecords);
+  const poolAndClaimBalance = useMemo(() => {
+    return Number(userPoolBalances) + Number(accountClaimableRecords);
+  }, [userPoolBalances, accountClaimableRecords]);
 
   const handleSetMaxDepositForBlub = () => {
     setBlubUnstakeAmount(Number(accountClaimableRecords));

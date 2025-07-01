@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { Button, Input } from "@headlessui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
@@ -65,9 +65,33 @@ function Yield() {
   //   (balance) => balance.asset_code === "AQUA"
   // );
 
-  const claimableBalance = user?.userRecords?.account?.claimableRecords
-    ?.filter((item: any) => item.claimed === "UNCLAIMED")
-    .reduce((total: any, item: any) => total + parseFloat(item.amount), 0) || 0;
+  // Add defensive programming for claimable balance calculation
+  const claimableBalance = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.claimableRecords) {
+        console.warn("💎 [Yield] No claimable records found, returning 0");
+        return 0;
+      }
+      
+      const filtered = user.userRecords.account.claimableRecords
+        .filter((item: any) => item && item.claimed === "UNCLAIMED");
+      
+      if (filtered.length === 0) {
+        console.log("💎 [Yield] No unclaimed records found");
+        return 0;
+      }
+      
+      const total = filtered.reduce((total: any, item: any) => {
+        const amount = parseFloat(item.amount) || 0;
+        return total + amount;
+      }, 0);
+      
+      return total;
+    } catch (error) {
+      console.error("💎 [Yield] Error calculating claimable balance:", error);
+      return 0;
+    }
+  }, [user?.userRecords?.account?.claimableRecords]);
 
   const blubBalance = blubRecord?.balance;
   
@@ -88,26 +112,55 @@ function Yield() {
     timestamp: new Date().toISOString()
   });
 
-  // Calculate accountClaimableRecords
-  const accountClaimableRecords =
-    user?.userRecords?.account?.claimableRecords
-      ?.filter((record: any) => record.claimed === "UNCLAIMED")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.amount);
-      }, 0) || 0;
+  // Calculate accountClaimableRecords with defensive programming
+  const accountClaimableRecords = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.claimableRecords) {
+        console.warn("💎 [Yield] No claimable records found for accountClaimableRecords");
+        return 0;
+      }
+      
+      const result = user.userRecords.account.claimableRecords
+        .filter((record: any) => record && record.claimed === "UNCLAIMED")
+        .reduce((total, record: any) => {
+          const amount = Number(record.amount) || 0;
+          return Number(total) + amount;
+        }, 0);
+      
+      return result || 0;
+    } catch (error) {
+      console.error("💎 [Yield] Error calculating accountClaimableRecords:", error);
+      return 0;
+    }
+  }, [user?.userRecords?.account?.claimableRecords]);
 
-  const userPoolBalances =
-    user?.userRecords?.account?.pools
-      ?.filter((pool: any) => pool.claimed === "UNCLAIMED")
-      ?.filter((pool: any) => pool.depositType === "LOCKER")
-      ?.filter((pool: any) => pool.assetB.code === "AQUA")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.assetBAmount);
-      }, 0) || 0;
+  const userPoolBalances = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.pools) {
+        console.warn("💎 [Yield] No pools found for userPoolBalances");
+        return 0;
+      }
+      
+      const result = user.userRecords.account.pools
+        .filter((pool: any) => pool && pool.claimed === "UNCLAIMED")
+        .filter((pool: any) => pool.depositType === "LOCKER")
+        .filter((pool: any) => pool.assetB && pool.assetB.code === "AQUA")
+        .reduce((total, record: any) => {
+          const amount = Number(record.assetBAmount) || 0;
+          return Number(total) + amount;
+        }, 0);
+      
+      return result || 0;
+    } catch (error) {
+      console.error("💎 [Yield] Error calculating userPoolBalances:", error);
+      return 0;
+    }
+  }, [user?.userRecords?.account?.pools]);
 
   // Add the two calculated values
-  const poolAndClaimBalance =
-    Number(userPoolBalances) + Number(accountClaimableRecords);
+  const poolAndClaimBalance = useMemo(() => {
+    return Number(userPoolBalances) + Number(accountClaimableRecords);
+  }, [userPoolBalances, accountClaimableRecords]);
 
   const handleSetMaxStakeBlub = () => {
     // const depositAmount =

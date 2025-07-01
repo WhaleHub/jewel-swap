@@ -148,6 +148,43 @@ export const getAccountInfo = createAsyncThunk(
         status: error?.response?.status
       });
       
+      // Try fallback optimized endpoint for staking balance
+      try {
+        console.log("🔄 [userSlice] Attempting fallback with optimized staking balance endpoint");
+        
+        const { data: stakingData } = await axios.get(
+          `${BACKEND_API}/token/user/staking-balance?userPublicKey=${account}`
+        );
+        
+        console.log("✅ [userSlice] Fallback staking balance data received:", {
+          account: account,
+          claimableRecordsCount: stakingData?.claimableRecords?.length || 0,
+          poolsCount: stakingData?.pools?.length || 0,
+          stakingData: stakingData
+        });
+        
+        // Return fallback data structure that matches expected format
+        const fallbackData = {
+          id: null,
+          account: account,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          claimableRecords: stakingData.claimableRecords || [],
+          pools: stakingData.pools || [],
+          stakes: [],
+          treasuryDeposits: [],
+          lpBalances: []
+        };
+        
+        return fallbackData;
+      } catch (fallbackError: any) {
+        console.error("❌ [userSlice] Fallback endpoint also failed:", {
+          account: account,
+          fallbackError: fallbackError,
+          fallbackErrorMessage: fallbackError?.message
+        });
+      }
+      
       const customError: CustomError = error;
 
       if (customError.response && customError.response.data.error.message) {
