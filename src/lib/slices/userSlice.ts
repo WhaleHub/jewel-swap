@@ -61,7 +61,7 @@ export const mint = createAsyncThunk(
 export const unStakeAqua = createAsyncThunk(
   "lock/unlock-aqua",
   async (
-    values: { senderPublicKey: string; amountToUnstake: number },
+    values: { senderPublicKey: string; amountToUnstake: number; signedTxXdr: string },
     { rejectWithValue }
   ) => {
     try {

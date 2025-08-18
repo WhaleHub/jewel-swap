@@ -189,13 +189,77 @@ function Yield() {
     if (Number(blubUnstakeAmount) > poolAndClaimBalance)
       return toast.warn("Unstake amount exceeds the pool balance");
 
-    dispatch(unStakingAqua(true));
-    dispatch(
-      unStakeAqua({
-        senderPublicKey: `${user?.userWalletAddress}`,
-        amountToUnstake: Number(blubUnstakeAmount),
-      })
-    );
+    try {
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+
+      const kit: StellarWalletsKit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId:
+          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      const { address } = await kit.getAddress();
+      
+      // Create a validation transaction to prove wallet ownership
+      const stellarService = new StellarService();
+      const senderAccount = await stellarService.loadAccount(address);
+
+      // Create a minimal self-payment transaction for authentication
+      const validationOperation = Operation.payment({
+        destination: address,
+        asset: Asset.native(),
+        amount: "0.0000001", // Minimal XLM amount
+      });
+
+      const transactionBuilder = new TransactionBuilder(senderAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.PUBLIC,
+      });
+
+      transactionBuilder.addOperation(validationOperation).setTimeout(180);
+      const transaction = transactionBuilder.build();
+      const transactionXDR = transaction.toXDR();
+
+      let signedTxXdr: string = "";
+
+      if (user?.walletName === walletTypes.LOBSTR) {
+        signedTxXdr = await signTransaction(transactionXDR);
+      } else if (user?.walletName === walletTypes.WALLETCONNECT) {
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: address,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      } else {
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transactionXDR,
+          {
+            address: address,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      }
+
+      dispatch(unStakingAqua(true));
+      dispatch(
+        unStakeAqua({
+          senderPublicKey: address,
+          amountToUnstake: Number(blubUnstakeAmount),
+          signedTxXdr,
+        })
+      );
+    } catch (err) {
+      console.error("Failed to create unstake transaction:", err);
+      toast.error("Failed to create transaction. Please try again.");
+    }
   };
 
   const updateWalletRecords = async () => {
