@@ -7,7 +7,7 @@ export const lpSignerPublicKey: string =
   "GCYITYIOHQIDYK5ASX5CC7LVC4WOTHMCMPNDCTPARUUFHYDV2EBX55IQ";
 export const treasureAddress: string =
   "GCMMBYCRHX3GY7DML666WKHU2GJSTILZ5YUGVL3MS3ULPL6CXGKUDTNS";
-export const BACKEND_API = process.env.REACT_APP_BACKEND_URL;
+export const BACKEND_API = (process.env.REACT_APP_BACKEND_URL as string) || (typeof window !== 'undefined' ? window.location.origin : '');
 
 export const aquaAssetCode = "AQUA";
 export const aquaAssetIssuer =
