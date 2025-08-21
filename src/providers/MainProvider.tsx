@@ -32,6 +32,7 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { aquaAssetCode, aquaAssetIssuer } from "../utils/constants";
+import { toast } from "react-toastify";
 
 interface MainProviderProps {
   children: ReactNode;
@@ -80,9 +81,15 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
         });
         
         // Validate address before making API call
-        if (!address || address === 'null' || address === 'undefined') {
-          console.warn("❌ [MainProvider] Invalid address from Freighter wallet:", address);
+        if (!address || typeof address !== 'string' || address === 'null' || address === 'undefined' || address.trim().length !== 56 || !address.startsWith('G')) {
+          console.warn("❌ [MainProvider] Invalid address from Freighter wallet:", {
+            address: address,
+            type: typeof address,
+            length: address?.length,
+            startsWithG: address ? /^G[A-Z0-9]{55}$/.test(address) : false
+          });
           dispatch(fetchingWalletInfo(false));
+          toast.error("Invalid wallet address received. Please reconnect your wallet.");
           return;
         }
         
@@ -110,13 +117,16 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
         console.log("🦞 [MainProvider] Processing LOBSTR wallet");
         
         // Validate user wallet address before proceeding
-        if (!user.userWalletAddress || user.userWalletAddress === 'null' || user.userWalletAddress === 'undefined') {
+        if (!user.userWalletAddress || typeof user.userWalletAddress !== 'string' || user.userWalletAddress === 'null' || user.userWalletAddress === 'undefined' || user.userWalletAddress.trim().length !== 56 || !user.userWalletAddress.startsWith('G')) {
           console.warn("❌ [MainProvider] Invalid user wallet address for LOBSTR:", {
             userWalletAddress: user.userWalletAddress,
+            type: typeof user.userWalletAddress,
             addressLength: user.userWalletAddress?.length,
+            startsWithG: user.userWalletAddress?.startsWith('G'),
             isValidFormat: user.userWalletAddress ? /^G[A-Z0-9]{55}$/.test(user.userWalletAddress) : false
           });
           dispatch(fetchingWalletInfo(false));
+          toast.error("Invalid wallet address. Please reconnect your LOBSTR wallet.");
           return;
         }
         
@@ -216,6 +226,11 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
       } else {
         console.warn("⛔ [MainProvider] Max retries reached or invalid wallet info, stopping retry attempts");
         (getWalletInfo as any).retryCount = 0;
+        
+        // Show error to user if wallet connection is expected but failed
+        if (user?.walletConnected || user?.userWalletAddress) {
+          toast.error("Failed to load wallet information. Please try reconnecting your wallet.");
+        }
       }
     }
   };

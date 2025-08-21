@@ -62,7 +62,12 @@ const Navbar = () => {
     async (walletType: walletTypes) => {
       try {
         if (user?.connectingWallet) return;
+        
+        dispatch(setConnectingWallet(true));
+        
         if (walletType === walletTypes.FREIGHTER) {
+          console.log("🌌 [Navbar] Connecting to Freighter wallet");
+          
           const kit: StellarWalletsKit = new StellarWalletsKit({
             network: WalletNetwork.PUBLIC,
             selectedWalletId: FREIGHTER_ID,
@@ -70,44 +75,51 @@ const Navbar = () => {
           });
 
           const { address } = await kit.getAddress();
+          
+          console.log("📍 [Navbar] Freighter address received:", {
+            address: address,
+            addressLength: address?.length,
+            isValidFormat: address ? /^G[A-Z0-9]{55}$/.test(address) : false,
+            timestamp: new Date().toISOString()
+          });
 
           await setAllowed();
           await isAllowed();
+          
           dispatch(setUserWalletAddress(address));
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(FREIGHTER_ID));
           dispatch(setWalletConnected(true));
           dispatch(walletSelectionAction(false));
+          
         } else if (walletType === walletTypes.WALLETCONNECT) {
-          console.log("started");
-    
-
-             await kit.openModal({
-                    onWalletSelected: async (option: ISupportedWallet) => {
-                      kit.setWallet(option.id);
-                      const { address } = await kit.getAddress();
-                      console.log(address);
-                
-                      dispatch(setConnectingWallet(false));
-                      dispatch(setWalletConnectName(WALLET_CONNECT_ID));
-                      dispatch(walletSelectionAction(false));
-                      dispatch(setWalletConnected(true));
-                      // const publicKey = await getPublicKey();
-                      dispatch(setUserWalletAddress(address));
-                    },
-                  });
-
-
-      
-
-
-       
+          console.log("🔗 [Navbar] Connecting to WalletConnect");
+          
+          await kit.openModal({
+            onWalletSelected: async (option: ISupportedWallet) => {
+              console.log("🔗 [Navbar] WalletConnect wallet selected:", option.id);
+              
+              kit.setWallet(option.id);
+              const { address } = await kit.getAddress();
+              
+              console.log("📍 [Navbar] WalletConnect address received:", {
+                address: address,
+                addressLength: address?.length,
+                isValidFormat: address ? /^G[A-Z0-9]{55}$/.test(address) : false,
+                timestamp: new Date().toISOString()
+              });
+              
+              dispatch(setConnectingWallet(false));
+              dispatch(setWalletConnectName(WALLET_CONNECT_ID));
+              dispatch(walletSelectionAction(false));
+              dispatch(setWalletConnected(true));
+              dispatch(setUserWalletAddress(address));
+            },
+          });
+          
         } else {
           console.log("🦞 [Navbar] Connecting LOBSTR wallet");
-          dispatch(setConnectingWallet(false));
-          dispatch(setWalletConnectName(LOBSTR_ID));
-          dispatch(walletSelectionAction(false));
-          dispatch(setWalletConnected(true));
+          
           const publicKey = await getPublicKey();
           
           console.log("📍 [Navbar] LOBSTR public key received:", {
@@ -117,11 +129,24 @@ const Navbar = () => {
             timestamp: new Date().toISOString()
           });
           
+          dispatch(setConnectingWallet(false));
+          dispatch(setWalletConnectName(LOBSTR_ID));
+          dispatch(walletSelectionAction(false));
+          dispatch(setWalletConnected(true));
           dispatch(setUserWalletAddress(publicKey));
         }
       } catch (err) {
+        console.error("❌ [Navbar] Wallet connection failed:", {
+          walletType: walletType,
+          error: err,
+          timestamp: new Date().toISOString()
+        });
+        
         dispatch(setWalletConnectName(null));
-      } finally {
+        dispatch(setConnectingWallet(false));
+        dispatch(setWalletConnected(false));
+        
+        toast.error("Failed to connect wallet. Please try again.");
       }
     },
     [user?.walletConnected, user?.connectingWallet, dispatch]

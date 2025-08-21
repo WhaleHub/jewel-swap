@@ -29,7 +29,27 @@ export interface User {
   userLockedRewardsAmount: number;
 }
 
-const initialState = {} as User;
+const initialState: User = {
+  userRecords: {
+    balances: null,
+    account: null
+  },
+  walletConnected: false,
+  walletSelectionOpen: false,
+  userWalletAddress: null,
+  connectingWallet: false,
+  walletName: null,
+  fetchingWalletInfo: false,
+  lockingAqua: false,
+  unStakingAqua: false,
+  restaking: false,
+  restaked: false,
+  providingLp: false,
+  providedLp: false,
+  lockedAqua: false,
+  unStakedAqua: false,
+  userLockedRewardsAmount: 0,
+};
 
 export const mint = createAsyncThunk(
   "lock/stake",
@@ -44,9 +64,30 @@ export const mint = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const { data } = await axios.post(`${BACKEND_API}/token/lock`, values);
+      // Convert amount to number and calculate treasuryAmount
+      const numericAmount = parseFloat(values.amount);
+      const treasuryAmount = numericAmount * 0.01; // 1% treasury fee
+      
+      const requestData = {
+        assetCode: values.assetCode,
+        assetIssuer: values.assetIssuer,
+        amount: numericAmount,
+        treasuryAmount: treasuryAmount,
+        signedTxXdr: values.signedTxXdr,
+        senderPublicKey: values.senderPublicKey,
+      };
+      
+      console.log("🚀 [userSlice] Sending mint request with data:", requestData);
+      
+      const { data } = await axios.post(`${BACKEND_API}/token/lock`, requestData);
       return data;
     } catch (error: any) {
+      console.error("❌ [userSlice] Mint request failed:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        requestData: values
+      });
+      
       const customError: CustomError = error;
 
       if (customError.response && customError.response.data.error.message) {
@@ -65,12 +106,26 @@ export const unStakeAqua = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
+      const requestData = {
+        senderPublicKey: values.senderPublicKey,
+        amountToUnstake: Number(values.amountToUnstake),
+        signedTxXdr: values.signedTxXdr,
+      };
+      
+      console.log("🚀 [userSlice] Sending unStakeAqua request with data:", requestData);
+      
       const { data } = await axios.post(
         `${BACKEND_API}/token/unlock-aqua`,
-        values
+        requestData
       );
       return data;
     } catch (error: any) {
+      console.error("❌ [userSlice] UnStakeAqua request failed:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        requestData: values
+      });
+      
       const customError: CustomError = error;
 
       if (customError.response && customError.response.data.error.message) {
@@ -95,12 +150,27 @@ export const restakeBlub = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
+      // Backend only expects: senderPublicKey, amount (number), signedTxXdr
+      const requestData = {
+        senderPublicKey: values.senderPublicKey,
+        amount: parseFloat(values.amount),
+        signedTxXdr: values.signedTxXdr,
+      };
+      
+      console.log("🚀 [userSlice] Sending restakeBlub request with data:", requestData);
+      
       const { data } = await axios.post(
         `${BACKEND_API}/token/restake-blub`,
-        values
+        requestData
       );
       return data;
     } catch (error: any) {
+      console.error("❌ [userSlice] RestakeBlub request failed:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        requestData: values
+      });
+      
       const customError: CustomError = error;
 
       if (customError.response && customError.response.data.error.message) {
@@ -116,20 +186,36 @@ export const getAccountInfo = createAsyncThunk(
   "user/info",
   async (account: string, { rejectWithValue }) => {
     try {
+      // Validate account address format
+      if (!account || typeof account !== 'string') {
+        console.error("❌ [userSlice] Invalid account parameter:", account);
+        return rejectWithValue("Invalid account address provided");
+      }
+      
+      const trimmedAccount = account.trim();
+      if (trimmedAccount.length !== 56 || !trimmedAccount.startsWith('G')) {
+        console.error("❌ [userSlice] Invalid account format:", {
+          account: trimmedAccount,
+          length: trimmedAccount.length,
+          startsWithG: trimmedAccount.startsWith('G')
+        });
+        return rejectWithValue("Invalid Stellar account address format");
+      }
+      
       console.log("🌐 [userSlice] Fetching account info from backend:", {
-        account: account,
-        accountLength: account?.length,
-        isValidFormat: account ? /^G[A-Z0-9]{55}$/.test(account) : false,
-        backendUrl: `${BACKEND_API}/token/user?userPublicKey=${account}`,
+        account: trimmedAccount,
+        accountLength: trimmedAccount?.length,
+        isValidFormat: /^G[A-Z0-9]{55}$/.test(trimmedAccount),
+        backendUrl: `${BACKEND_API}/token/user?userPublicKey=${trimmedAccount}`,
         timestamp: new Date().toISOString()
       });
       
       const { data } = await axios.get(
-        `${BACKEND_API}/token/user?userPublicKey=${account}`
+        `${BACKEND_API}/token/user?userPublicKey=${trimmedAccount}`
       );
       
       console.log("✅ [userSlice] Account info received from backend:", {
-        account: account,
+        account: trimmedAccount,
         hasData: !!data,
         dataKeys: data ? Object.keys(data) : [],
         balancesCount: data?.balances?.length || 0,
@@ -187,7 +273,7 @@ export const getAccountInfo = createAsyncThunk(
       
       const customError: CustomError = error;
 
-      if (customError.response && customError.response.data.error.message) {
+      if (customError.response && customError.response.data.error?.message) {
         return rejectWithValue(customError.response.data.error.message);
       }
 
@@ -467,8 +553,9 @@ export const userSlice = createSlice({
       state.lockingAqua = false;
     });
 
-    builder.addCase(mint.rejected, (state) => {
+    builder.addCase(mint.rejected, (state, action) => {
       state.lockingAqua = false;
+      console.error("❌ [userSlice] Mint operation rejected:", action.payload);
     });
 
     //unlock
@@ -482,8 +569,9 @@ export const userSlice = createSlice({
       state.userLockedRewardsAmount = 0;
     });
 
-    builder.addCase(unStakeAqua.rejected, (state) => {
+    builder.addCase(unStakeAqua.rejected, (state, action) => {
       state.unStakingAqua = false;
+      console.error("❌ [userSlice] UnStake operation rejected:", action.payload);
     });
 
     //restake
@@ -496,8 +584,9 @@ export const userSlice = createSlice({
       state.restaking = false;
     });
 
-    builder.addCase(restakeBlub.rejected, (state) => {
+    builder.addCase(restakeBlub.rejected, (state, action) => {
       state.restaking = false;
+      console.error("❌ [userSlice] Restake operation rejected:", action.payload);
     });
 
     //provide lp
