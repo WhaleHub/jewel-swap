@@ -64,17 +64,28 @@ export const mint = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      // Convert amount to number and calculate treasuryAmount
+      // Convert amount to number and validate
       const numericAmount = parseFloat(values.amount);
-      const treasuryAmount = numericAmount * 0.01; // 1% treasury fee
+      
+      // Validate amount is a valid number and meets minimum requirement
+      if (isNaN(numericAmount) || numericAmount < 0.0000001) {
+        console.error("❌ [userSlice] Invalid amount:", values.amount);
+        return rejectWithValue("Amount must be a valid number and at least 0.0000001");
+      }
+      
+      // Validate required fields
+      if (!values.assetCode || !values.assetIssuer || !values.signedTxXdr || !values.senderPublicKey) {
+        console.error("❌ [userSlice] Missing required fields:", values);
+        return rejectWithValue("All fields are required");
+      }
       
       const requestData = {
-        assetCode: values.assetCode,
-        assetIssuer: values.assetIssuer,
-        amount: numericAmount,
-        treasuryAmount: treasuryAmount,
-        signedTxXdr: values.signedTxXdr,
-        senderPublicKey: values.senderPublicKey,
+        assetCode: values.assetCode.trim(),
+        assetIssuer: values.assetIssuer.trim(),
+        amount: numericAmount, // Send as number, not string
+        signedTxXdr: values.signedTxXdr.trim(),
+        senderPublicKey: values.senderPublicKey.trim(),
+        // Do not send treasuryAmount - let backend calculate it
       };
       
       console.log("🚀 [userSlice] Sending mint request with data:", requestData);
@@ -88,13 +99,32 @@ export const mint = createAsyncThunk(
         requestData: values
       });
       
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      // Handle axios errors which have a different structure than CustomError
+      if (error.response) {
+        const { status, data } = error.response;
+        
+        // Handle validation errors (400)
+        if (status === 400) {
+          const errorMessage = data?.message || data?.error?.message || "Validation failed";
+          console.error("❌ [userSlice] Validation error:", errorMessage);
+          return rejectWithValue(errorMessage);
+        }
+        
+        // Handle service unavailable (503)
+        if (status === 503) {
+          const errorMessage = data?.message || "Service temporarily unavailable. Please try again later.";
+          console.error("❌ [userSlice] Service error:", errorMessage);
+          return rejectWithValue(errorMessage);
+        }
+        
+        // Handle other HTTP errors
+        const errorMessage = data?.message || data?.error?.message || `Request failed with status ${status}`;
+        return rejectWithValue(errorMessage);
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      // Handle network/other errors
+      const errorMessage = error.message || "Network error occurred. Please check your connection and try again.";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -106,10 +136,28 @@ export const unStakeAqua = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
+      // Validate amount
+      if (isNaN(values.amountToUnstake) || values.amountToUnstake <= 0) {
+        console.error("❌ [userSlice] Invalid unstake amount:", values.amountToUnstake);
+        return rejectWithValue("Amount to unstake must be a valid positive number");
+      }
+      
+      // Validate required fields
+      if (!values.senderPublicKey || !values.signedTxXdr) {
+        console.error("❌ [userSlice] Missing required fields for unStakeAqua:", values);
+        return rejectWithValue("Sender public key and signed transaction are required");
+      }
+      
+      // Validate signed transaction XDR length (basic validation)
+      if (values.signedTxXdr.trim().length < 10) {
+        console.error("❌ [userSlice] Invalid signed transaction XDR:", values.signedTxXdr);
+        return rejectWithValue("Signed transaction XDR appears to be invalid");
+      }
+      
       const requestData = {
-        senderPublicKey: values.senderPublicKey,
-        amountToUnstake: Number(values.amountToUnstake),
-        signedTxXdr: values.signedTxXdr,
+        senderPublicKey: values.senderPublicKey.trim(),
+        amountToUnstake: values.amountToUnstake, // Already a number
+        signedTxXdr: values.signedTxXdr.trim(),
       };
       
       console.log("🚀 [userSlice] Sending unStakeAqua request with data:", requestData);
@@ -126,13 +174,25 @@ export const unStakeAqua = createAsyncThunk(
         requestData: values
       });
       
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      // Handle axios errors properly
+      if (error.response) {
+        const { status, data } = error.response;
+        
+        // Handle validation errors (400)
+        if (status === 400) {
+          const errorMessage = data?.message || data?.error?.message || "Validation failed";
+          console.error("❌ [userSlice] UnStakeAqua validation error:", errorMessage);
+          return rejectWithValue(errorMessage);
+        }
+        
+        // Handle other HTTP errors
+        const errorMessage = data?.message || data?.error?.message || `Request failed with status ${status}`;
+        return rejectWithValue(errorMessage);
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      // Handle network/other errors
+      const errorMessage = error.message || "Network error occurred. Please check your connection and try again.";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -150,11 +210,29 @@ export const restakeBlub = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
+      // Validate and convert amount to number
+      const numericAmount = parseFloat(values.amount);
+      
+      if (isNaN(numericAmount) || numericAmount <= 0) {
+        console.error("❌ [userSlice] Invalid restake amount:", values.amount);
+        return rejectWithValue("Amount must be a valid positive number");
+      }
+      
+      // Validate required fields
+      if (!values.signedTxXdr || !values.senderPublicKey) {
+        console.error("❌ [userSlice] Missing required fields for restakeBlub:", values);
+        return rejectWithValue("Sender public key and signed transaction are required");
+      }
+      
       // Backend only expects: senderPublicKey, amount (number), signedTxXdr
+      // assetCode and assetIssuer are optional per the DTO
       const requestData = {
-        senderPublicKey: values.senderPublicKey,
-        amount: parseFloat(values.amount),
-        signedTxXdr: values.signedTxXdr,
+        senderPublicKey: values.senderPublicKey.trim(),
+        amount: numericAmount, // Send as number
+        signedTxXdr: values.signedTxXdr.trim(),
+        // Include optional fields if provided (for compatibility)
+        ...(values.assetCode && { assetCode: values.assetCode.trim() }),
+        ...(values.assetIssuer && { assetIssuer: values.assetIssuer.trim() }),
       };
       
       console.log("🚀 [userSlice] Sending restakeBlub request with data:", requestData);
@@ -171,13 +249,25 @@ export const restakeBlub = createAsyncThunk(
         requestData: values
       });
       
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      // Handle axios errors properly
+      if (error.response) {
+        const { status, data } = error.response;
+        
+        // Handle validation errors (400)
+        if (status === 400) {
+          const errorMessage = data?.message || data?.error?.message || "Validation failed";
+          console.error("❌ [userSlice] RestakeBlub validation error:", errorMessage);
+          return rejectWithValue(errorMessage);
+        }
+        
+        // Handle other HTTP errors
+        const errorMessage = data?.message || data?.error?.message || `Request failed with status ${status}`;
+        return rejectWithValue(errorMessage);
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      // Handle network/other errors
+      const errorMessage = error.message || "Network error occurred. Please check your connection and try again.";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -355,19 +445,75 @@ export const provideLiquidity = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
+      // Validate and convert amounts to numbers
+      const amount1 = parseFloat(values.asset1.amount);
+      const amount2 = parseFloat(values.asset2.amount);
+      
+      if (isNaN(amount1) || amount1 < 1) {
+        console.error("❌ [userSlice] Invalid asset1 amount:", values.asset1.amount);
+        return rejectWithValue("Asset 1 amount must be at least 1");
+      }
+      
+      if (isNaN(amount2) || amount2 < 1) {
+        console.error("❌ [userSlice] Invalid asset2 amount:", values.asset2.amount);
+        return rejectWithValue("Asset 2 amount must be at least 1");
+      }
+      
+      // Validate required fields
+      if (!values.signedTxXdr || !values.senderPublicKey) {
+        console.error("❌ [userSlice] Missing required fields for provideLiquidity:", values);
+        return rejectWithValue("Sender public key and signed transaction are required");
+      }
+      
+      // Format data to match CreateAddLiquidityDto structure
+      const requestData = {
+        asset1: {
+          code: values.asset1.code.trim(),
+          issuer: values.asset1.issuer?.trim() || undefined, // Handle native assets with empty string
+          amount: amount1, // Send as number
+        },
+        asset2: {
+          code: values.asset2.code.trim(),
+          issuer: values.asset2.issuer?.trim() || undefined, // Handle native assets with empty string
+          amount: amount2, // Send as number
+        },
+        signedTxXdr: values.signedTxXdr.trim(),
+        senderPublicKey: values.senderPublicKey.trim(),
+      };
+      
+      console.log("🚀 [userSlice] Sending provideLiquidity request with data:", requestData);
+      
       const { data } = await axios.post(
         `${BACKEND_API}/token/add-liquidity`,
-        values
+        requestData
       );
       return data;
     } catch (error: any) {
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      console.error("❌ [userSlice] ProvideLiquidity request failed:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        requestData: values
+      });
+      
+      // Handle axios errors properly
+      if (error.response) {
+        const { status, data } = error.response;
+        
+        // Handle validation errors (400)
+        if (status === 400) {
+          const errorMessage = data?.message || data?.error?.message || "Validation failed";
+          console.error("❌ [userSlice] ProvideLiquidity validation error:", errorMessage);
+          return rejectWithValue(errorMessage);
+        }
+        
+        // Handle other HTTP errors
+        const errorMessage = data?.message || data?.error?.message || `Request failed with status ${status}`;
+        return rejectWithValue(errorMessage);
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      // Handle network/other errors
+      const errorMessage = error.message || "Network error occurred. Please check your connection and try again.";
+      return rejectWithValue(errorMessage);
     }
   }
 );
