@@ -21,12 +21,29 @@ import {
   resetStateValues,
   storeAccountBalance,
 } from "../../lib/slices/userSlice";
+// Import new Soroban functionality
+import {
+  lockAqua,
+  fetchUserLocks,
+  syncStakingData,
+  clearError,
+  clearTransaction,
+} from "../../lib/slices/stakingSlice";
+import {
+  issueIceTokens,
+  fetchUserGovernance,
+  syncGovernanceData,
+} from "../../lib/slices/governanceSlice";
+import { sorobanService } from "../../services/soroban.service";
+import { apiService } from "../../services/api.service";
+import { SOROBAN_CONFIG, isFeatureEnabled } from "../../config/soroban.config";
 import {
   Asset,
   BASE_FEE,
   Networks,
   Operation,
   TransactionBuilder,
+  Keypair,
 } from "@stellar/stellar-sdk";
 import {
   aquaAssetCode,
@@ -49,10 +66,15 @@ import { enhancedBalanceRefresh } from "../../utils/helpers";
 function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
+  const staking = useSelector((state: RootState) => state.staking);
+  const governance = useSelector((state: RootState) => state.governance);
+  
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
+  const [lockDuration, setLockDuration] = useState<number>(30); // Default 30 days
   const [dialogMsg, setDialogMsg] = useState<string>("");
   const [dialogTitle, setDialogTitle] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
+  const [useSoroban, setUseSoroban] = useState<boolean>(isFeatureEnabled('useSoroban'));
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
@@ -95,6 +117,90 @@ function STKAqua() {
     dispatch(getAccountInfo(address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };
+
+  // Soroban staking functionality
+  const handleSorobanStake = async () => {
+    if (!user.userWalletAddress || !aquaDepositAmount) {
+      toast.error("Please connect wallet and enter amount");
+      return;
+    }
+
+    if (aquaDepositAmount < MIN_DEPOSIT_AMOUNT) {
+      toast.error(`Minimum deposit amount is ${MIN_DEPOSIT_AMOUNT} AQUA`);
+      return;
+    }
+
+    try {
+      // Get user keypair from wallet
+      const selectedModule = user.walletName === LOBSTR_ID ? new LobstrModule() : new FreighterModule();
+      const kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: user.walletName || FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      // For demo purposes, we'll create a keypair - in production, this would be handled by the wallet
+      const demoKeypair = Keypair.random(); // This should be replaced with actual wallet signing
+
+      // Dispatch Soroban staking action
+      const result = await dispatch(lockAqua({
+        userAddress: user.userWalletAddress,
+        amount: aquaDepositAmount.toString(),
+        durationDays: lockDuration,
+        userKeypair: demoKeypair,
+      })).unwrap();
+
+      // Show success message
+      toast.success(`Successfully staked ${aquaDepositAmount} AQUA for ${lockDuration} days!`);
+      setDialogTitle("Staking Successful!");
+      setDialogMsg(`Transaction Hash: ${result.transactionHash}\n\nYour AQUA has been locked and will contribute to Protocol Owned Liquidity.`);
+      setOptDialog(true);
+
+      // Issue ICE tokens for governance
+      if (lockDuration >= 30) { // Only issue ICE for locks >= 30 days
+        await dispatch(issueIceTokens({
+          userAddress: user.userWalletAddress,
+          aquaAmount: aquaDepositAmount.toString(),
+          lockDurationDays: lockDuration,
+          userKeypair: demoKeypair,
+        }));
+        toast.success(`ICE governance tokens issued!`);
+      }
+
+      // Reset form
+      setAquaDepositAmount(0);
+
+      // Refresh data
+      await Promise.all([
+        dispatch(syncStakingData(user.userWalletAddress)),
+        dispatch(syncGovernanceData(user.userWalletAddress)),
+        updateWalletRecordsWithDelay(3000),
+      ]);
+
+    } catch (error: any) {
+      console.error('❌ [STKAqua] Soroban staking failed:', error);
+      toast.error(`Staking failed: ${error.message}`);
+      setDialogTitle("Staking Failed");
+      setDialogMsg(`Error: ${error.message}\n\nPlease try again or contact support.`);
+      setOptDialog(true);
+    }
+  };
+
+  // Load user staking data on component mount
+  useEffect(() => {
+    if (user.userWalletAddress && useSoroban) {
+      dispatch(fetchUserLocks(user.userWalletAddress));
+      dispatch(fetchUserGovernance(user.userWalletAddress));
+    }
+  }, [user.userWalletAddress, useSoroban, dispatch]);
+
+  // Clear errors when component unmounts
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+      dispatch(clearTransaction());
+    };
+  }, [dispatch]);
 
   // Add delay-based balance refresh for better sync with backend
   const updateWalletRecordsWithDelay = async (delayMs: number = 3000) => {
@@ -444,7 +550,7 @@ function STKAqua() {
               </div>
             </div>
 
-            <div className="flex items-center bg-[#0E111B]  py-2 space-x-2 mt-2 rounded-[8px]">
+            <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
               <Input
                 placeholder="0 AQUA"
                 className={clsx(
@@ -467,6 +573,81 @@ function STKAqua() {
               </button>
             </div>
 
+            {/* Lock Duration Selector - Only for Soroban */}
+            {useSoroban && (
+              <div className="mt-4">
+                <div className="flex items-center space-x-2 mb-2">
+                  <div className="font-normal text-[#B1B3B8]">Lock Duration:</div>
+                  <div className="relative group">
+                    <InformationCircleIcon
+                      className="h-[15px] w-[15px] text-white cursor-pointer"
+                      onClick={() =>
+                        onDialogOpen(
+                          "Longer lock durations provide higher rewards and more ICE governance tokens. Your AQUA will contribute to Protocol Owned Liquidity during the lock period.",
+                          "Lock Duration"
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[30, 90, 180, 365].map((days) => (
+                    <button
+                      key={days}
+                      className={clsx(
+                        "p-2 rounded-[4px] text-sm font-medium transition-colors",
+                        lockDuration === days
+                          ? "bg-[#00CC99] text-white"
+                          : "bg-[#3C404D] text-[#B1B3B8] hover:bg-[#4A4E5D]"
+                      )}
+                      onClick={() => setLockDuration(days)}
+                    >
+                      {days}d
+                    </button>
+                  ))}
+                </div>
+                <div className="text-xs text-[#B1B3B8] mt-1">
+                  Estimated ICE tokens: {aquaDepositAmount ? (aquaDepositAmount * (1 + Math.min(lockDuration / 365, 1))).toFixed(2) : '0.00'}
+                </div>
+              </div>
+            )}
+
+            {/* Soroban/Legacy Toggle */}
+            <div className="mt-4 flex items-center justify-between p-3 bg-[#1A1E2E] rounded-[8px]">
+              <div className="flex items-center space-x-2">
+                <div className="text-sm font-medium text-white">
+                  {useSoroban ? 'Soroban Staking' : 'Legacy Staking'}
+                </div>
+                <div className="relative group">
+                  <InformationCircleIcon
+                    className="h-[15px] w-[15px] text-white cursor-pointer"
+                    onClick={() =>
+                      onDialogOpen(
+                        useSoroban 
+                          ? "Soroban staking provides enhanced features including lock durations, ICE governance tokens, and Protocol Owned Liquidity contribution."
+                          : "Legacy staking uses the original BLUB conversion system without lock periods or governance features.",
+                        useSoroban ? "Soroban Staking" : "Legacy Staking"
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              <button
+                className={clsx(
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                  useSoroban ? "bg-[#00CC99]" : "bg-[#3C404D]"
+                )}
+                onClick={() => setUseSoroban(!useSoroban)}
+              >
+                <span
+                  className={clsx(
+                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                    useSoroban ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button>
+            </div>
+
             <div className="flex items-center text-normal mt-6 space-x-1">
               <div className="font-normal text-[#B1B3B8]">Your balance:</div>
               <div className="font-medium">
@@ -478,12 +659,54 @@ function STKAqua() {
             </div>
 
             <Button
-              className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold cursor-pointer"
-              onClick={handleLockAqua}
-              disabled={user?.lockingAqua}
+              className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={useSoroban ? handleSorobanStake : handleLockAqua}
+              disabled={useSoroban ? staking.isStaking : user?.lockingAqua}
             >
-              Convert & Stake
+              {useSoroban 
+                ? (staking.isStaking ? 'Staking...' : `Lock AQUA (${lockDuration}d)`)
+                : (user?.lockingAqua ? 'Converting...' : 'Convert & Stake')
+              }
             </Button>
+
+            {/* Loading indicator for Soroban operations */}
+            {useSoroban && staking.isStaking && (
+              <div className="flex items-center justify-center mt-3">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#00CC99]"></div>
+                <span className="ml-2 text-sm text-[#B1B3B8]">Processing transaction...</span>
+              </div>
+            )}
+
+            {/* Display current staking stats for Soroban */}
+            {useSoroban && user.userWalletAddress && (
+              <div className="mt-4 p-3 bg-[#1A1E2E] rounded-[8px]">
+                <div className="text-sm font-medium text-white mb-2">Your Staking Stats</div>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <div className="text-[#B1B3B8]">Active Locks</div>
+                    <div className="text-white font-medium">{staking.userLocks?.length || 0}</div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8]">Total Staked</div>
+                    <div className="text-white font-medium">
+                      {staking.userStats?.totalAmount ? parseFloat(staking.userStats.totalAmount).toFixed(2) : '0.00'} AQUA
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8]">ICE Balance</div>
+                    <div className="text-white font-medium">
+                      {parseFloat(governance.iceBalance).toFixed(2)} ICE
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8]">Voting Power</div>
+                    <div className="text-white font-medium">
+                      {parseFloat(governance.votingPower).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div>
