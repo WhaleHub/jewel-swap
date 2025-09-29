@@ -8,6 +8,7 @@ import { persistor, store } from "./lib/store";
 import { PersistGate } from "redux-persist/integration/react";
 import MainProvider from "./providers/MainProvider";
 import Vote from "./components/Vote/Vote";
+import ErrorBoundary from "./components/ErrorBoundary/ErrorBoundary";
 
 const theme = createTheme({
   palette: {
@@ -24,15 +25,17 @@ function App() {
           <MainProvider>
             <ThemeProvider {...{ theme }}>
               <BrowserRouter>
-                <Routes>
-                  <Route path="/.well-known/*" element={null} />
-                  <Route path="/" element={<AppLayout />}>
-                    <Route path="/" element={<Navigate to="/stake/aqua" />} />
-                    <Route path="/stake/:tokenId" element={<Stake />} />
-                    <Route path="/vote" element={<Vote />} />
-                  </Route>
-                  <Route path="*" element={<Navigate to="/stake/aqua" />} />
-                </Routes>
+                <ErrorBoundary>
+                  <Routes>
+                    <Route path="/.well-known/*" element={null} />
+                    <Route path="/" element={<AppLayout />}>
+                      <Route path="/" element={<Navigate to="/stake/aqua" />} />
+                      <Route path="/stake/:tokenId" element={<Stake />} />
+                      <Route path="/vote" element={<Vote />} />
+                    </Route>
+                    <Route path="*" element={<Navigate to="/stake/aqua" />} />
+                  </Routes>
+                </ErrorBoundary>
               </BrowserRouter>
             </ThemeProvider>
             <ToastContainer autoClose={3000} />

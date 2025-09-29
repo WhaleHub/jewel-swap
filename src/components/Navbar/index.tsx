@@ -37,7 +37,6 @@ import {
 import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
 import { persistor } from "../../lib/store";
-
 export const kit = new StellarWalletsKit({
   selectedWalletId: WALLET_CONNECT_ID,
   network: WalletNetwork.PUBLIC,
