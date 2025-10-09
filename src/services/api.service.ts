@@ -1,8 +1,8 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosResponse } from "axios";
 
 // API Response wrapper
 interface ApiResponse<T = any> {
-  status: 'success' | 'error';
+  status: "success" | "error";
   data?: T;
   message?: string;
 }
@@ -95,29 +95,38 @@ export class ApiService {
   private baseURL: string;
 
   constructor() {
-    this.baseURL = process.env.REACT_APP_BACKEND_API_URL || 'http://localhost:3001';
-    
+    // Get required backend URL from environment
+    const backendUrl = process.env.REACT_APP_BACKEND_API_URL;
+    if (!backendUrl) {
+      throw new Error(
+        "❌ [ApiService] Missing required environment variable: REACT_APP_BACKEND_API_URL. Please set it in your .env file."
+      );
+    }
+    this.baseURL = backendUrl;
+
     this.api = axios.create({
       baseURL: this.baseURL,
       timeout: 30000,
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
     });
 
     this.setupInterceptors();
-    console.log('🔗 [ApiService] Initialized with base URL:', this.baseURL);
+    console.log("🔗 [ApiService] Initialized with base URL:", this.baseURL);
   }
 
   private setupInterceptors(): void {
     // Request interceptor
     this.api.interceptors.request.use(
       (config) => {
-        console.log(`🚀 [ApiService] ${config.method?.toUpperCase()} ${config.url}`);
+        console.log(
+          `🚀 [ApiService] ${config.method?.toUpperCase()} ${config.url}`
+        );
         return config;
       },
       (error) => {
-        console.error('❌ [ApiService] Request error:', error);
+        console.error("❌ [ApiService] Request error:", error);
         return Promise.reject(error);
       }
     );
@@ -129,17 +138,17 @@ export class ApiService {
         return response;
       },
       (error) => {
-        console.error('❌ [ApiService] Response error:', error);
-        
+        console.error("❌ [ApiService] Response error:", error);
+
         // Handle specific error cases
         if (error.response?.status === 404) {
-          throw new Error('API endpoint not found');
+          throw new Error("API endpoint not found");
         } else if (error.response?.status >= 500) {
-          throw new Error('Server error occurred');
-        } else if (error.code === 'ECONNABORTED') {
-          throw new Error('Request timeout');
+          throw new Error("Server error occurred");
+        } else if (error.code === "ECONNABORTED") {
+          throw new Error("Request timeout");
         }
-        
+
         throw error;
       }
     );
@@ -150,18 +159,23 @@ export class ApiService {
   // =================
 
   async healthCheck(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/api/soroban/health');
+    const response = await this.api.get<ApiResponse>("/api/soroban/health");
     return response.data.data;
   }
 
   async getSyncStatus(contractType?: string): Promise<any> {
     const params = contractType ? { contractType } : {};
-    const response = await this.api.get<ApiResponse>('/api/soroban/sync/status', { params });
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/sync/status",
+      { params }
+    );
     return response.data.data;
   }
 
   async getSyncHealth(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/api/soroban/sync/health');
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/sync/health"
+    );
     return response.data.data;
   }
 
@@ -170,33 +184,51 @@ export class ApiService {
   // =================
 
   async recordAquaLock(request: StakingRequest): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/staking/lock', request);
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/staking/lock",
+      request
+    );
     return response.data.data;
   }
 
   async recordAquaUnlock(request: UnstakingRequest): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/staking/unlock', request);
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/staking/unlock",
+      request
+    );
     return response.data.data;
   }
 
-  async recordBlubRestake(request: Omit<StakingRequest, 'durationDays'>): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/staking/blub-restake', request);
+  async recordBlubRestake(
+    request: Omit<StakingRequest, "durationDays">
+  ): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/staking/blub-restake",
+      request
+    );
     return response.data.data;
   }
 
   async getUserLocks(userAddress: string): Promise<any> {
-    const response = await this.api.get<ApiResponse>(`/api/soroban/staking/locks/${userAddress}`);
+    const response = await this.api.get<ApiResponse>(
+      `/api/soroban/staking/locks/${userAddress}`
+    );
     return response.data.data;
   }
 
   async getProtocolOwnedLiquidity(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/api/soroban/staking/pol');
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/staking/pol"
+    );
     return response.data.data;
   }
 
   async getStakingStats(userAddress?: string): Promise<any> {
     const params = userAddress ? { userAddress } : {};
-    const response = await this.api.get<ApiResponse>('/api/soroban/staking/stats', { params });
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/staking/stats",
+      { params }
+    );
     return response.data.data;
   }
 
@@ -205,17 +237,24 @@ export class ApiService {
   // ===================
 
   async recordIceIssuance(request: IceIssuanceRequest): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/governance/ice-issuance', request);
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/governance/ice-issuance",
+      request
+    );
     return response.data.data;
   }
 
   async getUserGovernance(userAddress: string): Promise<GovernanceRecord> {
-    const response = await this.api.get<ApiResponse<GovernanceRecord>>(`/api/soroban/governance/user/${userAddress}`);
+    const response = await this.api.get<ApiResponse<GovernanceRecord>>(
+      `/api/soroban/governance/user/${userAddress}`
+    );
     return response.data.data!;
   }
 
   async getGovernanceStats(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/api/soroban/governance/stats');
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/governance/stats"
+    );
     return response.data.data;
   }
 
@@ -224,12 +263,20 @@ export class ApiService {
   // ================
 
   async fundRewardPool(request: RewardPoolFundingRequest): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/rewards/fund-pool', request);
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/rewards/fund-pool",
+      request
+    );
     return response.data.data;
   }
 
-  async estimateUserRewards(userAddress: string, poolId: string): Promise<string> {
-    const response = await this.api.get<ApiResponse<string>>(`/api/soroban/rewards/estimate/${userAddress}/${poolId}`);
+  async estimateUserRewards(
+    userAddress: string,
+    poolId: string
+  ): Promise<string> {
+    const response = await this.api.get<ApiResponse<string>>(
+      `/api/soroban/rewards/estimate/${userAddress}/${poolId}`
+    );
     return response.data.data!;
   }
 
@@ -239,26 +286,35 @@ export class ApiService {
     amount: string;
     txHash: string;
   }): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/rewards/claim', request);
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/rewards/claim",
+      request
+    );
     return response.data.data;
   }
 
-  async getUserRewards(userAddress: string, poolId?: string): Promise<UserRewardInfo | UserRewardInfo[]> {
+  async getUserRewards(
+    userAddress: string,
+    poolId?: string
+  ): Promise<UserRewardInfo | UserRewardInfo[]> {
     const params = poolId ? { poolId } : {};
-    const response = await this.api.get<ApiResponse<UserRewardInfo | UserRewardInfo[]>>(
-      `/api/soroban/rewards/user/${userAddress}`,
-      { params }
-    );
+    const response = await this.api.get<
+      ApiResponse<UserRewardInfo | UserRewardInfo[]>
+    >(`/api/soroban/rewards/user/${userAddress}`, { params });
     return response.data.data!;
   }
 
   async getRewardPool(poolId: string): Promise<any> {
-    const response = await this.api.get<ApiResponse>(`/api/soroban/rewards/pool/${poolId}`);
+    const response = await this.api.get<ApiResponse>(
+      `/api/soroban/rewards/pool/${poolId}`
+    );
     return response.data.data;
   }
 
   async getRewardStats(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/api/soroban/rewards/stats');
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/rewards/stats"
+    );
     return response.data.data;
   }
 
@@ -275,12 +331,18 @@ export class ApiService {
     feeRate: number;
     txHash: string;
   }): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/liquidity/register-pool', request);
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/liquidity/register-pool",
+      request
+    );
     return response.data.data;
   }
 
   async recordLiquidityAddition(request: LiquidityRequest): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/liquidity/add', request);
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/liquidity/add",
+      request
+    );
     return response.data.data;
   }
 
@@ -292,12 +354,17 @@ export class ApiService {
     assetBReturned: string;
     txHash: string;
   }): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/liquidity/remove', request);
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/liquidity/remove",
+      request
+    );
     return response.data.data;
   }
 
   async getPool(poolId: string): Promise<LiquidityPool> {
-    const response = await this.api.get<ApiResponse<LiquidityPool>>(`/api/soroban/liquidity/pool/${poolId}`);
+    const response = await this.api.get<ApiResponse<LiquidityPool>>(
+      `/api/soroban/liquidity/pool/${poolId}`
+    );
     return response.data.data!;
   }
 
@@ -316,7 +383,9 @@ export class ApiService {
   }
 
   async getLiquidityStats(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/api/soroban/liquidity/stats');
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/liquidity/stats"
+    );
     return response.data.data;
   }
 
@@ -324,32 +393,52 @@ export class ApiService {
   // TRANSACTION ENDPOINTS
   // =====================
 
-  async getTransactionStats(startDate?: string, endDate?: string, contractType?: string): Promise<any> {
+  async getTransactionStats(
+    startDate?: string,
+    endDate?: string,
+    contractType?: string
+  ): Promise<any> {
     const params: any = {};
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
     if (contractType) params.contractType = contractType;
-    
-    const response = await this.api.get<ApiResponse>('/api/soroban/transactions/stats', { params });
+
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/transactions/stats",
+      { params }
+    );
     return response.data.data;
   }
 
-  async getRecentTransactions(limit?: number, contractType?: string, userAddress?: string): Promise<TransactionSummary[]> {
+  async getRecentTransactions(
+    limit?: number,
+    contractType?: string,
+    userAddress?: string
+  ): Promise<TransactionSummary[]> {
     const params: any = {};
     if (limit) params.limit = limit;
     if (contractType) params.contractType = contractType;
     if (userAddress) params.userAddress = userAddress;
-    
-    const response = await this.api.get<ApiResponse<TransactionSummary[]>>('/api/soroban/transactions/recent', { params });
+
+    const response = await this.api.get<ApiResponse<TransactionSummary[]>>(
+      "/api/soroban/transactions/recent",
+      { params }
+    );
     return response.data.data!;
   }
 
   async getTransaction(hash: string): Promise<any> {
-    const response = await this.api.get<ApiResponse>(`/api/soroban/transactions/${hash}`);
+    const response = await this.api.get<ApiResponse>(
+      `/api/soroban/transactions/${hash}`
+    );
     return response.data.data;
   }
 
-  async getUserTransactionHistory(userAddress: string, page?: number, limit?: number): Promise<{
+  async getUserTransactionHistory(
+    userAddress: string,
+    page?: number,
+    limit?: number
+  ): Promise<{
     transactions: TransactionSummary[];
     total: number;
     page: number;
@@ -358,13 +447,15 @@ export class ApiService {
     const params: any = {};
     if (page) params.page = page;
     if (limit) params.limit = limit;
-    
-    const response = await this.api.get<ApiResponse<{
-      transactions: TransactionSummary[];
-      total: number;
-      page: number;
-      totalPages: number;
-    }>>(`/api/soroban/transactions/user/${userAddress}`, { params });
+
+    const response = await this.api.get<
+      ApiResponse<{
+        transactions: TransactionSummary[];
+        total: number;
+        page: number;
+        totalPages: number;
+      }>
+    >(`/api/soroban/transactions/user/${userAddress}`, { params });
     return response.data.data!;
   }
 
@@ -373,26 +464,40 @@ export class ApiService {
   // ===================
 
   async migrateUser(userAddress: string, migrationType?: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/api/soroban/migration/user/${userAddress}`, {
-      migrationType,
-    });
+    const response = await this.api.post<ApiResponse>(
+      `/api/soroban/migration/user/${userAddress}`,
+      {
+        migrationType,
+      }
+    );
     return response.data.data;
   }
 
-  async getMigrationPlan(userAddress: string, migrationType?: string): Promise<any> {
+  async getMigrationPlan(
+    userAddress: string,
+    migrationType?: string
+  ): Promise<any> {
     const params = migrationType ? { type: migrationType } : {};
-    const response = await this.api.get<ApiResponse>(`/api/soroban/migration/plan/${userAddress}`, { params });
+    const response = await this.api.get<ApiResponse>(
+      `/api/soroban/migration/plan/${userAddress}`,
+      { params }
+    );
     return response.data.data;
   }
 
   async getMigrationStatus(userAddress?: string): Promise<any> {
     const params = userAddress ? { userAddress } : {};
-    const response = await this.api.get<ApiResponse>('/api/soroban/migration/status', { params });
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/migration/status",
+      { params }
+    );
     return response.data.data;
   }
 
   async validateUserData(userAddress: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/api/soroban/migration/validate/${userAddress}`);
+    const response = await this.api.post<ApiResponse>(
+      `/api/soroban/migration/validate/${userAddress}`
+    );
     return response.data.data;
   }
 
@@ -401,23 +506,32 @@ export class ApiService {
   // ===============
 
   async forceSync(): Promise<any> {
-    const response = await this.api.post<ApiResponse>('/api/soroban/admin/sync/force');
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/admin/sync/force"
+    );
     return response.data.data;
   }
 
   async syncContract(contractType: string): Promise<any> {
-    const response = await this.api.post<ApiResponse>(`/api/soroban/admin/sync/contract/${contractType}`);
+    const response = await this.api.post<ApiResponse>(
+      `/api/soroban/admin/sync/contract/${contractType}`
+    );
     return response.data.data;
   }
 
   async getContractPerformance(): Promise<any> {
-    const response = await this.api.get<ApiResponse>('/api/soroban/admin/analytics/performance');
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/admin/analytics/performance"
+    );
     return response.data.data;
   }
 
   async getErrorAnalysis(contractType?: string): Promise<any> {
     const params = contractType ? { contractType } : {};
-    const response = await this.api.get<ApiResponse>('/api/soroban/admin/analytics/errors', { params });
+    const response = await this.api.get<ApiResponse>(
+      "/api/soroban/admin/analytics/errors",
+      { params }
+    );
     return response.data.data;
   }
 
@@ -430,7 +544,7 @@ export class ApiService {
       await this.healthCheck();
       return true;
     } catch (error) {
-      console.error('❌ [ApiService] Connection test failed:', error);
+      console.error("❌ [ApiService] Connection test failed:", error);
       return false;
     }
   }
@@ -441,4 +555,4 @@ export class ApiService {
 }
 
 // Export singleton instance
-export const apiService = new ApiService(); 
+export const apiService = new ApiService();
