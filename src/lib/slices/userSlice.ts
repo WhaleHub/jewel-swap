@@ -16,7 +16,11 @@ export interface User {
   walletSelectionOpen: boolean;
   userWalletAddress: string | null;
   connectingWallet: boolean;
-  walletName: typeof LOBSTR_ID | typeof FREIGHTER_ID | typeof WALLET_CONNECT_ID | null;
+  walletName:
+    | typeof LOBSTR_ID
+    | typeof FREIGHTER_ID
+    | typeof WALLET_CONNECT_ID
+    | null;
   fetchingWalletInfo: boolean;
   lockingAqua: boolean;
   unStakingAqua: boolean;
@@ -32,7 +36,7 @@ export interface User {
 const initialState: User = {
   userRecords: {
     balances: null,
-    account: null
+    account: null,
   },
   walletConnected: false,
   walletSelectionOpen: false,
@@ -66,19 +70,26 @@ export const mint = createAsyncThunk(
     try {
       // Convert amount to number and validate
       const numericAmount = parseFloat(values.amount);
-      
+
       // Validate amount is a valid number and meets minimum requirement
       if (isNaN(numericAmount) || numericAmount < 0.0000001) {
         console.error("❌ [userSlice] Invalid amount:", values.amount);
-        return rejectWithValue("Amount must be a valid number and at least 0.0000001");
+        return rejectWithValue(
+          "Amount must be a valid number and at least 0.0000001"
+        );
       }
-      
+
       // Validate required fields
-      if (!values.assetCode || !values.assetIssuer || !values.signedTxXdr || !values.senderPublicKey) {
+      if (
+        !values.assetCode ||
+        !values.assetIssuer ||
+        !values.signedTxXdr ||
+        !values.senderPublicKey
+      ) {
         console.error("❌ [userSlice] Missing required fields:", values);
         return rejectWithValue("All fields are required");
       }
-      
+
       const requestData = {
         assetCode: values.assetCode.trim(),
         assetIssuer: values.assetIssuer.trim(),
@@ -87,43 +98,57 @@ export const mint = createAsyncThunk(
         senderPublicKey: values.senderPublicKey.trim(),
         // Do not send treasuryAmount - let backend calculate it
       };
-      
-      console.log("🚀 [userSlice] Sending mint request with data:", requestData);
-      
-      const { data } = await axios.post(`${BACKEND_API}/token/lock`, requestData);
+
+      console.log(
+        "🚀 [userSlice] Sending mint request with data:",
+        requestData
+      );
+
+      const { data } = await axios.post(
+        `${BACKEND_API}/token/lock`,
+        requestData
+      );
       return data;
     } catch (error: any) {
       console.error("❌ [userSlice] Mint request failed:", {
         error: error.response?.data || error.message,
         status: error.response?.status,
-        requestData: values
+        requestData: values,
       });
-      
+
       // Handle axios errors which have a different structure than CustomError
       if (error.response) {
         const { status, data } = error.response;
-        
+
         // Handle validation errors (400)
         if (status === 400) {
-          const errorMessage = data?.message || data?.error?.message || "Validation failed";
+          const errorMessage =
+            data?.message || data?.error?.message || "Validation failed";
           console.error("❌ [userSlice] Validation error:", errorMessage);
           return rejectWithValue(errorMessage);
         }
-        
+
         // Handle service unavailable (503)
         if (status === 503) {
-          const errorMessage = data?.message || "Service temporarily unavailable. Please try again later.";
+          const errorMessage =
+            data?.message ||
+            "Service temporarily unavailable. Please try again later.";
           console.error("❌ [userSlice] Service error:", errorMessage);
           return rejectWithValue(errorMessage);
         }
-        
+
         // Handle other HTTP errors
-        const errorMessage = data?.message || data?.error?.message || `Request failed with status ${status}`;
+        const errorMessage =
+          data?.message ||
+          data?.error?.message ||
+          `Request failed with status ${status}`;
         return rejectWithValue(errorMessage);
       }
 
       // Handle network/other errors
-      const errorMessage = error.message || "Network error occurred. Please check your connection and try again.";
+      const errorMessage =
+        error.message ||
+        "Network error occurred. Please check your connection and try again.";
       return rejectWithValue(errorMessage);
     }
   }
@@ -132,36 +157,56 @@ export const mint = createAsyncThunk(
 export const unStakeAqua = createAsyncThunk(
   "lock/unlock-aqua",
   async (
-    values: { senderPublicKey: string; amountToUnstake: number; signedTxXdr: string },
+    values: {
+      senderPublicKey: string;
+      amountToUnstake: number;
+      signedTxXdr: string;
+    },
     { rejectWithValue }
   ) => {
     try {
       // Validate amount
       if (isNaN(values.amountToUnstake) || values.amountToUnstake <= 0) {
-        console.error("❌ [userSlice] Invalid unstake amount:", values.amountToUnstake);
-        return rejectWithValue("Amount to unstake must be a valid positive number");
+        console.error(
+          "❌ [userSlice] Invalid unstake amount:",
+          values.amountToUnstake
+        );
+        return rejectWithValue(
+          "Amount to unstake must be a valid positive number"
+        );
       }
-      
+
       // Validate required fields
       if (!values.senderPublicKey || !values.signedTxXdr) {
-        console.error("❌ [userSlice] Missing required fields for unStakeAqua:", values);
-        return rejectWithValue("Sender public key and signed transaction are required");
+        console.error(
+          "❌ [userSlice] Missing required fields for unStakeAqua:",
+          values
+        );
+        return rejectWithValue(
+          "Sender public key and signed transaction are required"
+        );
       }
-      
+
       // Validate signed transaction XDR length (basic validation)
       if (values.signedTxXdr.trim().length < 10) {
-        console.error("❌ [userSlice] Invalid signed transaction XDR:", values.signedTxXdr);
+        console.error(
+          "❌ [userSlice] Invalid signed transaction XDR:",
+          values.signedTxXdr
+        );
         return rejectWithValue("Signed transaction XDR appears to be invalid");
       }
-      
+
       const requestData = {
         senderPublicKey: values.senderPublicKey.trim(),
         amountToUnstake: values.amountToUnstake, // Already a number
         signedTxXdr: values.signedTxXdr.trim(),
       };
-      
-      console.log("🚀 [userSlice] Sending unStakeAqua request with data:", requestData);
-      
+
+      console.log(
+        "🚀 [userSlice] Sending unStakeAqua request with data:",
+        requestData
+      );
+
       const { data } = await axios.post(
         `${BACKEND_API}/token/unlock-aqua`,
         requestData
@@ -171,27 +216,36 @@ export const unStakeAqua = createAsyncThunk(
       console.error("❌ [userSlice] UnStakeAqua request failed:", {
         error: error.response?.data || error.message,
         status: error.response?.status,
-        requestData: values
+        requestData: values,
       });
-      
+
       // Handle axios errors properly
       if (error.response) {
         const { status, data } = error.response;
-        
+
         // Handle validation errors (400)
         if (status === 400) {
-          const errorMessage = data?.message || data?.error?.message || "Validation failed";
-          console.error("❌ [userSlice] UnStakeAqua validation error:", errorMessage);
+          const errorMessage =
+            data?.message || data?.error?.message || "Validation failed";
+          console.error(
+            "❌ [userSlice] UnStakeAqua validation error:",
+            errorMessage
+          );
           return rejectWithValue(errorMessage);
         }
-        
+
         // Handle other HTTP errors
-        const errorMessage = data?.message || data?.error?.message || `Request failed with status ${status}`;
+        const errorMessage =
+          data?.message ||
+          data?.error?.message ||
+          `Request failed with status ${status}`;
         return rejectWithValue(errorMessage);
       }
 
       // Handle network/other errors
-      const errorMessage = error.message || "Network error occurred. Please check your connection and try again.";
+      const errorMessage =
+        error.message ||
+        "Network error occurred. Please check your connection and try again.";
       return rejectWithValue(errorMessage);
     }
   }
@@ -212,18 +266,23 @@ export const restakeBlub = createAsyncThunk(
     try {
       // Validate and convert amount to number
       const numericAmount = parseFloat(values.amount);
-      
+
       if (isNaN(numericAmount) || numericAmount <= 0) {
         console.error("❌ [userSlice] Invalid restake amount:", values.amount);
         return rejectWithValue("Amount must be a valid positive number");
       }
-      
+
       // Validate required fields
       if (!values.signedTxXdr || !values.senderPublicKey) {
-        console.error("❌ [userSlice] Missing required fields for restakeBlub:", values);
-        return rejectWithValue("Sender public key and signed transaction are required");
+        console.error(
+          "❌ [userSlice] Missing required fields for restakeBlub:",
+          values
+        );
+        return rejectWithValue(
+          "Sender public key and signed transaction are required"
+        );
       }
-      
+
       // Backend only expects: senderPublicKey, amount (number), signedTxXdr
       // assetCode and assetIssuer are optional per the DTO
       const requestData = {
@@ -234,9 +293,12 @@ export const restakeBlub = createAsyncThunk(
         ...(values.assetCode && { assetCode: values.assetCode.trim() }),
         ...(values.assetIssuer && { assetIssuer: values.assetIssuer.trim() }),
       };
-      
-      console.log("🚀 [userSlice] Sending restakeBlub request with data:", requestData);
-      
+
+      console.log(
+        "🚀 [userSlice] Sending restakeBlub request with data:",
+        requestData
+      );
+
       const { data } = await axios.post(
         `${BACKEND_API}/token/restake-blub`,
         requestData
@@ -246,27 +308,36 @@ export const restakeBlub = createAsyncThunk(
       console.error("❌ [userSlice] RestakeBlub request failed:", {
         error: error.response?.data || error.message,
         status: error.response?.status,
-        requestData: values
+        requestData: values,
       });
-      
+
       // Handle axios errors properly
       if (error.response) {
         const { status, data } = error.response;
-        
+
         // Handle validation errors (400)
         if (status === 400) {
-          const errorMessage = data?.message || data?.error?.message || "Validation failed";
-          console.error("❌ [userSlice] RestakeBlub validation error:", errorMessage);
+          const errorMessage =
+            data?.message || data?.error?.message || "Validation failed";
+          console.error(
+            "❌ [userSlice] RestakeBlub validation error:",
+            errorMessage
+          );
           return rejectWithValue(errorMessage);
         }
-        
+
         // Handle other HTTP errors
-        const errorMessage = data?.message || data?.error?.message || `Request failed with status ${status}`;
+        const errorMessage =
+          data?.message ||
+          data?.error?.message ||
+          `Request failed with status ${status}`;
         return rejectWithValue(errorMessage);
       }
 
       // Handle network/other errors
-      const errorMessage = error.message || "Network error occurred. Please check your connection and try again.";
+      const errorMessage =
+        error.message ||
+        "Network error occurred. Please check your connection and try again.";
       return rejectWithValue(errorMessage);
     }
   }
@@ -277,33 +348,33 @@ export const getAccountInfo = createAsyncThunk(
   async (account: string, { rejectWithValue }) => {
     try {
       // Validate account address format
-      if (!account || typeof account !== 'string') {
+      if (!account || typeof account !== "string") {
         console.error("❌ [userSlice] Invalid account parameter:", account);
         return rejectWithValue("Invalid account address provided");
       }
-      
+
       const trimmedAccount = account.trim();
-      if (trimmedAccount.length !== 56 || !trimmedAccount.startsWith('G')) {
+      if (trimmedAccount.length !== 56 || !trimmedAccount.startsWith("G")) {
         console.error("❌ [userSlice] Invalid account format:", {
           account: trimmedAccount,
           length: trimmedAccount.length,
-          startsWithG: trimmedAccount.startsWith('G')
+          startsWithG: trimmedAccount.startsWith("G"),
         });
         return rejectWithValue("Invalid Stellar account address format");
       }
-      
+
       console.log("🌐 [userSlice] Fetching account info from backend:", {
         account: trimmedAccount,
         accountLength: trimmedAccount?.length,
         isValidFormat: /^G[A-Z0-9]{55}$/.test(trimmedAccount),
         backendUrl: `${BACKEND_API}/token/user?userPublicKey=${trimmedAccount}`,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
-      
+
       const { data } = await axios.get(
         `${BACKEND_API}/token/user?userPublicKey=${trimmedAccount}`
       );
-      
+
       console.log("✅ [userSlice] Account info received from backend:", {
         account: trimmedAccount,
         hasData: !!data,
@@ -311,9 +382,9 @@ export const getAccountInfo = createAsyncThunk(
         balancesCount: data?.balances?.length || 0,
         claimableRecordsCount: data?.claimableRecords?.length || 0,
         poolsCount: data?.pools?.length || 0,
-        accountData: data
+        accountData: data,
       });
-      
+
       return data;
     } catch (error: any) {
       console.error("❌ [userSlice] Error fetching account info:", {
@@ -321,24 +392,26 @@ export const getAccountInfo = createAsyncThunk(
         error: error,
         errorMessage: error?.message,
         response: error?.response?.data,
-        status: error?.response?.status
+        status: error?.response?.status,
       });
-      
+
       // Try fallback optimized endpoint for staking balance
       try {
-        console.log("🔄 [userSlice] Attempting fallback with optimized staking balance endpoint");
-        
+        console.log(
+          "🔄 [userSlice] Attempting fallback with optimized staking balance endpoint"
+        );
+
         const { data: stakingData } = await axios.get(
           `${BACKEND_API}/token/user/staking-balance?userPublicKey=${account}`
         );
-        
+
         console.log("✅ [userSlice] Fallback staking balance data received:", {
           account: account,
           claimableRecordsCount: stakingData?.claimableRecords?.length || 0,
           poolsCount: stakingData?.pools?.length || 0,
-          stakingData: stakingData
+          stakingData: stakingData,
         });
-        
+
         // Return fallback data structure that matches expected format
         const fallbackData = {
           id: null,
@@ -349,18 +422,18 @@ export const getAccountInfo = createAsyncThunk(
           pools: stakingData.pools || [],
           stakes: [],
           treasuryDeposits: [],
-          lpBalances: []
+          lpBalances: [],
         };
-        
+
         return fallbackData;
       } catch (fallbackError: any) {
         console.error("❌ [userSlice] Fallback endpoint also failed:", {
           account: account,
           fallbackError: fallbackError,
-          fallbackErrorMessage: fallbackError?.message
+          fallbackErrorMessage: fallbackError?.message,
         });
       }
-      
+
       const customError: CustomError = error;
 
       if (customError.response && customError.response.data.error?.message) {
@@ -380,16 +453,16 @@ export const storeAccountBalance = createAsyncThunk(
         balanceCount: values?.length || 0,
         balances: values?.map((balance: any) => ({
           asset_type: balance.asset_type,
-          asset_code: balance.asset_code || 'XLM',
+          asset_code: balance.asset_code || "XLM",
           balance: balance.balance,
           limit: balance.limit,
           buying_liabilities: balance.buying_liabilities,
           selling_liabilities: balance.selling_liabilities,
-          asset_issuer: balance.asset_issuer
+          asset_issuer: balance.asset_issuer,
         })),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
-      
+
       return values;
     } catch (error: any) {
       console.error("❌ [userSlice] Error storing account balances:", error);
@@ -448,23 +521,34 @@ export const provideLiquidity = createAsyncThunk(
       // Validate and convert amounts to numbers
       const amount1 = parseFloat(values.asset1.amount);
       const amount2 = parseFloat(values.asset2.amount);
-      
+
       if (isNaN(amount1) || amount1 < 1) {
-        console.error("❌ [userSlice] Invalid asset1 amount:", values.asset1.amount);
+        console.error(
+          "❌ [userSlice] Invalid asset1 amount:",
+          values.asset1.amount
+        );
         return rejectWithValue("Asset 1 amount must be at least 1");
       }
-      
+
       if (isNaN(amount2) || amount2 < 1) {
-        console.error("❌ [userSlice] Invalid asset2 amount:", values.asset2.amount);
+        console.error(
+          "❌ [userSlice] Invalid asset2 amount:",
+          values.asset2.amount
+        );
         return rejectWithValue("Asset 2 amount must be at least 1");
       }
-      
+
       // Validate required fields
       if (!values.signedTxXdr || !values.senderPublicKey) {
-        console.error("❌ [userSlice] Missing required fields for provideLiquidity:", values);
-        return rejectWithValue("Sender public key and signed transaction are required");
+        console.error(
+          "❌ [userSlice] Missing required fields for provideLiquidity:",
+          values
+        );
+        return rejectWithValue(
+          "Sender public key and signed transaction are required"
+        );
       }
-      
+
       // Format data to match CreateAddLiquidityDto structure
       const requestData = {
         asset1: {
@@ -480,9 +564,12 @@ export const provideLiquidity = createAsyncThunk(
         signedTxXdr: values.signedTxXdr.trim(),
         senderPublicKey: values.senderPublicKey.trim(),
       };
-      
-      console.log("🚀 [userSlice] Sending provideLiquidity request with data:", requestData);
-      
+
+      console.log(
+        "🚀 [userSlice] Sending provideLiquidity request with data:",
+        requestData
+      );
+
       const { data } = await axios.post(
         `${BACKEND_API}/token/add-liquidity`,
         requestData
@@ -492,27 +579,36 @@ export const provideLiquidity = createAsyncThunk(
       console.error("❌ [userSlice] ProvideLiquidity request failed:", {
         error: error.response?.data || error.message,
         status: error.response?.status,
-        requestData: values
+        requestData: values,
       });
-      
+
       // Handle axios errors properly
       if (error.response) {
         const { status, data } = error.response;
-        
+
         // Handle validation errors (400)
         if (status === 400) {
-          const errorMessage = data?.message || data?.error?.message || "Validation failed";
-          console.error("❌ [userSlice] ProvideLiquidity validation error:", errorMessage);
+          const errorMessage =
+            data?.message || data?.error?.message || "Validation failed";
+          console.error(
+            "❌ [userSlice] ProvideLiquidity validation error:",
+            errorMessage
+          );
           return rejectWithValue(errorMessage);
         }
-        
+
         // Handle other HTTP errors
-        const errorMessage = data?.message || data?.error?.message || `Request failed with status ${status}`;
+        const errorMessage =
+          data?.message ||
+          data?.error?.message ||
+          `Request failed with status ${status}`;
         return rejectWithValue(errorMessage);
       }
 
       // Handle network/other errors
-      const errorMessage = error.message || "Network error occurred. Please check your connection and try again.";
+      const errorMessage =
+        error.message ||
+        "Network error occurred. Please check your connection and try again.";
       return rejectWithValue(errorMessage);
     }
   }
@@ -652,14 +748,14 @@ export const userSlice = createSlice({
         payloadCount: payload?.length || 0,
         payload: payload?.map((balance: any) => ({
           asset_type: balance.asset_type,
-          asset_code: balance.asset_code || 'XLM',
+          asset_code: balance.asset_code || "XLM",
           balance: balance.balance,
-          limit: balance.limit
+          limit: balance.limit,
         })),
         existingBalances: state.userRecords?.balances?.length || 0,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
-      
+
       return {
         ...state,
         userRecords: {
@@ -717,7 +813,10 @@ export const userSlice = createSlice({
 
     builder.addCase(unStakeAqua.rejected, (state, action) => {
       state.unStakingAqua = false;
-      console.error("❌ [userSlice] UnStake operation rejected:", action.payload);
+      console.error(
+        "❌ [userSlice] UnStake operation rejected:",
+        action.payload
+      );
     });
 
     //restake
@@ -732,7 +831,10 @@ export const userSlice = createSlice({
 
     builder.addCase(restakeBlub.rejected, (state, action) => {
       state.restaking = false;
-      console.error("❌ [userSlice] Restake operation rejected:", action.payload);
+      console.error(
+        "❌ [userSlice] Restake operation rejected:",
+        action.payload
+      );
     });
 
     //provide lp

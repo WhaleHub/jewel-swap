@@ -264,9 +264,12 @@ function AddLiquidity() {
 
   return (
     <div>
-      <div className="bg-[#0E111BCC] p-10 rounded-[16px]"   style={{
-            filter: "blur(1.5px)"
-          }}>
+      <div
+        className="bg-[#0E111BCC] p-10 rounded-[16px]"
+        style={{
+          filter: "blur(1.5px)",
+        }}
+      >
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2">
             <img

@@ -1,0 +1,24 @@
+# Soroban Staking Bot Requirements
+
+# Stellar SDK
+stellar-sdk>=13.1.0
+
+# HTTP requests
+requests==2.31.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Async support
+aiohttp==3.9.1
+asyncio==3.4.3
+
+# Database (optional - for tracking processed events)
+sqlalchemy==2.0.23
+
+# Logging
+python-json-logger==2.0.7
+
+# Stellar RPC client
+# soroban-python==0.1.0  # Not available on PyPI - using stellar-sdk instead
+
