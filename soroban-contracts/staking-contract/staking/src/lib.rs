@@ -24,7 +24,7 @@ pub struct Config {
 pub struct LockEntry {
     pub user: Address,
     pub amount: i128,                // AQUA amount locked in contract
-    pub blub_locked: i128,           // BLUB amount LOCKED in staking pool
+    pub blub_locked: i128,           // BLUB amount locked in staking pool
     pub lock_timestamp: u64,
     pub duration_minutes: u64,       // Lock duration in minutes
     pub unlock_timestamp: u64,       // Calculated unlock time
@@ -109,7 +109,7 @@ pub struct UserRewardTotals {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RewardDistribution {
-    pub kind: u32, // 0 = LP, 1 = LOCKED
+    pub kind: u32,
     pub pool_id: Bytes,
     pub total_reward: i128,
     pub distributed_amount: i128,
@@ -146,7 +146,7 @@ pub struct ProtocolOwnedLiquidity {
 }
 
 // ============================================================================
-// Liquidity Pool Integration
+// Liquidity Pool Integration (AQUA/BLUB AMM Pool)
 // ============================================================================
 
 #[contracttype]
@@ -274,7 +274,7 @@ pub struct RewardDistributionRecordedEvent {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UserRewardCreditedEvent {
-    pub kind: u32, // 0 = LP, 1 = LOCKED
+    pub kind: u32,
     pub user: Address,
     pub pool_id: Bytes,
     pub amount: i128,
@@ -402,38 +402,137 @@ impl StakingRegistry {
         
         let contract_address = env.current_contract_address();
         
+        // Verify balances before attempting deposit
         use soroban_sdk::token;
-        use soroban_sdk::IntoVal;
-        
-        // ===== APPROVE TOKENS FOR POOL CONTRACT =====
-        // The pool will transfer tokens from this contract, so we need to approve
-        
         let aqua_client = token::Client::new(env, &config.aqua_token);
-        aqua_client.approve(&contract_address, &config.liquidity_contract, &aqua_amount, &(env.ledger().sequence() + 1000));
-        
         let blub_client = token::Client::new(env, &config.blub_token);
-        blub_client.approve(&contract_address, &config.liquidity_contract, &blub_amount, &(env.ledger().sequence() + 1000));
         
-        // ===== CALL POOL DEPOSIT FUNCTION =====
-        // deposit(user: address, amounts: vec<u128>, min_shares: u128) -> tuple<vec<u128>,u128>
-        // amounts[0] = AQUA, amounts[1] = BLUB (order determined by get_tokens())
+        let aqua_balance = aqua_client.balance(&contract_address);
+        let blub_balance = blub_client.balance(&contract_address);
         
-        let mut amounts = soroban_sdk::Vec::new(env);
-        amounts.push_back(aqua_amount as u128);
-        amounts.push_back(blub_amount as u128);
+        env.events().publish(
+            (symbol_short!("pol_pre"),),
+            (aqua_amount, blub_amount, aqua_balance, blub_balance),
+        );
         
-        // Set min_shares to 0 for now (could be improved with slippage protection)
+        if aqua_balance < aqua_amount {
+            env.events().publish(
+                (symbol_short!("pol_err"),),
+                symbol_short!("low_aqua"),
+            );
+            return Err(Error::InsufficientBalance);
+        }
+        
+        if blub_balance < blub_amount {
+            env.events().publish(
+                (symbol_short!("pol_err"),),
+                symbol_short!("low_blub"),
+            );
+            return Err(Error::InsufficientBalance);
+        }
+        
+        use soroban_sdk::{IntoVal, Vec as SorobanVec};
+        use soroban_sdk::auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation};
+        
+        // Log what tokens we expect from config
+        env.events().publish(
+            (symbol_short!("cfg_tok"),),
+            (config.aqua_token.clone(), config.blub_token.clone()),
+        );
+        
+        // Get the token order from the pool to ensure we authorize in the correct order
+        let pool_tokens_result = env.try_invoke_contract::<SorobanVec<Address>, soroban_sdk::Error>(
+            &config.liquidity_contract,
+            &soroban_sdk::Symbol::new(env, "get_tokens"),
+            ().into_val(env),
+        );
+        
+        let (token_0, token_1, amount_0, amount_1) = match pool_tokens_result {
+            Ok(Ok(tokens)) if tokens.len() >= 2 => {
+                let t0 = tokens.get(0).unwrap();
+                let t1 = tokens.get(1).unwrap();
+                
+                // Determine which token is which and set amounts accordingly
+                let (final_t0, final_t1, final_amt0, final_amt1) = if t0 == config.aqua_token && t1 == config.blub_token {
+                    // Pool expects: AQUA first, BLUB second
+                    (t0, t1, aqua_amount, blub_amount)
+                } else if t0 == config.blub_token && t1 == config.aqua_token {
+                    // Pool expects: BLUB first, AQUA second
+                    (t0, t1, blub_amount, aqua_amount)
+                } else {
+                    // Tokens don't match - log warning and use pool order
+                    env.events().publish(
+                        (symbol_short!("pol_warn"),),
+                        symbol_short!("tok_mism"),
+                    );
+                    // Assume pool order is correct, try AQUA first
+                    (t0, t1, aqua_amount, blub_amount)
+                };
+                
+                // Log token order for debugging
+                let is_blub_first = final_t0 == config.blub_token;
+                env.events().publish(
+                    (symbol_short!("tok_ord"),),
+                    (final_t0.clone(), final_t1.clone(), final_amt0, final_amt1),
+                );
+                env.events().publish(
+                    (symbol_short!("blub_1st"),),
+                    is_blub_first,
+                );
+                
+                (final_t0, final_t1, final_amt0, final_amt1)
+            }
+            _ => {
+                env.events().publish(
+                    (symbol_short!("pol_warn"),),
+                    symbol_short!("no_tokens"),
+                );
+                (config.aqua_token.clone(), config.blub_token.clone(), aqua_amount, blub_amount)
+            }
+        };
+        
+        let mut amounts = SorobanVec::new(env);
+        amounts.push_back(amount_0 as u128);
+        amounts.push_back(amount_1 as u128);
+        
         let min_shares: u128 = 0;
         
+        // Build authorization: The pool will call transfer on each token on our behalf
+        let mut auth_entries = SorobanVec::new(env);
+        
+        // Authorize token 0 transfer (will be called by the pool contract)
+        auth_entries.push_back(InvokerContractAuthEntry::Contract(SubContractInvocation {
+            context: ContractContext {
+                contract: token_0.clone(),
+                fn_name: soroban_sdk::symbol_short!("transfer"),
+                args: (contract_address.clone(), config.liquidity_contract.clone(), amount_0).into_val(env),
+            },
+            sub_invocations: SorobanVec::new(env),
+        }));
+        
+        // Authorize token 1 transfer (will be called by the pool contract)
+        auth_entries.push_back(InvokerContractAuthEntry::Contract(SubContractInvocation {
+            context: ContractContext {
+                contract: token_1.clone(),
+                fn_name: soroban_sdk::symbol_short!("transfer"),
+                args: (contract_address.clone(), config.liquidity_contract.clone(), amount_1).into_val(env),
+            },
+            sub_invocations: SorobanVec::new(env),
+        }));
+        
+        env.authorize_as_current_contract(auth_entries);
+        
         // Call the pool's deposit function
-        let result: Result<(soroban_sdk::Vec<u128>, u128), soroban_sdk::Error> = env.try_invoke_contract(
+        // deposit(user: address, amounts: vec<u128>, min_shares: u128) -> tuple<vec<u128>,u128>
+        // amounts[0] = AQUA, amounts[1] = BLUB (order determined by get_tokens())
+        let result = env.try_invoke_contract::<(SorobanVec<u128>, u128), soroban_sdk::Error>(
             &config.liquidity_contract,
             &soroban_sdk::Symbol::new(env, "deposit"),
             (contract_address.clone(), amounts, min_shares).into_val(env),
         );
         
         match result {
-            Ok((_deposited_amounts, lp_shares_minted)) => {
+            Ok(Ok((_deposited_amounts, lp_shares_minted))) => {
                 // Update POL LP position tracking with actual minted shares
                 let mut pol = Self::get_pol(env);
                 pol.aqua_blub_lp_position = pol.aqua_blub_lp_position.saturating_add(lp_shares_minted as i128);
@@ -447,8 +546,18 @@ impl StakingRegistry {
 
                 Ok(())
             }
+            Ok(Err(_)) => {
+                env.events().publish(
+                    (symbol_short!("pol_err"),),
+                    symbol_short!("dep_conv"),
+                );
+                Err(Error::InvalidInput)
+            }
             Err(_) => {
-                // Pool deposit failed
+                env.events().publish(
+                    (symbol_short!("pol_err"),),
+                    symbol_short!("dep_fail"),
+                );
                 Err(Error::InvalidInput)
             }
         }
@@ -667,6 +776,7 @@ impl StakingRegistry {
         
         use soroban_sdk::token;
         let blub_client = token::Client::new(&env, &config.blub_token);
+        let aqua_client = token::Client::new(&env, &config.aqua_token);
         
         // Verify contract has enough BLUB (should have been minted to contract by backend)
         let contract_blub_balance = blub_client.balance(&contract_address);
@@ -678,7 +788,22 @@ impl StakingRegistry {
         }
         
         let pol_aqua = lock.pol_contributed; // 10% AQUA that was kept
-        if pol_aqua > 0 && blub_to_lp > 0 {
+        
+        // Only auto-deposit POL if enabled in config
+        if config.auto_deposit_pol && pol_aqua > 0 && blub_to_lp > 0 {
+            // Verify contract has enough AQUA for POL
+            let contract_aqua_balance = aqua_client.balance(&contract_address);
+            if contract_aqua_balance < pol_aqua {
+                // Release lock before returning error
+                global_state.locked = false;
+                env.storage().instance().set(&DataKey::GlobalState, &global_state);
+                env.events().publish(
+                    (symbol_short!("pol_err"),),
+                    symbol_short!("no_aqua"),
+                );
+                return Err(Error::InsufficientBalance);
+            }
+            
             let pol_result = Self::deposit_pol_to_lp(&env, &config, pol_aqua, blub_to_lp);
             if pol_result.is_err() {
                 global_state.locked = false;
@@ -689,6 +814,12 @@ impl StakingRegistry {
                 );
                 return Err(Error::InvalidInput);
             }
+        } else if !config.auto_deposit_pol {
+            // Log that auto-deposit is disabled
+            env.events().publish(
+                (symbol_short!("pol_skip"),),
+                symbol_short!("disabled"),
+            );
         }
         
         global_state.locked = false;
@@ -729,7 +860,7 @@ impl StakingRegistry {
         let blub_lock = LockEntry {
             user: user.clone(),
             amount: 0,
-            blub_locked: amoun
+            blub_locked: amount,
             lock_timestamp: timestamp,
             duration_minutes,
             unlock_timestamp,
@@ -1537,9 +1668,10 @@ impl StakingRegistry {
     }
 
     fn calculate_lock_multiplier(duration_minutes: u64) -> i128 {
-        let base_multiplier = 10000;
+        // Calculate bonus based on elapsed time: 1 day (1440 min) = 100 bps (1%), max = 10000 bps (100%)
+        // Base 100% + up to 100% bonus for longer time staked
         let duration_bonus = ((duration_minutes as i128 * 100) / 1440).min(10000);
-        base_multiplier + duration_bonus
+        10000 + duration_bonus // The longer staked, the higher the rewards
     }
 
     fn calculate_lp_shares(amount_a: i128, amount_b: i128) -> i128 {
@@ -1590,15 +1722,23 @@ impl StakingRegistry {
 
         if count == 0 { return Ok(10000); }
 
+        let now = env.ledger().timestamp();
         let mut total_amount = 0i128;
         let mut weighted_multiplier = 0i128;
 
         for i in 0..count {
             if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByIndex(user.clone(), i)) {
-                total_amount = total_amount.saturating_add(entry.amount);
-                weighted_multiplier = weighted_multiplier.saturating_add(
-                    entry.amount.saturating_mul(entry.reward_multiplier)
-                );
+                if !entry.unlocked && entry.blub_locked > 0 {
+                    // Calculate multiplier based on actual elapsed time since staking
+                    let elapsed_seconds = now.saturating_sub(entry.lock_timestamp);
+                    let elapsed_minutes = elapsed_seconds / 60;
+                    let time_based_multiplier = Self::calculate_lock_multiplier(elapsed_minutes);
+                    
+                    total_amount = total_amount.saturating_add(entry.blub_locked);
+                    weighted_multiplier = weighted_multiplier.saturating_add(
+                        entry.blub_locked.saturating_mul(time_based_multiplier)
+                    );
+                }
             }
         }
 
@@ -1697,14 +1837,14 @@ impl StakingRegistry {
         use soroban_sdk::IntoVal;
         
         // Call get_reserves() -> vec<u128>
-        let result: Result<soroban_sdk::Vec<u128>, soroban_sdk::Error> = env.try_invoke_contract(
+        let result = env.try_invoke_contract::<soroban_sdk::Vec<u128>, soroban_sdk::Error>(
             &config.liquidity_contract,
             &soroban_sdk::Symbol::new(&env, "get_reserves"),
             ().into_val(&env),
         );
         
         match result {
-            Ok(reserves) => {
+            Ok(Ok(reserves)) => {
                 if reserves.len() >= 2 {
                     let aqua_reserve = reserves.get(0).unwrap_or(0) as i128;
                     let blub_reserve = reserves.get(1).unwrap_or(0) as i128;
@@ -1713,6 +1853,7 @@ impl StakingRegistry {
                     Err(Error::InvalidInput)
                 }
             }
+            Ok(Err(_)) => Err(Error::InvalidInput),
             Err(_) => Err(Error::InvalidInput)
         }
     }
@@ -1723,13 +1864,16 @@ impl StakingRegistry {
         
         use soroban_sdk::IntoVal;
         
-        let result: Result<Address, soroban_sdk::Error> = env.try_invoke_contract(
+        let result = env.try_invoke_contract::<Address, soroban_sdk::Error>(
             &config.liquidity_contract,
             &soroban_sdk::Symbol::new(&env, "share_id"),
             ().into_val(&env),
         );
         
-        result.map_err(|_| Error::InvalidInput)
+        match result {
+            Ok(Ok(addr)) => Ok(addr),
+            _ => Err(Error::InvalidInput)
+        }
     }
 
     /// Withdraw liquidity from the pool (admin-only)
@@ -1762,14 +1906,14 @@ impl StakingRegistry {
         min_amounts.push_back(min_blub as u128);
         
         // Call withdraw(user: address, share_amount: u128, min_amounts: vec<u128>) -> vec<u128>
-        let result: Result<soroban_sdk::Vec<u128>, soroban_sdk::Error> = env.try_invoke_contract(
+        let result = env.try_invoke_contract::<soroban_sdk::Vec<u128>, soroban_sdk::Error>(
             &config.liquidity_contract,
             &soroban_sdk::Symbol::new(&env, "withdraw"),
             (contract_address.clone(), share_amount as u128, min_amounts).into_val(&env),
         );
         
         match result {
-            Ok(withdrawn_amounts) => {
+            Ok(Ok(withdrawn_amounts)) => {
                 if withdrawn_amounts.len() >= 2 {
                     let aqua_withdrawn = withdrawn_amounts.get(0).unwrap_or(0) as i128;
                     let blub_withdrawn = withdrawn_amounts.get(1).unwrap_or(0) as i128;
@@ -1790,6 +1934,7 @@ impl StakingRegistry {
                     Err(Error::InvalidInput)
                 }
             }
+            Ok(Err(_)) => Err(Error::InvalidInput),
             Err(_) => Err(Error::InvalidInput)
         }
     }
@@ -1799,13 +1944,16 @@ impl StakingRegistry {
         
         use soroban_sdk::IntoVal;
         
-        let result: Result<u128, soroban_sdk::Error> = env.try_invoke_contract(
+        let result = env.try_invoke_contract::<u128, soroban_sdk::Error>(
             &config.liquidity_contract,
             &soroban_sdk::Symbol::new(&env, "get_virtual_price"),
             ().into_val(&env),
         );
         
-        result.map(|price| price as i128).map_err(|_| Error::InvalidInput)
+        match result {
+            Ok(Ok(price)) => Ok(price as i128),
+            _ => Err(Error::InvalidInput)
+        }
     }
 
     /// Claim rewards from the pool (admin-only)
@@ -1825,14 +1973,14 @@ impl StakingRegistry {
         use soroban_sdk::IntoVal;
         
         // Call claim(user: address) -> u128
-        let result: Result<u128, soroban_sdk::Error> = env.try_invoke_contract(
+        let result = env.try_invoke_contract::<u128, soroban_sdk::Error>(
             &config.liquidity_contract,
             &soroban_sdk::Symbol::new(&env, "claim"),
             (contract_address.clone(),).into_val(&env),
         );
         
         match result {
-            Ok(reward_amount) => {
+            Ok(Ok(reward_amount)) => {
                 let mut pol = Self::get_pol(&env);
                 pol.total_pol_rewards_earned = pol.total_pol_rewards_earned.saturating_add(reward_amount as i128);
                 pol.last_reward_claim = env.ledger().timestamp();
@@ -1845,6 +1993,7 @@ impl StakingRegistry {
                 
                 Ok(reward_amount as i128)
             }
+            Ok(Err(_)) => Err(Error::InvalidInput),
             Err(_) => Err(Error::InvalidInput)
         }
     }
@@ -1855,13 +2004,16 @@ impl StakingRegistry {
         
         use soroban_sdk::IntoVal;
         
-        let result: Result<u128, soroban_sdk::Error> = env.try_invoke_contract(
+        let result = env.try_invoke_contract::<u128, soroban_sdk::Error>(
             &config.liquidity_contract,
             &soroban_sdk::Symbol::new(&env, "get_user_reward"),
             (contract_address,).into_val(&env),
         );
         
-        result.map(|reward| reward as i128).map_err(|_| Error::InvalidInput)
+        match result {
+            Ok(Ok(reward)) => Ok(reward as i128),
+            _ => Err(Error::InvalidInput)
+        }
     }
 
     // Admin functions for gas optimization
@@ -2091,16 +2243,13 @@ impl StakingRegistry {
         for i in 0..count {
             if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByIndex(user.clone(), i)) {
                 if entry.unlocked {
+                    // Already unstaked - count as available
                     unstaking_available = unstaking_available.saturating_add(entry.blub_locked);
                     total_unlocked_entries += 1;
                 } else {
-                    if now >= entry.unlock_timestamp {
-                        unstaking_available = unstaking_available.saturating_add(entry.blub_locked);
-                        total_unlocked_entries += 1;
-                    } else {
-                        total_staked_blub = total_staked_blub.saturating_add(entry.blub_locked);
-                        total_locked_entries += 1;
-                    }
+                    // Currently staked - all are immediately unstakable
+                    total_staked_blub = total_staked_blub.saturating_add(entry.blub_locked);
+                    total_locked_entries += 1;
                 }
             }
         }
@@ -2175,9 +2324,8 @@ impl StakingRegistry {
             }
 
             if let Some(mut entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByIndex(user.clone(), i)) {
-                let is_unlockable = entry.unlocked || now >= entry.unlock_timestamp;
-                
-                if is_unlockable && entry.blub_locked > 0 {
+                // Allow immediate unstaking - no time-based restrictions
+                if entry.blub_locked > 0 && !entry.unlocked {
                     let unstake_from_entry = remaining_amount.min(entry.blub_locked);
                     
                     total_blub_unstaked = total_blub_unstaked.saturating_add(unstake_from_entry);

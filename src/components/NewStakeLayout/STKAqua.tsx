@@ -72,7 +72,6 @@ function STKAqua() {
   const governance = useSelector((state: RootState) => state.governance);
 
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
-  const [lockDuration, setLockDuration] = useState<number>(30); // Default 30 days
   const [dialogMsg, setDialogMsg] = useState<string>("");
   const [dialogTitle, setDialogTitle] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
@@ -146,7 +145,6 @@ function STKAqua() {
       console.log("[STKAqua] Starting Soroban contract staking:", {
         userAddress: user.userWalletAddress,
         amount: aquaDepositAmount,
-        duration: lockDuration,
       });
       // Use the soroban service
       const { sorobanService } = await import("../../services/soroban.service");
@@ -154,17 +152,18 @@ function STKAqua() {
       const soroban = sorobanService;
 
       // Build Soroban contract invocation transaction
-      // New stake() function: user, token, amount, duration
+      // stake() function: user, amount, duration_periods (minimal value for time-based rewards)
       const amountInStroops = Math.floor(
         aquaDepositAmount * 10000000
       ).toString(); // Convert to 7 decimal places
       const aquaTokenContract = SOROBAN_CONFIG.assets.aqua.sorobanContract;
+      const durationPeriods = 1; // Minimal value - actual rewards calculated by elapsed time
 
       console.log("[STKAqua] Building stake transaction with args:", {
         userAddress: user.userWalletAddress,
         aquaTokenContract,
         amountInStroops,
-        lockDuration,
+        durationPeriods,
       });
 
       // Import Stellar SDK for proper type conversions
@@ -172,11 +171,11 @@ function STKAqua() {
 
       const { transaction } = await soroban.buildContractTransaction(
         "staking",
-        "stake", // New function that transfers tokens and records lock
+        "stake", // Function that transfers tokens and records stake
         [
           Address.fromString(user.userWalletAddress), // Address type
           nativeToScVal(BigInt(amountInStroops), { type: "i128" }), // i128 type for amount
-          nativeToScVal(lockDuration, { type: "u64" }), // u64 type for duration (NOT u32!)
+          nativeToScVal(durationPeriods, { type: "u64" }), // u64 - minimal value, rewards based on actual time
         ],
         user.userWalletAddress
       );
@@ -217,18 +216,18 @@ function STKAqua() {
 
       // Show success message
       toast.success(
-        `Successfully staked ${aquaDepositAmount} AQUA for ${lockDuration} days via Soroban smart contract!`
+        `Successfully staked ${aquaDepositAmount} AQUA via Soroban smart contract!`
       );
       setDialogTitle("Staking Successful!");
       setDialogMsg(
-        `Transaction Hash: ${result.transactionHash}\n\nYour AQUA has been locked in the Soroban smart contract and will contribute to Protocol Owned Liquidity.`
+        `Transaction Hash: ${result.transactionHash}\n\nYour AQUA has been staked. Rewards increase the longer you keep it staked. You can unstake at any time.`
       );
       setOptDialog(true);
 
       // Reset form
       setAquaDepositAmount(0);
 
-      // Refresh on-chain data directly from Soroban (no backend needed!)
+      // Refresh on-chain data directly from Soroban
       await Promise.all([
         dispatch(fetchComprehensiveStakingData(user.userWalletAddress)), // Fetch fresh on-chain data
         dispatch(getAccountInfo(user.userWalletAddress)),
@@ -810,49 +809,18 @@ function STKAqua() {
               </button>
             </div>
 
-            {/* Lock Duration Selector - Only for Soroban */}
+            {/* Time-based rewards info */}
             {useSoroban && (
-              <div className="mt-4">
-                <div className="flex items-center space-x-2 mb-2">
-                  <div className="font-normal text-[#B1B3B8]">
-                    Lock Duration:
-                  </div>
-                  <div className="relative group">
-                    <InformationCircleIcon
-                      className="h-[15px] w-[15px] text-white cursor-pointer"
-                      onClick={() =>
-                        onDialogOpen(
-                          "Longer lock durations provide higher rewards and more ICE governance tokens. Your AQUA will contribute to Protocol Owned Liquidity during the lock period.",
-                          "Lock Duration"
-                        )
-                      }
-                    />
+              <div className="mt-4 p-3 bg-[#1A1E2E] rounded-[8px]">
+                <div className="flex items-center space-x-2 mb-1">
+                  <InformationCircleIcon className="h-[15px] w-[15px] text-[#00CC99]" />
+                  <div className="text-sm font-medium text-white">
+                    Time-Based Rewards
                   </div>
                 </div>
-                <div className="grid grid-cols-4 gap-2">
-                  {[30, 90, 180, 365].map((days) => (
-                    <button
-                      key={days}
-                      className={clsx(
-                        "p-2 rounded-[4px] text-sm font-medium transition-colors",
-                        lockDuration === days
-                          ? "bg-[#00CC99] text-white"
-                          : "bg-[#3C404D] text-[#B1B3B8] hover:bg-[#4A4E5D]"
-                      )}
-                      onClick={() => setLockDuration(days)}
-                    >
-                      {days}d
-                    </button>
-                  ))}
-                </div>
-                <div className="text-xs text-[#B1B3B8] mt-1">
-                  Estimated ICE tokens:{" "}
-                  {aquaDepositAmount
-                    ? (
-                        aquaDepositAmount *
-                        (1 + Math.min(lockDuration / 365, 1))
-                      ).toFixed(2)
-                    : "0.00"}
+                <div className="text-xs text-[#B1B3B8]">
+                  Your rewards increase the longer you keep your AQUA staked.
+                  Unstake anytime without penalty.
                 </div>
               </div>
             )}
@@ -869,8 +837,8 @@ function STKAqua() {
                     onClick={() =>
                       onDialogOpen(
                         useSoroban
-                          ? "Soroban staking provides enhanced features including lock durations, ICE governance tokens, and Protocol Owned Liquidity contribution."
-                          : "Legacy staking uses the original BLUB conversion system without lock periods or governance features.",
+                          ? "Soroban staking provides time-based rewards - the longer you stake, the more you earn. You can unstake anytime. Includes ICE governance tokens and Protocol Owned Liquidity contribution."
+                          : "Legacy staking uses the original BLUB conversion system without time-based rewards or governance features.",
                         useSoroban ? "Soroban Staking" : "Legacy Staking"
                       )
                     }
@@ -911,7 +879,7 @@ function STKAqua() {
               {useSoroban
                 ? staking.isStaking
                   ? "Staking..."
-                  : `Lock AQUA (${lockDuration}d)`
+                  : "Stake AQUA"
                 : user?.lockingAqua
                 ? "Converting..."
                 : "Convert & Stake"}

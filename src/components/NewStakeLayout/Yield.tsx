@@ -482,13 +482,13 @@ function Yield() {
 
       // Build Soroban transaction for staking BLUB
       const stakeAmountStroops = Math.floor(blubStakeAmount * 10000000); // Convert to stroops
-      const durationDays = 30; // Default 30-day lock
+      const durationPeriods = 1; // Minimal value - rewards based on actual time staked
 
       console.log("🟦 [Yield] Building BLUB stake transaction...");
       console.log("🟦 [Yield] Parameters:", {
         userAddress: user.userWalletAddress,
         stakeAmountStroops,
-        durationDays,
+        durationPeriods,
       });
 
       // Import Stellar SDK for proper type conversions
@@ -501,9 +501,9 @@ function Yield() {
         "staking",
         "stake_blub", // Contract function for BLUB restaking
         [
-          Address.fromString(user.userWalletAddress), // Address type
-          nativeToScVal(stakeAmountStroops, { type: "i128" }), // i128 type for amount
-          nativeToScVal(durationDays, { type: "u64" }), // u64 type for duration (NOT u32!)
+          Address.fromString(user.userWalletAddress),
+          nativeToScVal(stakeAmountStroops, { type: "i128" }),
+          nativeToScVal(durationPeriods, { type: "u64" }),
         ],
         user.userWalletAddress
       );
