@@ -688,27 +688,43 @@ export class SorobanService {
   }
 
   /**
-   * Query BLUB token balance for a user from staking contract
+   * Query BLUB token balance for a user from BLUB TOKEN CONTRACT (wallet balance)
+   * This queries the actual BLUB token contract (SAC), not the staking contract
    */
   async queryBlubBalance(userAddress: string): Promise<string> {
     try {
       console.log(
-        "🔍 [SorobanService] Querying BLUB balance for:",
+        "🔍 [SorobanService] Querying BLUB wallet balance for:",
         userAddress
       );
 
-      const contract = this.getContract("staking");
+      // Get BLUB token contract address from config
+      const { SOROBAN_CONFIG } = await import("../config/soroban.config");
+      const blubTokenContract = SOROBAN_CONFIG.assets.blub.sorobanContract;
+
+      if (!blubTokenContract) {
+        console.error(
+          "❌ [SorobanService] BLUB token contract address not configured"
+        );
+        return "0";
+      }
+
+      console.log(
+        "🟦 [SorobanService] Using BLUB token contract:",
+        blubTokenContract
+      );
+
+      // Create contract instance for BLUB token
+      const contract = new Contract(blubTokenContract);
       const account = await this.server.getAccount(userAddress);
 
+      // Call the standard 'balance' function on the BLUB token contract
       const transaction = new TransactionBuilder(account, {
         fee: "100",
         networkPassphrase: this.getNetworkPassphrase(),
       })
         .addOperation(
-          contract.call(
-            "blub_balance",
-            Address.fromString(userAddress).toScVal()
-          )
+          contract.call("balance", Address.fromString(userAddress).toScVal())
         )
         .setTimeout(30)
         .build();
@@ -720,13 +736,16 @@ export class SorobanService {
       if (simulation.result?.retval) {
         const balance = scValToNative(simulation.result.retval);
         const balanceStr = (Number(balance) / 10000000).toFixed(7);
-        console.log("✅ [SorobanService] BLUB balance:", balanceStr);
+        console.log("✅ [SorobanService] BLUB wallet balance:", balanceStr);
         return balanceStr;
       }
 
       return "0";
     } catch (error: any) {
-      console.error("❌ [SorobanService] Failed to query BLUB balance:", error);
+      console.error(
+        "❌ [SorobanService] Failed to query BLUB wallet balance:",
+        error
+      );
       return "0";
     }
   }

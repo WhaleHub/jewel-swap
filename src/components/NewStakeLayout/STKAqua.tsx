@@ -227,18 +227,28 @@ function STKAqua() {
       // Reset form
       setAquaDepositAmount(0);
 
-      // Refresh on-chain data directly from Soroban
+      // Add a small delay to ensure blockchain state is updated
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Refresh on-chain data directly from Soroban - wait for completion
+      console.log("[STKAqua] Refreshing all on-chain data after stake...");
       await Promise.all([
-        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)), // Fetch fresh on-chain data
+        dispatch(
+          fetchComprehensiveStakingData(user.userWalletAddress)
+        ).unwrap(), // Fetch fresh on-chain data
         dispatch(getAccountInfo(user.userWalletAddress)),
-        updateWalletRecordsWithDelay(3000),
       ]);
 
       // Refresh BLUB balance (user should have received BLUB tokens)
-      fetchBlubBalance();
+      await fetchBlubBalance();
 
       // Refresh on-chain AQUA balance
-      fetchContractBalance();
+      await fetchContractBalance();
+
+      // Update wallet records with delay for backend sync
+      await updateWalletRecordsWithDelay(2000);
+
+      console.log("[STKAqua] All data refreshed successfully!");
     } catch (error: any) {
       console.error("❌ [STKAqua] Soroban staking failed:", error);
       toast.error(`Staking failed: ${error.message}`);
@@ -266,15 +276,25 @@ function STKAqua() {
         SOROBAN_CONFIG.assets.blub.sorobanContract
       );
 
-      // NEW: Fetch comprehensive staking data
-      dispatch(fetchComprehensiveStakingData(user.userWalletAddress));
-      dispatch(fetchUserGovernance(user.userWalletAddress));
+      // Initial data fetch
+      const fetchAllData = async () => {
+        if (!user.userWalletAddress) return;
+        await dispatch(fetchComprehensiveStakingData(user.userWalletAddress));
+        await dispatch(fetchUserGovernance(user.userWalletAddress));
+        await fetchContractBalance();
+        await fetchBlubBalance();
+      };
 
-      // Fetch contract balance directly
-      fetchContractBalance();
+      fetchAllData();
 
-      // Fetch BLUB balance
-      fetchBlubBalance();
+      // Set up auto-refresh every 30 seconds for real-time updates
+      const refreshInterval = setInterval(() => {
+        console.log("🔄 [STKAqua] Auto-refreshing on-chain data...");
+        fetchAllData();
+      }, 30000);
+
+      // Cleanup interval on unmount
+      return () => clearInterval(refreshInterval);
     }
   }, [user.userWalletAddress, useSoroban, dispatch]);
 
@@ -898,20 +918,37 @@ function STKAqua() {
             {/* Display current staking stats for Soroban */}
             {useSoroban && user.userWalletAddress && (
               <div className="mt-4 p-3 bg-[#1A1E2E] rounded-[8px]">
-                <div className="text-sm font-medium text-white mb-2">
-                  Your Staking Stats
-                  {staking.isLoading && (
-                    <span className="ml-2 text-xs text-[#00CC99]">
-                      (Loading on-chain data...)
-                    </span>
-                  )}
+                <div className="text-sm font-medium text-white mb-2 flex items-center justify-between">
+                  <div>
+                    Your Staking Stats
+                    {staking.isLoading && (
+                      <span className="ml-2 text-xs text-[#00CC99]">
+                        (Loading on-chain data...)
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!user.userWalletAddress) return;
+                      console.log("🔄 [STKAqua] Manual refresh triggered");
+                      await dispatch(
+                        fetchComprehensiveStakingData(user.userWalletAddress)
+                      );
+                      await fetchBlubBalance();
+                      await fetchContractBalance();
+                    }}
+                    className="text-[#00CC99] hover:text-[#00AA77] text-lg"
+                    title="Refresh on-chain data"
+                  >
+                    ⟳
+                  </button>
                 </div>
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
                     <div className="text-[#B1B3B8] flex items-center">
                       <span>Staked BLUB</span>
                       <span className="ml-1 text-[10px] text-[#00CC99]">
-                        🔒 Locked
+                        🔒 Staked
                       </span>
                     </div>
                     <div className="text-white font-medium text-base">
@@ -919,14 +956,17 @@ function STKAqua() {
                         <span className="text-[#B1B3B8]">Loading...</span>
                       ) : (
                         <span className="text-[#00CC99]">
-                          {staking.userStats?.totalAmount
-                            ? parseFloat(staking.userStats.totalAmount).toFixed(
-                                2
-                              )
+                          {staking.userStats?.activeAmount
+                            ? parseFloat(
+                                staking.userStats.activeAmount
+                              ).toFixed(2)
                             : "0.00"}{" "}
                           BLUB
                         </span>
                       )}
+                    </div>
+                    <div className="text-[10px] text-[#B1B3B8] mt-1">
+                      ⚡ Unstakeable anytime
                     </div>
                   </div>
                   <div>
@@ -956,10 +996,12 @@ function STKAqua() {
                     <div className="text-white font-medium">
                       {staking.isLoading
                         ? "..."
-                        : staking.userStats?.unstakingAvailable
-                        ? Math.max(
-                            0,
-                            parseFloat(staking.userStats.unstakingAvailable)
+                        : staking.userStats?.activeAmount
+                        ? (
+                            parseFloat(staking.userStats.activeAmount || "0") +
+                            parseFloat(
+                              staking.userStats.unstakingAvailable || "0"
+                            )
                           ).toFixed(2)
                         : "0.00"}{" "}
                       BLUB

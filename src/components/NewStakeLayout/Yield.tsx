@@ -174,11 +174,18 @@ function Yield() {
   }, [user?.userRecords?.account?.pools]);
 
   // Add the two calculated values
-  // Calculate unstakable BLUB from Soroban staking info (expired positions)
+  // Calculate unstakable BLUB from Soroban staking info
+  // NOTE: total_staked_blub is immediately unstakeable (no time lock in contract)
+  // unstaking_available is for already-unlocked entries (partial unstakes)
   const poolAndClaimBalance = useMemo(() => {
+    const totalStaked = staking.userStats?.activeAmount || "0";
     const unstakingAvailable = staking.userStats?.unstakingAvailable || "0";
-    return Math.max(0, parseFloat(unstakingAvailable));
-  }, [staking.userStats?.unstakingAvailable]);
+    // Sum both: actively staked (immediately unstakeable) + already unlocked entries
+    return Math.max(
+      0,
+      parseFloat(totalStaked) + parseFloat(unstakingAvailable)
+    );
+  }, [staking.userStats?.activeAmount, staking.userStats?.unstakingAvailable]);
 
   // Fetch BLUB balance from Soroban contract
   const fetchSorobanBlubBalance = async () => {
@@ -187,11 +194,17 @@ function Yield() {
     setBlubBalanceLoading(true);
     try {
       const { sorobanService } = await import("../../services/soroban.service");
+      const { fetchComprehensiveStakingData } = await import(
+        "../../lib/slices/stakingSlice"
+      );
 
       console.log(
         "🟦 [Yield] Fetching BLUB data DIRECTLY from staking contract..."
       );
       console.log("User Address:", user.userWalletAddress);
+
+      // Fetch comprehensive staking data to update Redux state (includes unstaking_available)
+      await dispatch(fetchComprehensiveStakingData(user.userWalletAddress));
 
       // Fetch comprehensive user staking info (replaces deprecated queryAllBlubRestakes)
       const stakingInfo = await sorobanService.queryUserStakingInfo(
@@ -220,7 +233,25 @@ function Yield() {
       });
 
       // Set wallet balance (unstaked BLUB)
-      setSorobanBlubBalance(parseFloat(balance).toFixed(2));
+      const blubBalanceNumber = parseFloat(balance);
+      console.log(
+        "🟦 [Yield] Setting BLUB wallet balance:",
+        blubBalanceNumber,
+        "BLUB"
+      );
+
+      // If balance is 0, check if there's a balance from Horizon API as fallback
+      if (blubBalanceNumber === 0 && blubRecord?.balance) {
+        const horizonBalance = parseFloat(blubRecord.balance);
+        console.log(
+          "🟦 [Yield] Using Horizon API BLUB balance as fallback:",
+          horizonBalance,
+          "BLUB"
+        );
+        setSorobanBlubBalance(horizonBalance.toFixed(2));
+      } else {
+        setSorobanBlubBalance(blubBalanceNumber.toFixed(2));
+      }
 
       // Set staked BLUB amount from the comprehensive staking info
       // Include BOTH locked positions AND unlockable positions (expired but not yet unstaked)
@@ -240,7 +271,20 @@ function Yield() {
       setPolData(polInfo);
     } catch (error: any) {
       console.error("🟦 [Yield] Error fetching BLUB data:", error);
-      setSorobanBlubBalance("0.00");
+
+      // Fallback to Horizon API balance if Soroban query fails
+      if (blubRecord?.balance) {
+        const horizonBalance = parseFloat(blubRecord.balance);
+        console.log(
+          "🟦 [Yield] Using Horizon API BLUB balance (error fallback):",
+          horizonBalance,
+          "BLUB"
+        );
+        setSorobanBlubBalance(horizonBalance.toFixed(2));
+      } else {
+        setSorobanBlubBalance("0.00");
+      }
+
       setBlubStakedBalance("0.00");
     } finally {
       setBlubBalanceLoading(false);
@@ -274,6 +318,9 @@ function Yield() {
     if (!user.userWalletAddress) {
       return toast.error("Please connect your wallet");
     }
+
+    // Set loading state
+    dispatch(unStakingAqua(true));
 
     try {
       console.log("[Yield] Starting Soroban unstaking:", {
@@ -365,16 +412,37 @@ function Yield() {
       // Reset form
       setBlubUnstakeAmount(0);
 
+      // Add a small delay to ensure blockchain state is updated
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       // Refresh on-chain data directly from Soroban (no backend needed!)
-      const { fetchComprehensiveStakingData } = await import(
-        "../../lib/slices/stakingSlice"
-      );
-      await Promise.all([
-        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)), // Fetch fresh on-chain data
-        dispatch(getAccountInfo(user.userWalletAddress)),
-        updateWalletRecords(),
-        fetchSorobanBlubBalance(), // Refresh Soroban BLUB balance
-      ]);
+      console.log("[Yield] Refreshing all on-chain data after unstake...");
+      try {
+        const { fetchComprehensiveStakingData } = await import(
+          "../../lib/slices/stakingSlice"
+        );
+        await Promise.all([
+          dispatch(
+            fetchComprehensiveStakingData(user.userWalletAddress)
+          ).unwrap(), // Fetch fresh on-chain data
+          dispatch(getAccountInfo(user.userWalletAddress)),
+          fetchSorobanBlubBalance(), // Refresh Soroban BLUB balance
+        ]);
+
+        // Update wallet records
+        await updateWalletRecordsWithDelay(2000);
+
+        console.log("[Yield] All data refreshed successfully!");
+      } catch (refreshError: any) {
+        console.error(
+          "[Yield] Data refresh after unstake failed:",
+          refreshError
+        );
+        // Don't fail the whole operation if refresh fails, user can manually refresh
+        toast.warning(
+          "Transaction succeeded but data refresh failed. Please refresh the page."
+        );
+      }
     } catch (err: any) {
       console.error("[Yield] Unstaking failed:", err);
       toast.error(`Unstaking failed: ${err.message || "Please try again"}`);
@@ -383,6 +451,9 @@ function Yield() {
         `Error: ${err.message}\n\nPlease try again or contact support.`
       );
       setOptDialog(true);
+    } finally {
+      // Always reset the loading state
+      dispatch(unStakingAqua(false));
     }
   };
 
@@ -459,13 +530,14 @@ function Yield() {
       return toast.warn(`Your balance is low`);
     }
 
+    // Set loading state
+    dispatch(restaking(true));
+
     try {
       console.log("[Yield] Starting BLUB restaking (Soroban):", {
         userAddress: user.userWalletAddress,
         amount: blubStakeAmount,
       });
-
-      dispatch(restaking(true));
 
       // Import Soroban service and config
       const { sorobanService } = await import("../../services/soroban.service");
@@ -584,18 +656,36 @@ function Yield() {
 
       // Reset form
       setBlubStakeAmount(0);
-      dispatch(restaking(false));
+
+      // Add a small delay to ensure blockchain state is updated
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Refresh on-chain data directly from Soroban (no backend needed!)
-      const { fetchComprehensiveStakingData: fetchData } = await import(
-        "../../lib/slices/stakingSlice"
-      );
-      await Promise.all([
-        dispatch(fetchData(user.userWalletAddress)), // Fetch fresh on-chain data
-        dispatch(getAccountInfo(user.userWalletAddress)),
-        updateWalletRecords(),
-        fetchSorobanBlubBalance(), // Refresh Soroban BLUB balance
-      ]);
+      console.log("[Yield] Refreshing all on-chain data after restake...");
+      try {
+        const { fetchComprehensiveStakingData: fetchData } = await import(
+          "../../lib/slices/stakingSlice"
+        );
+        await Promise.all([
+          dispatch(fetchData(user.userWalletAddress)).unwrap(), // Fetch fresh on-chain data
+          dispatch(getAccountInfo(user.userWalletAddress)),
+          fetchSorobanBlubBalance(), // Refresh Soroban BLUB balance
+        ]);
+
+        // Update wallet records
+        await updateWalletRecordsWithDelay(2000);
+
+        console.log("[Yield] All data refreshed successfully!");
+      } catch (refreshError: any) {
+        console.error(
+          "[Yield] Data refresh after restake failed:",
+          refreshError
+        );
+        // Don't fail the whole operation if refresh fails, user can manually refresh
+        toast.warning(
+          "Transaction succeeded but data refresh failed. Please refresh the page."
+        );
+      }
     } catch (err: any) {
       console.error("[Yield] Restaking failed:", err);
       toast.error(`Restaking failed: ${err.message || "Please try again"}`);
@@ -604,6 +694,8 @@ function Yield() {
         `Error: ${err.message}\n\nPlease try again or contact support.`
       );
       setOptDialog(true);
+    } finally {
+      // Always reset the loading state
       dispatch(restaking(false));
     }
   };
@@ -644,7 +736,18 @@ function Yield() {
         "🟦 [Yield] Fetching Soroban BLUB balance for user:",
         user.userWalletAddress
       );
+
+      // Initial fetch
       fetchSorobanBlubBalance();
+
+      // Set up auto-refresh every 30 seconds for real-time updates
+      const refreshInterval = setInterval(() => {
+        console.log("🔄 [Yield] Auto-refreshing BLUB data...");
+        fetchSorobanBlubBalance();
+      }, 30000);
+
+      // Cleanup interval on unmount
+      return () => clearInterval(refreshInterval);
     }
   }, [user?.userWalletAddress]);
 
