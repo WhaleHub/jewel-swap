@@ -52,6 +52,7 @@ import { StellarService } from "../../services/stellar.service";
 import { Balance } from "../../utils/interfaces";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
+import { ensureTrustline } from "../../utils/trustline.helper";
 
 function Restake() {
   const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
@@ -150,6 +151,28 @@ function Restake() {
         userAddress: user.userWalletAddress,
         amount: blubUnstakeAmount,
       });
+
+      // Ensure BLUB trustline exists before unstaking
+      console.log("[Restake] Checking BLUB trustline...");
+      const trustlineResult = await ensureTrustline(
+        user.userWalletAddress,
+        blubAssetCode,
+        blubIssuer,
+        user.walletName || walletTypes.FREIGHTER,
+        WalletNetwork.PUBLIC
+      );
+
+      if (!trustlineResult.hasTrustline && trustlineResult.error) {
+        throw new Error(
+          `Failed to setup BLUB trustline: ${trustlineResult.error}`
+        );
+      }
+
+      if (trustlineResult.trustlineCreated) {
+        toast.success("BLUB trustline created successfully!");
+        // Add a small delay to ensure the trustline is propagated
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
 
       const stellarService = new StellarService();
       const senderAccount = await stellarService.loadAccount(
@@ -276,18 +299,32 @@ function Restake() {
         amount: blubStakeAmount,
       });
 
+      // Ensure BLUB trustline exists before restaking
+      console.log("[Restake] Checking BLUB trustline...");
+      const trustlineResult = await ensureTrustline(
+        user.userWalletAddress,
+        blubAssetCode,
+        blubIssuer,
+        user.walletName || walletTypes.FREIGHTER,
+        WalletNetwork.PUBLIC
+      );
+
+      if (!trustlineResult.hasTrustline && trustlineResult.error) {
+        throw new Error(
+          `Failed to setup BLUB trustline: ${trustlineResult.error}`
+        );
+      }
+
+      if (trustlineResult.trustlineCreated) {
+        toast.success("BLUB trustline created successfully!");
+        // Add a small delay to ensure the trustline is propagated
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
       const stellarService = new StellarService();
       const senderAccount = await stellarService.loadAccount(
         user.userWalletAddress
       );
-
-      const existingTrustlines = senderAccount.balances.map(
-        (balance: Balance) => balance.asset_code
-      );
-
-      if (!existingTrustlines.includes(blubAssetCode)) {
-        return toast.warn(`You need trustline for ${blubAssetCode}`);
-      }
 
       const stakeAmount = blubStakeAmount.toFixed(7);
 

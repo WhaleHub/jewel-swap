@@ -45,6 +45,7 @@ import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
 import { kit } from "../Navbar";
+import { ensureTrustline } from "../../utils/trustline.helper";
 
 function Yield() {
   const dispatch = useAppDispatch();
@@ -329,6 +330,28 @@ function Yield() {
         unstakingAvailable: poolAndClaimBalance,
       });
 
+      // Ensure BLUB trustline exists before unstaking
+      console.log("[Yield] Checking BLUB trustline...");
+      const trustlineResult = await ensureTrustline(
+        user.userWalletAddress,
+        blubAssetCode,
+        blubIssuer,
+        user.walletName || walletTypes.FREIGHTER,
+        WalletNetwork.TESTNET
+      );
+
+      if (!trustlineResult.hasTrustline && trustlineResult.error) {
+        throw new Error(
+          `Failed to setup BLUB trustline: ${trustlineResult.error}`
+        );
+      }
+
+      if (trustlineResult.trustlineCreated) {
+        toast.success("BLUB trustline created successfully!");
+        // Add a small delay to ensure the trustline is propagated
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
       // Import Soroban service
       const { sorobanService } = await import("../../services/soroban.service");
       const soroban = sorobanService;
@@ -538,6 +561,28 @@ function Yield() {
         userAddress: user.userWalletAddress,
         amount: blubStakeAmount,
       });
+
+      // Ensure BLUB trustline exists before restaking
+      console.log("[Yield] Checking BLUB trustline...");
+      const trustlineResult = await ensureTrustline(
+        user.userWalletAddress,
+        blubAssetCode,
+        blubIssuer,
+        user.walletName || walletTypes.FREIGHTER,
+        WalletNetwork.TESTNET
+      );
+
+      if (!trustlineResult.hasTrustline && trustlineResult.error) {
+        throw new Error(
+          `Failed to setup BLUB trustline: ${trustlineResult.error}`
+        );
+      }
+
+      if (trustlineResult.trustlineCreated) {
+        toast.success("BLUB trustline created successfully!");
+        // Add a small delay to ensure the trustline is propagated
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
 
       // Import Soroban service and config
       const { sorobanService } = await import("../../services/soroban.service");

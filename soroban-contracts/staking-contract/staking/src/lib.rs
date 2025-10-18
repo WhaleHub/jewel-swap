@@ -14,7 +14,6 @@ pub struct Config {
     pub aqua_token: Address, // AQUA token contract address
     pub blub_token: Address, // External BLUB token (Stellar asset)
     pub liquidity_contract: Address, // AQUA/BLUB StableSwap pool contract on Stellar network
-    pub auto_deposit_pol: bool, // Auto-deposit POL to LP on each stake
     pub ice_contract: Address, // ICE locking contract for 90% AQUA
     pub period_unit_minutes: u64, // Staking period unit in minutes
 }
@@ -344,7 +343,6 @@ impl StakingRegistry {
             aqua_token,
             blub_token,
             liquidity_contract,
-            auto_deposit_pol: true, // Enable auto-deposit by default
             ice_contract,
             // Staking Period Config
             period_unit_minutes: 1,
@@ -563,7 +561,30 @@ impl StakingRegistry {
         }
     }
 
-    /// BLUB staking is now handled separately via stake_minted_blub() function
+    pub fn update_sac_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+        
+        // Get config and verify admin authorization
+        let config = Self::get_config(env.clone())?;
+        if config.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        use soroban_sdk::token;
+
+        let sac_client = token::StellarAssetClient::new(&env, &config.blub_token);
+        sac_client.set_admin(&new_admin);
+        
+        Ok(())
+    }
+
+    /// Stake AQUA tokens and automatically mint BLUB tokens for staking
+    /// - Transfers AQUA from user to contract
+    /// - Mints equivalent BLUB tokens to contract
+    /// - Sends 90% AQUA to ICE contract for governance
+    /// - Keeps 10% AQUA for POL
+    /// - Stakes ~91% BLUB for rewards
+    /// - Automatically deposits ~9% BLUB + 10% AQUA to LP pool
     pub fn stake(
         env: Env,
         user: Address,
@@ -615,11 +636,16 @@ impl StakingRegistry {
         let tx_hash_array = env.ledger().sequence().to_be_bytes();
         let tx_hash_bytes = Bytes::from_array(&env, &tx_hash_array);
         
+        // Calculate BLUB amounts: mint 1.1x AQUA, stake 1x, LP gets 0.1x
+        let blub_minted = (amount * 11) / 10;      // 1.1x AQUA amount
+        let blub_staked = amount;                   // 1x AQUA amount staked
+        let blub_to_lp = blub_minted - blub_staked; // 0.1x AQUA amount to LP
+        
         // Create and store lock entry before external calls
         let lock = LockEntry {
             user: user.clone(),
             amount,                             // Full AQUA amount (for tracking)
-            blub_locked: 0,                     // No BLUB locked yet
+            blub_locked: blub_staked,           // BLUB amount locked for staking
             lock_timestamp: now,
             duration_minutes,
             unlock_timestamp,
@@ -631,21 +657,24 @@ impl StakingRegistry {
         };
         env.storage().persistent().set(&DataKey::UserLockByIndex(user.clone(), index), &lock);
         
-        // Update lock totals (only AQUA, no BLUB yet)
-        Self::update_lock_totals(&env, amount, reward_multiplier)?;
+        // Update lock totals with both AQUA and BLUB
+        Self::update_lock_totals_with_blub(&env, amount, blub_staked, reward_multiplier)?;
         
-        // Update POL contribution (only AQUA)
-        Self::update_pol_contribution(&env, pol_aqua, 0)?;
+        // Update POL contribution with both AQUA and BLUB
+        Self::update_pol_contribution(&env, pol_aqua, blub_to_lp)?;
         
         // Update global state (but keep locked=true until end)
         global_state.total_locked = global_state.total_locked.saturating_add(amount);
+        global_state.total_blub_supply = global_state.total_blub_supply.saturating_add(blub_minted);
         global_state.last_reward_update = now;
         env.storage().instance().set(&DataKey::GlobalState, &global_state);
         
         // ===== INTERACTIONS: EXTERNAL CALLS LAST =====
         
         use soroban_sdk::token;
-        
+
+        let blub_client = token::StellarAssetClient::new(&env, &config.blub_token);
+        blub_client.mint(&contract_address, &blub_minted);
         // EXTERNAL CALL #1: Transfer AQUA from user to contract (MUST BE FIRST!)
         let aqua_client = token::Client::new(&env, &config.aqua_token);
         
@@ -665,6 +694,33 @@ impl StakingRegistry {
                 // Release lock before returning error
                 global_state.locked = false;
                 env.storage().instance().set(&DataKey::GlobalState, &global_state);
+                return Err(Error::InvalidInput);
+            }
+        }
+        
+        // EXTERNAL CALL #3: Auto-deposit POL (always enabled)
+        if pol_aqua > 0 && blub_to_lp > 0 {
+            // Verify contract has enough AQUA for POL
+            let contract_aqua_balance = aqua_client.balance(&contract_address);
+            if contract_aqua_balance < pol_aqua {
+                // Release lock before returning error
+                global_state.locked = false;
+                env.storage().instance().set(&DataKey::GlobalState, &global_state);
+                env.events().publish(
+                    (symbol_short!("pol_err"),),
+                    symbol_short!("no_aqua"),
+                );
+                return Err(Error::InsufficientBalance);
+            }
+            
+            let pol_result = Self::deposit_pol_to_lp(&env, &config, pol_aqua, blub_to_lp);
+            if pol_result.is_err() {
+                global_state.locked = false;
+                env.storage().instance().set(&DataKey::GlobalState, &global_state);
+                env.events().publish(
+                    (symbol_short!("pol_err"),),
+                    symbol_short!("auto_fail"),
+                );
                 return Err(Error::InvalidInput);
             }
         }
@@ -694,144 +750,15 @@ impl StakingRegistry {
         };
         env.events().publish((symbol_short!("lock"),), event);
         
+        // Emit BLUB staking event
+        env.events().publish(
+            (symbol_short!("blub_stk"), user.clone()),
+            (blub_minted, blub_staked, blub_to_lp),
+        );
+        
         Ok(index)
     }
 
-    pub fn stake_minted_blub(
-        env: Env,
-        admin: Address,
-        user: Address,
-        aqua_lock_index: u32,
-        total_blub_amount: i128,
-    ) -> Result<(), Error> {
-        // ===== AUTHORIZATION CHECK =====
-        // Require admin auth since this processes backend-minted tokens
-        let config = Self::get_config(env.clone())?;
-        admin.require_auth();
-        
-        if config.admin != admin {
-            return Err(Error::Unauthorized);
-        }
-        
-        // ===== CHECKS =====
-        if total_blub_amount <= 0 {
-            return Err(Error::InvalidInput);
-        }
-        
-        // ===== RE-ENTRANCY GUARD =====
-        let mut global_state = Self::get_global_state(env.clone())?;
-        if global_state.locked {
-            return Err(Error::ReentrancyDetected);
-        }
-        global_state.locked = true;
-        env.storage().instance().set(&DataKey::GlobalState, &global_state);
-        
-        let contract_address = env.current_contract_address();
-        
-        // Verify the AQUA lock exists
-        let lock: LockEntry = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLockByIndex(user.clone(), aqua_lock_index))
-            .ok_or(Error::NotFound)?;
-        
-        // Verify the lock belongs to the user
-        if lock.user != user {
-            global_state.locked = false;
-            env.storage().instance().set(&DataKey::GlobalState, &global_state);
-            return Err(Error::Unauthorized);
-        }
-        
-        // Verify BLUB hasn't already been staked for this lock
-        if lock.blub_locked > 0 {
-            global_state.locked = false;
-            env.storage().instance().set(&DataKey::GlobalState, &global_state);
-            return Err(Error::InvalidInput);
-        }
-
-        let blub_to_lp = total_blub_amount / 11;
-        let blub_staked = total_blub_amount - blub_to_lp;
-        
-        // ===== EFFECTS: UPDATE STATE =====
-        
-        // Update the lock entry to include BLUB
-        let mut updated_lock = lock.clone();
-        updated_lock.blub_locked = blub_staked;
-        env.storage().persistent().set(
-            &DataKey::UserLockByIndex(user.clone(), aqua_lock_index),
-            &updated_lock
-        );
-        
-        // Update lock totals with BLUB
-        Self::update_lock_totals_with_blub(&env, 0, blub_staked, 0)?;
-        
-        // Update POL contribution with BLUB
-        Self::update_pol_contribution(&env, 0, blub_to_lp)?;
-        
-        // Update global state
-        global_state.total_blub_supply = global_state.total_blub_supply.saturating_add(total_blub_amount);
-        env.storage().instance().set(&DataKey::GlobalState, &global_state);
-        
-        // ===== INTERACTIONS: EXTERNAL CALLS =====
-        
-        use soroban_sdk::token;
-        let blub_client = token::Client::new(&env, &config.blub_token);
-        let aqua_client = token::Client::new(&env, &config.aqua_token);
-        
-        // Verify contract has enough BLUB (should have been minted to contract by backend)
-        let contract_blub_balance = blub_client.balance(&contract_address);
-        if contract_blub_balance < total_blub_amount {
-            // Release lock before returning error
-            global_state.locked = false;
-            env.storage().instance().set(&DataKey::GlobalState, &global_state);
-            return Err(Error::InsufficientBalance);
-        }
-        
-        let pol_aqua = lock.pol_contributed; // 10% AQUA that was kept
-        
-        // Only auto-deposit POL if enabled in config
-        if config.auto_deposit_pol && pol_aqua > 0 && blub_to_lp > 0 {
-            // Verify contract has enough AQUA for POL
-            let contract_aqua_balance = aqua_client.balance(&contract_address);
-            if contract_aqua_balance < pol_aqua {
-                // Release lock before returning error
-                global_state.locked = false;
-                env.storage().instance().set(&DataKey::GlobalState, &global_state);
-                env.events().publish(
-                    (symbol_short!("pol_err"),),
-                    symbol_short!("no_aqua"),
-                );
-                return Err(Error::InsufficientBalance);
-            }
-            
-            let pol_result = Self::deposit_pol_to_lp(&env, &config, pol_aqua, blub_to_lp);
-            if pol_result.is_err() {
-                global_state.locked = false;
-                env.storage().instance().set(&DataKey::GlobalState, &global_state);
-                env.events().publish(
-                    (symbol_short!("pol_err"),),
-                    symbol_short!("auto_fail"),
-                );
-                return Err(Error::InvalidInput);
-            }
-        } else if !config.auto_deposit_pol {
-            // Log that auto-deposit is disabled
-            env.events().publish(
-                (symbol_short!("pol_skip"),),
-                symbol_short!("disabled"),
-            );
-        }
-        
-        global_state.locked = false;
-        env.storage().instance().set(&DataKey::GlobalState, &global_state);
-        
-        env.events().publish(
-            (symbol_short!("blub_stk"), user.clone()),
-            (blub_staked, blub_to_lp),
-        );
-        
-        Ok(())
-    }
 
     fn create_blub_stake_entry(
         env: &Env,
@@ -2028,23 +1955,6 @@ impl StakingRegistry {
         Ok(())
     }
 
-    /// Toggle auto-deposit POL feature (admin-only)
-    pub fn set_auto_deposit_pol(env: Env, admin: Address, enabled: bool) -> Result<(), Error> {
-        let mut cfg = Self::get_config(env.clone())?;
-        admin.require_auth();
-        if cfg.admin != admin { return Err(Error::Unauthorized); }
-
-        cfg.auto_deposit_pol = enabled;
-        env.storage().instance().set(&DataKey::Config, &cfg);
-        
-        env.events().publish(
-            (symbol_short!("auto_pol"),),
-            enabled,
-        );
-        
-        Ok(())
-    }
-
     /// Manually deposit accumulated POL to AQUA-BLUB LP (admin-only)
     pub fn manual_deposit_pol(
         env: Env,
@@ -2121,6 +2031,23 @@ impl StakingRegistry {
         );
 
         Ok(())
+    }
+
+    /// Test function to validate staking calculations
+    /// Returns (blub_minted, blub_staked, blub_to_lp, pol_aqua, ice_aqua)
+    pub fn test_staking_calculations(_env: Env, aqua_amount: i128) -> Result<(i128, i128, i128, i128, i128), Error> {
+        if aqua_amount <= 0 {
+            return Err(Error::InvalidInput);
+        }
+        
+        let pol_aqua = aqua_amount / 10;                // 10% AQUA for POL
+        let ice_aqua = aqua_amount - pol_aqua;          // 90% AQUA to ICE for governance
+        
+        let blub_minted = (aqua_amount * 11) / 10;      // 1.1x AQUA amount
+        let blub_staked = aqua_amount;                   // 1x AQUA amount staked
+        let blub_to_lp = blub_minted - blub_staked;     // 0.1x AQUA amount to LP
+        
+        Ok((blub_minted, blub_staked, blub_to_lp, pol_aqua, ice_aqua))
     }
 
     /// Get available POL balance that can be deposited to LP
