@@ -1037,15 +1037,6 @@ function STKAqua() {
                   </div>
                   <div>
                     <div className="text-[#B1B3B8] flex items-center">
-                      <span>Active Locks</span>
-                      <span className="ml-1 text-[10px]">📊</span>
-                    </div>
-                    <div className="text-white font-medium">
-                      {staking.userStats?.activeStakes || 0}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[#B1B3B8] flex items-center">
                       <span>POL Contribution</span>
                       <span className="ml-1 text-[10px]">💧</span>
                     </div>

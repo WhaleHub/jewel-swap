@@ -152,14 +152,14 @@ pub struct ProtocolOwnedLiquidity {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
     Config,
-    UserLockCount(Address),
-    UserLockByIndex(Address, u32),
+    UserLockByTxHash(Address, Bytes),
+    UserLocks(Address), // Vector of all lock tx hashes for a user
     UserLpCount(Address),
     UserLpByIndex(Address, u32),
-    UserUnlockCount(Address),
-    UserUnlockByIndex(Address, u32),
-    UserBlubRestakeCount(Address),
-    UserBlubRestakeByIndex(Address, u32),
+    UserUnlockByTxHash(Address, Bytes),
+    UserUnlocks(Address), // Vector of all unlock tx hashes for a user
+    UserBlubRestakeByTxHash(Address, Bytes),
+    UserBlubRestakes(Address), // Vector of all BLUB restake tx hashes for a user
     LockTotals,
     LpTotals,
     UserRewards(Address),
@@ -222,7 +222,6 @@ pub struct LockRecordedEvent {
     pub reward_multiplier: i128,
     pub tx_hash: Bytes,
     pub timestamp: u64,
-    pub lock_index: u32,
     pub unlock_timestamp: u64,
 }
 
@@ -244,7 +243,6 @@ pub struct UnlockRecordedEvent {
     pub amount: i128,
     pub tx_hash: Bytes,
     pub timestamp: u64,
-    pub entry_index: u32,
 }
 
 #[contracttype]
@@ -254,7 +252,6 @@ pub struct BlubRestakeRecordedEvent {
     pub amount: i128,
     pub tx_hash: Bytes,
     pub timestamp: u64,
-    pub entry_index: u32,
 }
 
 #[contracttype]
@@ -291,7 +288,7 @@ pub struct PolContributionEvent {
     pub total_pol_aqua: i128,
     pub total_pol_blub: i128,
     pub timestamp: u64,
-    pub lock_index: u32,
+    pub tx_hash: Bytes,
 }
 
 #[contracttype]
@@ -628,7 +625,7 @@ impl StakingRegistry {
     /// * `duration_periods` - The number of period units to lock tokens (multiplied by period_unit_minutes)
     ///
     /// # Returns
-    /// * `Ok(u32)` - The index of the created lock entry
+    /// * `Ok(())` - Success
     /// * `Err(Error::InvalidInput)` if amount is <= 0
     /// * `Err(Error::ReentrancyDetected)` if a reentrant call is detected
     /// * `Err(Error::InsufficientBalance)` if user doesn't have enough AQUA
@@ -640,13 +637,12 @@ impl StakingRegistry {
     /// - Creates a new lock entry for the user
     /// - Updates global state with new locked amounts
     /// - Updates POL contribution tracking
-    /// - Increments user lock count
     pub fn stake(
         env: Env,
         user: Address,
         amount: i128,
         duration_periods: u64,
-    ) -> Result<u32, Error> {
+    ) -> Result<(), Error> {
         // ===== CHECKS =====
         user.require_auth();
         
@@ -678,16 +674,6 @@ impl StakingRegistry {
         
         let reward_multiplier = Self::calculate_lock_multiplier(duration_minutes);
         
-        // Get and update lock count before any external calls
-        let mut count: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLockCount(user.clone()))
-            .unwrap_or(0);
-        let index = count;
-        count = count.saturating_add(1);
-        env.storage().persistent().set(&DataKey::UserLockCount(user.clone()), &count);
-        
         // Create transaction hash
         let tx_hash_array = env.ledger().sequence().to_be_bytes();
         let tx_hash_bytes = Bytes::from_array(&env, &tx_hash_array);
@@ -711,7 +697,16 @@ impl StakingRegistry {
             is_blub_stake: false,
             unlocked: false,                    // Initially locked
         };
-        env.storage().persistent().set(&DataKey::UserLockByIndex(user.clone(), index), &lock);
+        env.storage().persistent().set(&DataKey::UserLockByTxHash(user.clone(), tx_hash_bytes.clone()), &lock);
+        
+        // Add tx_hash to user's locks list
+        let mut user_locks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
+        user_locks.push_back(tx_hash_bytes.clone());
+        env.storage().persistent().set(&DataKey::UserLocks(user.clone()), &user_locks);
         
         // Update lock totals with both AQUA and BLUB
         Self::update_lock_totals_with_blub(&env, amount, blub_staked, reward_multiplier)?;
@@ -801,7 +796,6 @@ impl StakingRegistry {
             reward_multiplier,
             tx_hash: tx_hash_bytes.clone(),
             timestamp: now,
-            lock_index: index,
             unlock_timestamp,
         };
         env.events().publish((symbol_short!("lock"),), event);
@@ -812,7 +806,7 @@ impl StakingRegistry {
             (blub_minted, blub_staked, blub_to_lp),
         );
         
-        Ok(index)
+        Ok(())
     }
 
 
@@ -822,19 +816,10 @@ impl StakingRegistry {
         amount: i128,
         duration_minutes: u64,
         timestamp: u64,
-    ) -> Result<u32, Error> {
+    ) -> Result<(), Error> {
         let unlock_timestamp = timestamp + (duration_minutes * 60);
         let reward_multiplier = Self::calculate_lock_multiplier(duration_minutes);
         
-        let mut count: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLockCount(user.clone()))
-            .unwrap_or(0);
-        let index = count;
-        count = count.saturating_add(1);
-        env.storage().persistent().set(&DataKey::UserLockCount(user.clone()), &count);
-
         // Create transaction hash
         let tx_hash_array = env.ledger().sequence().to_be_bytes();
         let tx_hash_bytes = Bytes::from_array(env, &tx_hash_array);
@@ -856,7 +841,16 @@ impl StakingRegistry {
 
         env.storage()
             .persistent()
-            .set(&DataKey::UserLockByIndex(user.clone(), index), &blub_lock);
+            .set(&DataKey::UserLockByTxHash(user.clone(), tx_hash_bytes.clone()), &blub_lock);
+
+        // Add tx_hash to user's locks list
+        let mut user_locks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(env));
+        user_locks.push_back(tx_hash_bytes.clone());
+        env.storage().persistent().set(&DataKey::UserLocks(user.clone()), &user_locks);
 
         Self::update_lock_totals_with_blub(env, 0, amount, reward_multiplier)?;
 
@@ -864,7 +858,7 @@ impl StakingRegistry {
         global_state.last_reward_update = env.ledger().timestamp();
         env.storage().instance().set(&DataKey::GlobalState, &global_state);
 
-        Ok(index)
+        Ok(())
     }
 
     /// Records a lock entry for tracking purposes without performing token transfers.
@@ -879,7 +873,7 @@ impl StakingRegistry {
     /// * `tx_hash` - The transaction hash from the external lock
     ///
     /// # Returns
-    /// * `Ok(u32)` - The index of the recorded lock entry
+    /// * `Ok(())` - Success
     /// * `Err(Error::InvalidInput)` if amount is <= 0
     /// * `Err(Error::ReentrancyDetected)` if a reentrant call is detected
     ///
@@ -891,7 +885,7 @@ impl StakingRegistry {
         amount: i128,
         duration_periods: u64,
         tx_hash: Bytes,
-    ) -> Result<u32, Error> {
+    ) -> Result<(), Error> {
         user.require_auth();
 
         if amount <= 0 {
@@ -915,15 +909,6 @@ impl StakingRegistry {
         
         let pol_contribution = amount / 10;
 
-        let mut count: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLockCount(user.clone()))
-            .unwrap_or(0);
-        let index = count;
-        count = count.saturating_add(1);
-        env.storage().persistent().set(&DataKey::UserLockCount(user.clone()), &count);
-
         // Create lock record with POL tracking
         let lock = LockEntry {
             user: user.clone(),
@@ -941,7 +926,16 @@ impl StakingRegistry {
 
         env.storage()
             .persistent()
-            .set(&DataKey::UserLockByIndex(user.clone(), index), &lock);
+            .set(&DataKey::UserLockByTxHash(user.clone(), tx_hash.clone()), &lock);
+
+        // Add tx_hash to user's locks list
+        let mut user_locks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
+        user_locks.push_back(tx_hash.clone());
+        env.storage().persistent().set(&DataKey::UserLocks(user.clone()), &user_locks);
 
         Self::update_lock_totals(&env, amount, reward_multiplier)?;
 
@@ -959,7 +953,7 @@ impl StakingRegistry {
             total_pol_aqua: pol.total_aqua_contributed,
             total_pol_blub: pol.total_blub_contributed,
             timestamp: now,
-            lock_index: index,
+            tx_hash: tx_hash.clone(),
         };
         env.events().publish((symbol_short!("pol"),), pol_event);
 
@@ -974,12 +968,11 @@ impl StakingRegistry {
             reward_multiplier,
             tx_hash,
             timestamp: now,
-            lock_index: index,
             unlock_timestamp,
         };
         env.events().publish((symbol_short!("lock"),), event);
 
-        Ok(index)
+        Ok(())
     }
 
     /// Records an unlock event and transfers locked BLUB plus rewards to the user.
@@ -990,7 +983,7 @@ impl StakingRegistry {
     /// * `tx_hash` - The transaction hash for tracking
     ///
     /// # Returns
-    /// * `Ok(u32)` - The index of the unlock entry
+    /// * `Ok(())` - Success
     /// * `Err(Error::InvalidInput)` if amount is <= 0
     /// * `Err(Error::ReentrancyDetected)` if a reentrant call is detected
     /// * `Err(Error::InsufficientBalance)` if contract doesn't have enough BLUB
@@ -1003,7 +996,7 @@ impl StakingRegistry {
     /// - Updates user lock totals
     /// - Updates global state
     /// - Transfers BLUB tokens and accumulated rewards to user
-    pub fn record_unlock(env: Env, user: Address, amount: i128, tx_hash: Bytes) -> Result<u32, Error> {
+    pub fn record_unlock(env: Env, user: Address, amount: i128, tx_hash: Bytes) -> Result<(), Error> {
         user.require_auth();
         if amount <= 0 { return Err(Error::InvalidInput); }
 
@@ -1024,22 +1017,22 @@ impl StakingRegistry {
 
         Self::update_global_state_with_blub(&env, -amount, -blub_locked, 0, false)?;
 
-        let mut count: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserUnlockCount(user.clone()))
-            .unwrap_or(0);
-        let index = count;
-        count = count.saturating_add(1);
-        env.storage().persistent().set(&DataKey::UserUnlockCount(user.clone()), &count);
-
         let entry = UnlockEntry { 
             amount, 
             tx_hash: tx_hash.clone(), 
             timestamp: now,
             claimed: false,
         };
-        env.storage().persistent().set(&DataKey::UserUnlockByIndex(user.clone(), index), &entry);
+        env.storage().persistent().set(&DataKey::UserUnlockByTxHash(user.clone(), tx_hash.clone()), &entry);
+        
+        // Add tx_hash to user's unlocks list
+        let mut user_unlocks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserUnlocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
+        user_unlocks.push_back(tx_hash.clone());
+        env.storage().persistent().set(&DataKey::UserUnlocks(user.clone()), &user_unlocks);
 
         let mut totals: LockTotals = env
             .storage()
@@ -1095,11 +1088,10 @@ impl StakingRegistry {
             amount, 
             tx_hash, 
             timestamp: now, 
-            entry_index: index 
         };
         env.events().publish((symbol_short!("unlock"),), evt);
 
-        Ok(index)
+        Ok(())
     }
 
     /// Restake BLUB tokens to earn more BLUB rewards.
@@ -1113,7 +1105,7 @@ impl StakingRegistry {
     /// * `duration_periods` - The number of period units to lock tokens
     ///
     /// # Returns
-    /// * `Ok(u32)` - The index of the created lock entry
+    /// * `Ok(())` - Success
     /// * `Err(Error::InvalidInput)` if amount is <= 0
     /// * `Err(Error::ReentrancyDetected)` if a reentrant call is detected
     /// * `Err(Error::InsufficientBalance)` if user doesn't have enough BLUB
@@ -1131,7 +1123,7 @@ impl StakingRegistry {
         user: Address,
         amount: i128,
         duration_periods: u64,
-    ) -> Result<u32, Error> {
+    ) -> Result<(), Error> {
         user.require_auth();
         
         if amount <= 0 {
@@ -1156,15 +1148,6 @@ impl StakingRegistry {
         
         // ===== EFFECTS: UPDATE ALL STATE FIRST =====
         
-        let mut count: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLockCount(user.clone()))
-            .unwrap_or(0);
-        let index = count;
-        count = count.saturating_add(1);
-        env.storage().persistent().set(&DataKey::UserLockCount(user.clone()), &count);
-
         let tx_hash_array = env.ledger().sequence().to_be_bytes();
         let tx_hash_bytes = Bytes::from_array(&env, &tx_hash_array);
 
@@ -1185,7 +1168,16 @@ impl StakingRegistry {
 
         env.storage()
             .persistent()
-            .set(&DataKey::UserLockByIndex(user.clone(), index), &lock);
+            .set(&DataKey::UserLockByTxHash(user.clone(), tx_hash_bytes.clone()), &lock);
+        
+        // Add tx_hash to user's locks list
+        let mut user_locks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
+        user_locks.push_back(tx_hash_bytes.clone());
+        env.storage().persistent().set(&DataKey::UserLocks(user.clone()), &user_locks);
 
         Self::update_lock_totals_with_blub(&env, 0, amount, reward_multiplier)?;
 
@@ -1211,7 +1203,7 @@ impl StakingRegistry {
             amount,
         );
 
-        Ok(index)
+        Ok(())
     }
 
     /// Records a BLUB restake entry for tracking purposes.
@@ -1222,13 +1214,13 @@ impl StakingRegistry {
     /// * `tx_hash` - The transaction hash for tracking
     ///
     /// # Returns
-    /// * `Ok(u32)` - The index of the restake entry
+    /// * `Ok(())` - Success
     /// * `Err(Error::InvalidInput)` if amount is <= 0
     /// * `Err(Error::ReentrancyDetected)` if a reentrant call is detected
     ///
     /// # Authorization
     /// Requires authorization from the `user` address.
-    pub fn record_blub_restake(env: Env, user: Address, amount: i128, tx_hash: Bytes) -> Result<u32, Error> {
+    pub fn record_blub_restake(env: Env, user: Address, amount: i128, tx_hash: Bytes) -> Result<(), Error> {
         user.require_auth();
         if amount <= 0 { return Err(Error::InvalidInput); }
 
@@ -1243,16 +1235,16 @@ impl StakingRegistry {
         let now = env.ledger().timestamp();
 
         let previous_amount = {
-            let current_count: u32 = env
+            let user_restakes: Vec<Bytes> = env
                 .storage()
                 .persistent()
-                .get(&DataKey::UserBlubRestakeCount(user.clone()))
-                .unwrap_or(0);
+                .get(&DataKey::UserBlubRestakes(user.clone()))
+                .unwrap_or(Vec::new(&env));
             
-            if current_count > 0 {
+            if let Some(last_tx_hash) = user_restakes.last() {
                 env.storage()
                     .persistent()
-                    .get::<DataKey, BlubRestakeEntry>(&DataKey::UserBlubRestakeByIndex(user.clone(), current_count - 1))
+                    .get::<DataKey, BlubRestakeEntry>(&DataKey::UserBlubRestakeByTxHash(user.clone(), last_tx_hash))
                     .map(|entry| entry.amount)
                     .unwrap_or(0)
             } else {
@@ -1260,22 +1252,22 @@ impl StakingRegistry {
             }
         };
 
-        let mut count: u32 = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserBlubRestakeCount(user.clone()))
-            .unwrap_or(0);
-        let index = count;
-        count = count.saturating_add(1);
-        env.storage().persistent().set(&DataKey::UserBlubRestakeCount(user.clone()), &count);
-
         let entry = BlubRestakeEntry { 
             amount, 
             tx_hash: tx_hash.clone(), 
             timestamp: now,
             previous_amount,
         };
-        env.storage().persistent().set(&DataKey::UserBlubRestakeByIndex(user.clone(), index), &entry);
+        env.storage().persistent().set(&DataKey::UserBlubRestakeByTxHash(user.clone(), tx_hash.clone()), &entry);
+        
+        // Add tx_hash to user's BLUB restakes list
+        let mut user_restakes: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserBlubRestakes(user.clone()))
+            .unwrap_or(Vec::new(&env));
+        user_restakes.push_back(tx_hash.clone());
+        env.storage().persistent().set(&DataKey::UserBlubRestakes(user.clone()), &user_restakes);
 
         // ===== RELEASE RE-ENTRANCY LOCK =====
         global_state.locked = false;
@@ -1286,11 +1278,10 @@ impl StakingRegistry {
             amount, 
             tx_hash, 
             timestamp: now, 
-            entry_index: index 
         };
         env.events().publish((symbol_short!("rstk"),), evt);
 
-        Ok(index)
+        Ok(())
     }
 
     /// Records an LP (Liquidity Pool) deposit for a user.
@@ -1870,30 +1861,32 @@ impl StakingRegistry {
     }
 
     fn get_user_total_multiplier(env: &Env, user: &Address) -> Result<i128, Error> {
-        let count: u32 = env
+        let user_locks: Vec<Bytes> = env
             .storage()
             .persistent()
-            .get(&DataKey::UserLockCount(user.clone()))
-            .unwrap_or(0);
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(env));
 
-        if count == 0 { return Ok(10000); }
+        if user_locks.is_empty() { return Ok(10000); }
 
         let now = env.ledger().timestamp();
         let mut total_amount = 0i128;
         let mut weighted_multiplier = 0i128;
 
-        for i in 0..count {
-            if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByIndex(user.clone(), i)) {
-                if !entry.unlocked && entry.blub_locked > 0 {
-                    // Calculate multiplier based on actual elapsed time since staking
-                    let elapsed_seconds = now.saturating_sub(entry.lock_timestamp);
-                    let elapsed_minutes = elapsed_seconds / 60;
-                    let time_based_multiplier = Self::calculate_lock_multiplier(elapsed_minutes);
-                    
-                    total_amount = total_amount.saturating_add(entry.blub_locked);
-                    weighted_multiplier = weighted_multiplier.saturating_add(
-                        entry.blub_locked.saturating_mul(time_based_multiplier)
-                    );
+        for i in 0..user_locks.len() {
+            if let Some(tx_hash) = user_locks.get(i) {
+                if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash)) {
+                    if !entry.unlocked && entry.blub_locked > 0 {
+                        // Calculate multiplier based on actual elapsed time since staking
+                        let elapsed_seconds = now.saturating_sub(entry.lock_timestamp);
+                        let elapsed_minutes = elapsed_seconds / 60;
+                        let time_based_multiplier = Self::calculate_lock_multiplier(elapsed_minutes);
+                        
+                        total_amount = total_amount.saturating_add(entry.blub_locked);
+                        weighted_multiplier = weighted_multiplier.saturating_add(
+                            entry.blub_locked.saturating_mul(time_based_multiplier)
+                        );
+                    }
                 }
             }
         }
@@ -1936,7 +1929,12 @@ impl StakingRegistry {
     /// # Returns
     /// The count of lock entries (0 if none)
     pub fn get_user_lock_count(env: Env, user: Address) -> u32 {
-        env.storage().persistent().get(&DataKey::UserLockCount(user)).unwrap_or(0)
+        let user_locks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLocks(user))
+            .unwrap_or(Vec::new(&env));
+        user_locks.len()
     }
 
     /// Retrieves a specific lock entry by index for a user.
@@ -1949,7 +1947,17 @@ impl StakingRegistry {
     /// * `Some(LockEntry)` if the entry exists
     /// * `None` if the entry doesn't exist
     pub fn get_user_lock_by_index(env: Env, user: Address, index: u32) -> Option<LockEntry> {
-        env.storage().persistent().get(&DataKey::UserLockByIndex(user, index))
+        let user_locks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
+        
+        if let Some(tx_hash) = user_locks.get(index) {
+            env.storage().persistent().get(&DataKey::UserLockByTxHash(user, tx_hash))
+        } else {
+            None
+        }
     }
 
     /// Gets all pool IDs that a user has LP positions in.
@@ -1996,7 +2004,12 @@ impl StakingRegistry {
     /// # Returns
     /// The count of unlock entries (0 if none)
     pub fn get_unlock_count(env: Env, user: Address) -> u32 {
-        env.storage().persistent().get(&DataKey::UserUnlockCount(user)).unwrap_or(0)
+        let user_unlocks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserUnlocks(user))
+            .unwrap_or(Vec::new(&env));
+        user_unlocks.len()
     }
 
     /// Retrieves a specific unlock entry by index for a user.
@@ -2009,7 +2022,17 @@ impl StakingRegistry {
     /// * `Some(UnlockEntry)` if the entry exists
     /// * `None` if the entry doesn't exist
     pub fn get_unlock_by_index(env: Env, user: Address, index: u32) -> Option<UnlockEntry> {
-        env.storage().persistent().get(&DataKey::UserUnlockByIndex(user, index))
+        let user_unlocks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserUnlocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
+        
+        if let Some(tx_hash) = user_unlocks.get(index) {
+            env.storage().persistent().get(&DataKey::UserUnlockByTxHash(user, tx_hash))
+        } else {
+            None
+        }
     }
 
     /// Gets the number of BLUB restake entries for a user.
@@ -2020,7 +2043,12 @@ impl StakingRegistry {
     /// # Returns
     /// The count of BLUB restake entries (0 if none)
     pub fn get_blub_restake_count(env: Env, user: Address) -> u32 {
-        env.storage().persistent().get(&DataKey::UserBlubRestakeCount(user)).unwrap_or(0)
+        let user_restakes: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserBlubRestakes(user))
+            .unwrap_or(Vec::new(&env));
+        user_restakes.len()
     }
 
     /// Retrieves a specific BLUB restake entry by index for a user.
@@ -2033,7 +2061,17 @@ impl StakingRegistry {
     /// * `Some(BlubRestakeEntry)` if the entry exists
     /// * `None` if the entry doesn't exist
     pub fn get_blub_restake_by_index(env: Env, user: Address, index: u32) -> Option<BlubRestakeEntry> {
-        env.storage().persistent().get(&DataKey::UserBlubRestakeByIndex(user, index))
+        let user_restakes: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserBlubRestakes(user.clone()))
+            .unwrap_or(Vec::new(&env));
+        
+        if let Some(tx_hash) = user_restakes.get(index) {
+            env.storage().persistent().get(&DataKey::UserBlubRestakeByTxHash(user, tx_hash))
+        } else {
+            None
+        }
     }
 
     /// Gets the total number of reward distributions recorded.
@@ -2086,16 +2124,18 @@ impl StakingRegistry {
     /// # Returns
     /// The total amount of AQUA contributed to POL by this user
     pub fn get_user_pol_contribution(env: Env, user: Address) -> i128 {
-        let count: u32 = env
+        let user_locks: Vec<Bytes> = env
             .storage()
             .persistent()
-            .get(&DataKey::UserLockCount(user.clone()))
-            .unwrap_or(0);
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
 
         let mut total_contribution = 0i128;
-        for i in 0..count {
-            if let Some(lock) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByIndex(user.clone(), i)) {
-                total_contribution = total_contribution.saturating_add(lock.pol_contributed);
+        for i in 0..user_locks.len() {
+            if let Some(tx_hash) = user_locks.get(i) {
+                if let Some(lock) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash)) {
+                    total_contribution = total_contribution.saturating_add(lock.pol_contributed);
+                }
             }
         }
 
@@ -2673,27 +2713,29 @@ impl StakingRegistry {
     pub fn get_user_staking_info(env: Env, user: Address) -> Result<UserStakingInfo, Error> {
         let now = env.ledger().timestamp();
         
-        let count: u32 = env
+        let user_locks: Vec<Bytes> = env
             .storage()
             .persistent()
-            .get(&DataKey::UserLockCount(user.clone()))
-            .unwrap_or(0);
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
 
         let mut total_staked_blub = 0i128;
         let mut unstaking_available = 0i128;
         let mut total_locked_entries = 0u32;
         let mut total_unlocked_entries = 0u32;
 
-        for i in 0..count {
-            if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByIndex(user.clone(), i)) {
-                if entry.unlocked {
-                    // Already unstaked - count as available
-                    unstaking_available = unstaking_available.saturating_add(entry.blub_locked);
-                    total_unlocked_entries += 1;
-                } else {
-                    // Currently staked - all are immediately unstakable
-                    total_staked_blub = total_staked_blub.saturating_add(entry.blub_locked);
-                    total_locked_entries += 1;
+        for i in 0..user_locks.len() {
+            if let Some(tx_hash) = user_locks.get(i) {
+                if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash)) {
+                    if entry.unlocked {
+                        // Already unstaked - count as available
+                        unstaking_available = unstaking_available.saturating_add(entry.blub_locked);
+                        total_unlocked_entries += 1;
+                    } else {
+                        // Currently staked - all are immediately unstakable
+                        total_staked_blub = total_staked_blub.saturating_add(entry.blub_locked);
+                        total_locked_entries += 1;
+                    }
                 }
             }
         }
@@ -2770,13 +2812,13 @@ impl StakingRegistry {
         let now = env.ledger().timestamp();
         let contract_address = env.current_contract_address();
         
-        let count: u32 = env
+        let user_locks: Vec<Bytes> = env
             .storage()
             .persistent()
-            .get(&DataKey::UserLockCount(user.clone()))
-            .unwrap_or(0);
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
 
-        if count == 0 {
+        if user_locks.is_empty() {
             global_state.locked = false;
             env.storage().instance().set(&DataKey::GlobalState, &global_state);
             return Err(Error::NotFound);
@@ -2787,25 +2829,27 @@ impl StakingRegistry {
         let mut total_aqua_unlocked = 0i128;
 
         // Find and mark unlocked entries for unstaking
-        for i in 0..count {
+        for i in 0..user_locks.len() {
             if remaining_amount <= 0 {
                 break;
             }
 
-            if let Some(mut entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByIndex(user.clone(), i)) {
-                // Allow immediate unstaking - no time-based restrictions
-                if entry.blub_locked > 0 && !entry.unlocked {
-                    let unstake_from_entry = remaining_amount.min(entry.blub_locked);
-                    
-                    total_blub_unstaked = total_blub_unstaked.saturating_add(unstake_from_entry);
-                    total_aqua_unlocked = total_aqua_unlocked.saturating_add(entry.amount);
-                    
-                    entry.blub_locked = entry.blub_locked.saturating_sub(unstake_from_entry);
-                    entry.unlocked = true;
-                    
-                    env.storage().persistent().set(&DataKey::UserLockByIndex(user.clone(), i), &entry);
-                    
-                    remaining_amount = remaining_amount.saturating_sub(unstake_from_entry);
+            if let Some(tx_hash) = user_locks.get(i) {
+                if let Some(mut entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash.clone())) {
+                    // Allow immediate unstaking - no time-based restrictions
+                    if entry.blub_locked > 0 && !entry.unlocked {
+                        let unstake_from_entry = remaining_amount.min(entry.blub_locked);
+                        
+                        total_blub_unstaked = total_blub_unstaked.saturating_add(unstake_from_entry);
+                        total_aqua_unlocked = total_aqua_unlocked.saturating_add(entry.amount);
+                        
+                        entry.blub_locked = entry.blub_locked.saturating_sub(unstake_from_entry);
+                        entry.unlocked = true;
+                        
+                        env.storage().persistent().set(&DataKey::UserLockByTxHash(user.clone(), tx_hash), &entry);
+                        
+                        remaining_amount = remaining_amount.saturating_sub(unstake_from_entry);
+                    }
                 }
             }
         }

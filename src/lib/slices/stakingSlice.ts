@@ -14,8 +14,8 @@ export interface LockInfo {
 }
 
 export interface StakeStats {
-  totalStakes: number;
-  activeStakes: number;
+  totalStakes?: number;
+  activeStakes?: number;
   totalAmount: string;
   activeAmount: string;
   unstakingAvailable: string;
@@ -263,8 +263,6 @@ export const fetchStakingStats = createAsyncThunk(
         const globalState = await sorobanService.queryGlobalState();
 
         return {
-          totalStakes: 0,
-          activeStakes: 0,
           totalAmount: globalState?.total_staked || "0",
           activeAmount: globalState?.total_staked || "0",
           unstakingAvailable: "0", // Global state doesn't track individual unstakable amounts
@@ -273,8 +271,6 @@ export const fetchStakingStats = createAsyncThunk(
       }
 
       return {
-        totalStakes: 0,
-        activeStakes: 0,
         totalAmount: "0",
         activeAmount: "0",
         unstakingAvailable: "0",
@@ -283,8 +279,6 @@ export const fetchStakingStats = createAsyncThunk(
     } catch (error) {
       console.error("❌ [stakingSlice] Failed to fetch staking stats:", error);
       return {
-        totalStakes: 0,
-        activeStakes: 0,
         totalAmount: "0",
         activeAmount: "0",
         unstakingAvailable: "0",
@@ -578,10 +572,7 @@ const stakingSlice = createSlice({
           ).toFixed(7);
 
           state.userStats = {
-            totalStakes:
-              (payload.stakingInfo.total_locked_entries || 0) +
-              (payload.stakingInfo.total_unlocked_entries || 0),
-            activeStakes: payload.stakingInfo.total_locked_entries || 0,
+            // Removed count tracking - no longer tracked in contract
             totalAmount: totalStakedAmount,
             activeAmount: payload.stakingInfo.total_staked_blub || "0",
             unstakingAvailable: payload.stakingInfo.unstaking_available || "0",
