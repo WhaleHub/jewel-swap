@@ -613,7 +613,7 @@ function Yield() {
         "stake_blub", // Contract function for BLUB restaking
         [
           user.userWalletAddress, // String address - will be converted to Address ScVal
-          stakeAmountStroops, // BigInt amount - will be converted to i128 ScVal
+          stakeAmountStroops.toString(), // String amount - will be converted to i128 ScVal
           durationPeriods, // Number duration - will be converted to u64 ScVal
         ],
         user.userWalletAddress
