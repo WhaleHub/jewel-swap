@@ -166,16 +166,14 @@ function STKAqua() {
         durationPeriods,
       });
 
-      // Import Stellar SDK for proper type conversions
-      const { Address, nativeToScVal } = await import("@stellar/stellar-sdk");
-
+      // Pass raw values - the sorobanService will convert them properly to ScVal
       const { transaction } = await soroban.buildContractTransaction(
         "staking",
         "stake", // Function that transfers tokens and records stake
         [
-          Address.fromString(user.userWalletAddress), // Address type
-          nativeToScVal(BigInt(amountInStroops), { type: "i128" }), // i128 type for amount
-          nativeToScVal(durationPeriods, { type: "u64" }), // u64 - minimal value, rewards based on actual time
+          user.userWalletAddress, // String address - will be converted to Address ScVal
+          amountInStroops, // String amount - will be converted to i128 ScVal
+          durationPeriods, // Number duration - will be converted to u64 ScVal
         ],
         user.userWalletAddress
       );

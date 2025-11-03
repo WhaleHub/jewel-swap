@@ -366,17 +366,15 @@ function Yield() {
         amountInStroops,
       });
 
-      // Import Stellar SDK for proper type conversions
-      const { Address, nativeToScVal } = await import("@stellar/stellar-sdk");
-
       // Build Soroban contract invocation transaction
       // unstake(user: Address, amount: i128)
+      // Pass raw values - the sorobanService will convert them properly to ScVal
       const { transaction } = await soroban.buildContractTransaction(
         "staking",
         "unstake",
         [
-          Address.fromString(user.userWalletAddress), // Address type
-          nativeToScVal(BigInt(amountInStroops), { type: "i128" }), // i128 type for amount
+          user.userWalletAddress, // String address - will be converted to Address ScVal
+          amountInStroops, // String amount - will be converted to i128 ScVal
         ],
         user.userWalletAddress
       );
@@ -608,19 +606,15 @@ function Yield() {
         durationPeriods,
       });
 
-      // Import Stellar SDK for proper type conversions
-      const { Address, nativeToScVal, xdr } = await import(
-        "@stellar/stellar-sdk"
-      );
-
-      // Build contract transaction with properly typed parameters
+      // Build contract transaction with raw parameters
+      // Pass raw values - the sorobanService will convert them properly to ScVal
       const { transaction } = await sorobanService.buildContractTransaction(
         "staking",
         "stake_blub", // Contract function for BLUB restaking
         [
-          Address.fromString(user.userWalletAddress),
-          nativeToScVal(stakeAmountStroops, { type: "i128" }),
-          nativeToScVal(durationPeriods, { type: "u64" }),
+          user.userWalletAddress, // String address - will be converted to Address ScVal
+          stakeAmountStroops, // BigInt amount - will be converted to i128 ScVal
+          durationPeriods, // Number duration - will be converted to u64 ScVal
         ],
         user.userWalletAddress
       );

@@ -317,9 +317,76 @@ export class SorobanService {
         sourceAccount.accountId()
       );
 
-      // Build the contract call operation
-      const scArgs = args.map((arg) => this.convertToScVal(arg));
-      console.log("📝 [SorobanService] Converted args to ScVal:", scArgs);
+      // Build the contract call operation using proper SDK types
+      console.log("📝 [SorobanService] Raw args:", args);
+      console.log(
+        "📝 [SorobanService] Arg types:",
+        args.map((a) => typeof a)
+      );
+
+      // Import xdr for direct type creation
+      const { xdr: XDR } = await import("@stellar/stellar-sdk");
+
+      const scArgs = args.map((arg, index) => {
+        console.log(`Converting arg[${index}]:`, arg, `(type: ${typeof arg})`);
+
+        // Address strings (user or contract addresses)
+        if (
+          typeof arg === "string" &&
+          arg.length === 56 &&
+          (arg.startsWith("G") || arg.startsWith("C"))
+        ) {
+          const addrScVal = Address.fromString(arg).toScVal();
+          console.log(`✅ Arg[${index}] Address converted:`, addrScVal);
+          return addrScVal;
+        }
+
+        // String numbers (amounts) - convert to i128
+        if (typeof arg === "string" && /^\d+$/.test(arg)) {
+          const bigIntVal = BigInt(arg);
+          const i128ScVal = nativeToScVal(bigIntVal, { type: "i128" });
+          console.log(
+            `✅ Arg[${index}] i128 converted from string "${arg}":`,
+            i128ScVal
+          );
+          return i128ScVal;
+        }
+
+        // Numbers - convert to u64
+        if (typeof arg === "number") {
+          const u64ScVal = nativeToScVal(arg, { type: "u64" });
+          console.log(
+            `✅ Arg[${index}] u64 converted from number ${arg}:`,
+            u64ScVal
+          );
+          return u64ScVal;
+        }
+
+        // BigInt - convert to i128
+        if (typeof arg === "bigint") {
+          const i128ScVal = nativeToScVal(arg, { type: "i128" });
+          console.log(
+            `✅ Arg[${index}] i128 converted from bigint:`,
+            i128ScVal
+          );
+          return i128ScVal;
+        }
+
+        // Already a ScVal
+        if (arg && typeof arg === "object" && arg._switch !== undefined) {
+          console.log(`✅ Arg[${index}] already ScVal:`, arg);
+          return arg;
+        }
+
+        // Unknown type
+        console.error(`❌ Arg[${index}] UNKNOWN TYPE:`, typeof arg, arg);
+        throw new Error(
+          `Cannot convert argument ${index} of type ${typeof arg}: ${arg}`
+        );
+      });
+
+      console.log("✅ [SorobanService] All args converted to ScVal");
+      console.log("📋 [SorobanService] Final ScVal args:", scArgs);
 
       const operation = contract.call(method, ...scArgs);
 
@@ -345,9 +412,24 @@ export class SorobanService {
       console.log("📋 [SorobanService] Transaction XDR:", transaction.toXDR());
 
       // Simulate directly using Soroban RPC
-      const simulationResponse = await this.server.simulateTransaction(
-        transaction
-      );
+      let simulationResponse;
+      try {
+        simulationResponse = await this.server.simulateTransaction(transaction);
+      } catch (simError: any) {
+        // Handle "Bad union switch" and other XDR parsing errors
+        if (simError.message?.includes("Bad union switch")) {
+          console.error(
+            "❌ [SorobanService] XDR parsing error during simulation (Bad union switch):",
+            simError.message
+          );
+          throw new Error(
+            "Transaction parameter type mismatch. Please ensure all arguments are in the correct format. " +
+              "Error details: " +
+              simError.message
+          );
+        }
+        throw simError;
+      }
 
       if (SorobanRpc.Api.isSimulationError(simulationResponse)) {
         const error = `Simulation failed: ${simulationResponse.error}`;
