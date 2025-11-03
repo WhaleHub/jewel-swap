@@ -1093,7 +1093,7 @@ export class SorobanService {
           contract.call(
             "get_user_lp",
             Address.fromString(userAddress).toScVal(),
-            nativeToScVal(poolId, { type: "bytes" })
+            nativeToScVal(poolId, { type: "string" })
           )
         )
         .setTimeout(30)

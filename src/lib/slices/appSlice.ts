@@ -26,18 +26,12 @@ const initialState = {
 export const getAppData = createAsyncThunk(
   "app/info",
   async (_, { rejectWithValue }) => {
-    try {
-      const { data } = await axios.get(`${BACKEND_API}`);
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Backend is no longer used - return empty data
+    console.log("ℹ️ [appSlice] Backend disabled - returning empty app data");
+    return {
+      lp_balances: [],
+      pools: [],
+    };
   }
 );
 

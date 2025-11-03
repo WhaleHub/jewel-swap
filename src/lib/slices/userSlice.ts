@@ -100,15 +100,16 @@ export const mint = createAsyncThunk(
       };
 
       console.log(
-        "🚀 [userSlice] Sending mint request with data:",
+        "ℹ️ [userSlice] Backend disabled - skipping mint API call:",
         requestData
       );
 
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/lock`,
-        requestData
-      );
-      return data;
+      // Return success without backend call
+      return {
+        success: true,
+        message: "Transaction submitted (backend disabled)",
+        data: requestData,
+      };
     } catch (error: any) {
       console.error("❌ [userSlice] Mint request failed:", {
         error: error.response?.data || error.message,
@@ -203,15 +204,16 @@ export const unStakeAqua = createAsyncThunk(
       };
 
       console.log(
-        "🚀 [userSlice] Sending unStakeAqua request with data:",
+        "ℹ️ [userSlice] Backend disabled - skipping unStakeAqua API call:",
         requestData
       );
 
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/unlock-aqua`,
-        requestData
-      );
-      return data;
+      // Return success without backend call
+      return {
+        success: true,
+        message: "Transaction submitted (backend disabled)",
+        data: requestData,
+      };
     } catch (error: any) {
       console.error("❌ [userSlice] UnStakeAqua request failed:", {
         error: error.response?.data || error.message,
@@ -295,15 +297,16 @@ export const restakeBlub = createAsyncThunk(
       };
 
       console.log(
-        "🚀 [userSlice] Sending restakeBlub request with data:",
+        "ℹ️ [userSlice] Backend disabled - skipping restakeBlub API call:",
         requestData
       );
 
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/restake-blub`,
-        requestData
-      );
-      return data;
+      // Return success without backend call
+      return {
+        success: true,
+        message: "Transaction submitted (backend disabled)",
+        data: requestData,
+      };
     } catch (error: any) {
       console.error("❌ [userSlice] RestakeBlub request failed:", {
         error: error.response?.data || error.message,
@@ -363,84 +366,43 @@ export const getAccountInfo = createAsyncThunk(
         return rejectWithValue("Invalid Stellar account address format");
       }
 
-      console.log("🌐 [userSlice] Fetching account info from backend:", {
-        account: trimmedAccount,
-        accountLength: trimmedAccount?.length,
-        isValidFormat: /^G[A-Z0-9]{55}$/.test(trimmedAccount),
-        backendUrl: `${BACKEND_API}/token/user?userPublicKey=${trimmedAccount}`,
-        timestamp: new Date().toISOString(),
-      });
-
-      const { data } = await axios.get(
-        `${BACKEND_API}/token/user?userPublicKey=${trimmedAccount}`
+      console.log(
+        "ℹ️ [userSlice] Backend disabled - returning empty account data for:",
+        trimmedAccount
       );
 
-      console.log("✅ [userSlice] Account info received from backend:", {
+      const emptyData = {
+        id: "",
         account: trimmedAccount,
-        hasData: !!data,
-        dataKeys: data ? Object.keys(data) : [],
-        balancesCount: data?.balances?.length || 0,
-        claimableRecordsCount: data?.claimableRecords?.length || 0,
-        poolsCount: data?.pools?.length || 0,
-        accountData: data,
-      });
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        claimableRecords: [],
+        pools: [],
+        stakes: [],
+        treasuryDeposits: [],
+        lpBalances: [],
+      };
 
-      return data;
+      return emptyData;
     } catch (error: any) {
-      console.error("❌ [userSlice] Error fetching account info:", {
+      console.error("❌ [userSlice] Error in getAccountInfo:", {
         account: account,
         error: error,
         errorMessage: error?.message,
-        response: error?.response?.data,
-        status: error?.response?.status,
       });
 
-      // Try fallback optimized endpoint for staking balance
-      try {
-        console.log(
-          "🔄 [userSlice] Attempting fallback with optimized staking balance endpoint"
-        );
-
-        const { data: stakingData } = await axios.get(
-          `${BACKEND_API}/token/user/staking-balance?userPublicKey=${account}`
-        );
-
-        console.log("✅ [userSlice] Fallback staking balance data received:", {
-          account: account,
-          claimableRecordsCount: stakingData?.claimableRecords?.length || 0,
-          poolsCount: stakingData?.pools?.length || 0,
-          stakingData: stakingData,
-        });
-
-        // Return fallback data structure that matches expected format
-        const fallbackData = {
-          id: null,
-          account: account,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          claimableRecords: stakingData.claimableRecords || [],
-          pools: stakingData.pools || [],
-          stakes: [],
-          treasuryDeposits: [],
-          lpBalances: [],
-        };
-
-        return fallbackData;
-      } catch (fallbackError: any) {
-        console.error("❌ [userSlice] Fallback endpoint also failed:", {
-          account: account,
-          fallbackError: fallbackError,
-          fallbackErrorMessage: fallbackError?.message,
-        });
-      }
-
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error?.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
+      // Return empty data instead of throwing
+      return {
+        id: "",
+        account: account,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        claimableRecords: [],
+        pools: [],
+        stakes: [],
+        treasuryDeposits: [],
+        lpBalances: [],
+      };
     }
   }
 );
@@ -480,21 +442,17 @@ export const storeAccountBalance = createAsyncThunk(
 export const addLP = createAsyncThunk(
   "lock/mint",
   async (values: TransactionData, { rejectWithValue }) => {
-    try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/add-liquidity`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+    console.log(
+      "ℹ️ [userSlice] Backend disabled - skipping addLP API call:",
+      values
+    );
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Return success without backend call
+    return {
+      success: true,
+      message: "Transaction submitted (backend disabled)",
+      data: values,
+    };
   }
 );
 
@@ -566,15 +524,16 @@ export const provideLiquidity = createAsyncThunk(
       };
 
       console.log(
-        "🚀 [userSlice] Sending provideLiquidity request with data:",
+        "ℹ️ [userSlice] Backend disabled - skipping provideLiquidity API call:",
         requestData
       );
 
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/add-liquidity`,
-        requestData
-      );
-      return data;
+      // Return success without backend call
+      return {
+        success: true,
+        message: "Transaction submitted (backend disabled)",
+        data: requestData,
+      };
     } catch (error: any) {
       console.error("❌ [userSlice] ProvideLiquidity request failed:", {
         error: error.response?.data || error.message,
@@ -624,21 +583,17 @@ export const withdrawLP = createAsyncThunk(
     },
     { rejectWithValue }
   ) => {
-    try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/remove-liquidity`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+    console.log(
+      "ℹ️ [userSlice] Backend disabled - skipping removeLiquidity API call:",
+      values
+    );
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Return success without backend call
+    return {
+      success: true,
+      message: "Transaction submitted (backend disabled)",
+      data: values,
+    };
   }
 );
 
@@ -652,41 +607,34 @@ export const redeemLPReward = createAsyncThunk(
     },
     { rejectWithValue }
   ) => {
-    try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/redeem-reward`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+    console.log(
+      "ℹ️ [userSlice] Backend disabled - skipping redeemLPReward API call:",
+      values
+    );
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Return success without backend call
+    return {
+      success: true,
+      message: "Transaction submitted (backend disabled)",
+      data: values,
+    };
   }
 );
 
 export const getLockedAquaRewardsForAccount = createAsyncThunk(
   "user/lockedAquaRewards",
   async (account: string | undefined, { rejectWithValue }) => {
-    try {
-      const { data } = await axios.get(
-        `${BACKEND_API}/token/getLockedReward?userPublicKey=${account}`
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+    console.log(
+      "ℹ️ [userSlice] Backend disabled - skipping getLockedAquaRewards API call for:",
+      account
+    );
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Return empty data without backend call
+    return {
+      lockedRewards: 0,
+      lockedAquaRewardEstimation: 0,
+      data: [],
+    };
   }
 );
 
