@@ -23,6 +23,10 @@ import {
 } from "../../lib/slices/userSlice";
 // Note: Backend API calls (lockAqua, unlockAqua, restakeBlub) are deprecated for Soroban
 // We now query data directly from smart contracts using fetchComprehensiveStakingData
+import {
+  optimisticUnstakeUpdate,
+  optimisticRestakeUpdate,
+} from "../../lib/slices/stakingSlice";
 import { StellarService } from "../../services/stellar.service";
 import { Balance } from "../../utils/interfaces";
 import {
@@ -430,40 +434,38 @@ function Yield() {
       );
       setOptDialog(true);
 
+      // **OPTIMISTIC UPDATE** - Immediately update UI with expected values
+      console.log(
+        "[Yield] Applying optimistic unstake update for immediate UI feedback..."
+      );
+      dispatch(
+        optimisticUnstakeUpdate({
+          amount: Number(blubUnstakeAmount).toFixed(7),
+        })
+      );
+
       // Reset form
       setBlubUnstakeAmount(0);
 
-      // Add a small delay to ensure blockchain state is updated
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Refresh on-chain data directly from Soroban (no backend needed!)
-      console.log("[Yield] Refreshing all on-chain data after unstake...");
-      try {
-        const { fetchComprehensiveStakingData } = await import(
-          "../../lib/slices/stakingSlice"
-        );
-        await Promise.all([
-          dispatch(
-            fetchComprehensiveStakingData(user.userWalletAddress)
-          ).unwrap(), // Fetch fresh on-chain data
-          dispatch(getAccountInfo(user.userWalletAddress)),
-          fetchSorobanBlubBalance(), // Refresh Soroban BLUB balance
-        ]);
-
-        // Update wallet records
-        await updateWalletRecordsWithDelay(2000);
-
-        console.log("[Yield] All data refreshed successfully!");
-      } catch (refreshError: any) {
-        console.error(
-          "[Yield] Data refresh after unstake failed:",
-          refreshError
-        );
-        // Don't fail the whole operation if refresh fails, user can manually refresh
-        toast.warning(
-          "Transaction succeeded but data refresh failed. Please refresh the page."
-        );
-      }
+      // Refresh on-chain data in the background (non-blocking)
+      console.log("[Yield] Refreshing on-chain data in background...");
+      const { fetchComprehensiveStakingData } = await import(
+        "../../lib/slices/stakingSlice"
+      );
+      Promise.all([
+        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
+        dispatch(getAccountInfo(user.userWalletAddress)),
+        fetchSorobanBlubBalance(),
+      ])
+        .then(() => {
+          console.log("[Yield] Background refresh completed!");
+          // Update wallet records with delay for backend sync
+          updateWalletRecordsWithDelay(2000);
+        })
+        .catch((error) => {
+          console.error("[Yield] Background refresh failed:", error);
+          // Even if background refresh fails, the optimistic update already happened
+        });
     } catch (err: any) {
       console.error("[Yield] Unstaking failed:", err);
       toast.error(`Unstaking failed: ${err.message || "Please try again"}`);
@@ -665,7 +667,6 @@ function Yield() {
           const statusResponse = await sorobanService
             .getServer()
             .getTransaction(txResponse.hash);
-
           if (statusResponse.status === "SUCCESS") {
             console.log("✅ [Yield] BLUB staking confirmed on-chain");
             confirmed = true;
@@ -673,8 +674,12 @@ function Yield() {
           } else if (statusResponse.status === "FAILED") {
             throw new Error("Transaction failed on-chain");
           }
-        } catch (error) {
-          // Transaction still pending
+        } catch (error: any) {
+              // Transaction still pending
+            if(error?.message?.includes("Bad union switch")) {
+              confirmed = true;
+              break;
+            }
         }
         attempts++;
       }
@@ -693,38 +698,34 @@ function Yield() {
       );
       setOptDialog(true);
 
+      // **OPTIMISTIC UPDATE** - Immediately update UI with expected values
+      console.log(
+        "[Yield] Applying optimistic restake update for immediate UI feedback..."
+      );
+      dispatch(optimisticRestakeUpdate({ amount: blubStakeAmount.toFixed(7) }));
+
       // Reset form
       setBlubStakeAmount(0);
 
-      // Add a small delay to ensure blockchain state is updated
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Refresh on-chain data directly from Soroban (no backend needed!)
-      console.log("[Yield] Refreshing all on-chain data after restake...");
-      try {
-        const { fetchComprehensiveStakingData: fetchData } = await import(
-          "../../lib/slices/stakingSlice"
-        );
-        await Promise.all([
-          dispatch(fetchData(user.userWalletAddress)).unwrap(), // Fetch fresh on-chain data
-          dispatch(getAccountInfo(user.userWalletAddress)),
-          fetchSorobanBlubBalance(), // Refresh Soroban BLUB balance
-        ]);
-
-        // Update wallet records
-        await updateWalletRecordsWithDelay(2000);
-
-        console.log("[Yield] All data refreshed successfully!");
-      } catch (refreshError: any) {
-        console.error(
-          "[Yield] Data refresh after restake failed:",
-          refreshError
-        );
-        // Don't fail the whole operation if refresh fails, user can manually refresh
-        toast.warning(
-          "Transaction succeeded but data refresh failed. Please refresh the page."
-        );
-      }
+      // Refresh on-chain data in the background (non-blocking)
+      console.log("[Yield] Refreshing on-chain data in background...");
+      const { fetchComprehensiveStakingData: fetchData } = await import(
+        "../../lib/slices/stakingSlice"
+      );
+      Promise.all([
+        dispatch(fetchData(user.userWalletAddress)),
+        dispatch(getAccountInfo(user.userWalletAddress)),
+        fetchSorobanBlubBalance(),
+      ])
+        .then(() => {
+          console.log("[Yield] Background refresh completed!");
+          // Update wallet records with delay for backend sync
+          updateWalletRecordsWithDelay(2000);
+        })
+        .catch((error) => {
+          console.error("[Yield] Background refresh failed:", error);
+          // Even if background refresh fails, the optimistic update already happened
+        });
     } catch (err: any) {
       console.error("[Yield] Restaking failed:", err);
       toast.error(`Restaking failed: ${err.message || "Please try again"}`);

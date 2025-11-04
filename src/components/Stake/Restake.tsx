@@ -34,6 +34,9 @@ import {
 import {
   unlockAqua,
   restakeBlub as restakeBlubSoroban,
+  optimisticUnstakeUpdate,
+  optimisticRestakeUpdate,
+  fetchComprehensiveStakingData,
 } from "../../lib/slices/stakingSlice";
 import {
   Asset,
@@ -233,22 +236,38 @@ function Restake() {
 
       console.log("[Restake] Transaction successful:", txResponse.hash);
 
-      // Record unstake in backend
-      dispatch(unStakingAqua(true));
-      const result = await dispatch(
+      console.log(
+        "[Restake] Applying optimistic unstake update for immediate UI feedback..."
+      );
+      dispatch(
+        optimisticUnstakeUpdate({ amount: (blubUnstakeAmount || 0).toFixed(7) })
+      );
+
+      toast.success(`Successfully unstaked ${blubUnstakeAmount} BLUB!`);
+      setBlubUnstakeAmount(0);
+      dispatch(unStakingAqua(false));
+
+      dispatch(
         unlockAqua({
           userAddress: user.userWalletAddress,
           lockId: 0,
           amount: (blubUnstakeAmount || 0).toString(),
           txHash: txResponse.hash,
         })
-      ).unwrap();
+      );
 
-      toast.success(`Successfully unstaked ${blubUnstakeAmount} BLUB!`);
-      setBlubUnstakeAmount(0);
-      dispatch(unStakingAqua(false));
-
-      await updateWalletRecords();
+      // Refresh data in the background to confirm the update
+      console.log("[Restake] Refreshing on-chain data in background...");
+      Promise.all([
+        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
+        updateWalletRecords(),
+      ])
+        .then(() => {
+          console.log("[Restake] Background refresh completed!");
+        })
+        .catch((error) => {
+          console.error("[Restake] Background refresh failed:", error);
+        });
     } catch (err: any) {
       console.error("[Restake] Unstaking failed:", err);
       toast.error(`Unstaking failed: ${err.message || "Please try again"}`);
@@ -374,21 +393,35 @@ function Restake() {
 
       console.log("[Restake] Transaction successful:", txResponse.hash);
 
-      // Record restake in backend
-      dispatch(restaking(true));
-      const result = await dispatch(
-        restakeBlubSoroban({
-          userAddress: user.userWalletAddress,
-          amount: stakeAmount,
-          txHash: txResponse.hash,
-        })
-      ).unwrap();
+      console.log(
+        "[Restake] Applying optimistic restake update for immediate UI feedback..."
+      );
+      dispatch(optimisticRestakeUpdate({ amount: stakeAmount }));
 
       toast.success(`Successfully restaked ${blubStakeAmount} BLUB!`);
       setBlubStakeAmount(0);
       dispatch(restaking(false));
 
-      await updateWalletRecords();
+      dispatch(
+        restakeBlubSoroban({
+          userAddress: user.userWalletAddress,
+          amount: stakeAmount,
+          txHash: txResponse.hash,
+        })
+      );
+
+      // Refresh data in the background to confirm the update
+      console.log("[Restake] Refreshing on-chain data in background...");
+      Promise.all([
+        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
+        updateWalletRecords(),
+      ])
+        .then(() => {
+          console.log("[Restake] Background refresh completed!");
+        })
+        .catch((error) => {
+          console.error("[Restake] Background refresh failed:", error);
+        });
     } catch (err: any) {
       console.error("[Restake] Restaking failed:", err);
       toast.error(`Restaking failed: ${err.message || "Please try again"}`);

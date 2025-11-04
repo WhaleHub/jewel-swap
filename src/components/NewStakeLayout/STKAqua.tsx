@@ -26,6 +26,7 @@ import {
   clearError,
   clearTransaction,
   fetchComprehensiveStakingData,
+  optimisticStakeUpdate,
 } from "../../lib/slices/stakingSlice";
 import {
   issueIceTokens,
@@ -222,31 +223,32 @@ function STKAqua() {
       );
       setOptDialog(true);
 
+      // **OPTIMISTIC UPDATE** - Immediately update UI with expected values
+      console.log(
+        "[STKAqua] Applying optimistic update for immediate UI feedback..."
+      );
+      dispatch(optimisticStakeUpdate({ amount: aquaDepositAmount.toFixed(7) }));
+
       // Reset form
       setAquaDepositAmount(0);
 
-      // Add a small delay to ensure blockchain state is updated
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Refresh on-chain data directly from Soroban - wait for completion
-      console.log("[STKAqua] Refreshing all on-chain data after stake...");
-      await Promise.all([
-        dispatch(
-          fetchComprehensiveStakingData(user.userWalletAddress)
-        ).unwrap(), // Fetch fresh on-chain data
+      // Refresh data in the background (non-blocking) to confirm the update
+      console.log("[STKAqua] Refreshing on-chain data in background...");
+      Promise.all([
+        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
         dispatch(getAccountInfo(user.userWalletAddress)),
-      ]);
-
-      // Refresh BLUB balance (user should have received BLUB tokens)
-      await fetchBlubBalance();
-
-      // Refresh on-chain AQUA balance
-      await fetchContractBalance();
-
-      // Update wallet records with delay for backend sync
-      await updateWalletRecordsWithDelay(2000);
-
-      console.log("[STKAqua] All data refreshed successfully!");
+        fetchBlubBalance(),
+        fetchContractBalance(),
+      ])
+        .then(() => {
+          console.log("[STKAqua] Background refresh completed!");
+          // Update wallet records with delay for backend sync
+          updateWalletRecordsWithDelay(2000);
+        })
+        .catch((error) => {
+          console.error("[STKAqua] Background refresh failed:", error);
+          // Even if background refresh fails, the optimistic update already happened
+        });
     } catch (error: any) {
       console.error("❌ [STKAqua] Soroban staking failed:", error);
       toast.error(`Staking failed: ${error.message}`);

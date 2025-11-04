@@ -430,6 +430,68 @@ const stakingSlice = createSlice({
         state.lastSyncTime = Date.now();
       }
     },
+
+    optimisticStakeUpdate: (
+      state,
+      action: PayloadAction<{ amount: string }>
+    ) => {
+      if (state.userStats) {
+        const currentActive = parseFloat(state.userStats.activeAmount || "0");
+        const stakeAmount = parseFloat(action.payload.amount);
+        state.userStats.activeAmount = (currentActive + stakeAmount).toFixed(7);
+        state.userStats.totalAmount = (
+          parseFloat(state.userStats.totalAmount || "0") + stakeAmount
+        ).toFixed(7);
+      } else {
+        state.userStats = {
+          totalAmount: action.payload.amount,
+          activeAmount: action.payload.amount,
+          unstakingAvailable: "0",
+          polContribution: "0",
+        };
+      }
+    },
+
+    optimisticUnstakeUpdate: (
+      state,
+      action: PayloadAction<{ amount: string }>
+    ) => {
+      if (state.userStats) {
+        const currentActive = parseFloat(state.userStats.activeAmount || "0");
+        const unstakeAmount = parseFloat(action.payload.amount);
+        state.userStats.activeAmount = Math.max(
+          0,
+          currentActive - unstakeAmount
+        ).toFixed(7);
+        state.userStats.totalAmount = Math.max(
+          0,
+          parseFloat(state.userStats.totalAmount || "0") - unstakeAmount
+        ).toFixed(7);
+      }
+    },
+
+    optimisticRestakeUpdate: (
+      state,
+      action: PayloadAction<{ amount: string }>
+    ) => {
+      if (state.userStats) {
+        const currentActive = parseFloat(state.userStats.activeAmount || "0");
+        const restakeAmount = parseFloat(action.payload.amount);
+        state.userStats.activeAmount = (currentActive + restakeAmount).toFixed(
+          7
+        );
+        state.userStats.totalAmount = (
+          parseFloat(state.userStats.totalAmount || "0") + restakeAmount
+        ).toFixed(7);
+      } else {
+        state.userStats = {
+          totalAmount: action.payload.amount,
+          activeAmount: action.payload.amount,
+          unstakingAvailable: "0",
+          polContribution: "0",
+        };
+      }
+    },
   },
   extraReducers: (builder) => {
     // Lock AQUA
@@ -602,6 +664,13 @@ const stakingSlice = createSlice({
   },
 });
 
-export const { clearError, clearTransaction, setLoading, updateSyncStatus } =
-  stakingSlice.actions;
+export const {
+  clearError,
+  clearTransaction,
+  setLoading,
+  updateSyncStatus,
+  optimisticStakeUpdate,
+  optimisticUnstakeUpdate,
+  optimisticRestakeUpdate,
+} = stakingSlice.actions;
 export default stakingSlice;
