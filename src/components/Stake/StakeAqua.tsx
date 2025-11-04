@@ -59,7 +59,8 @@ function StakeAqua() {
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "AQUA"
+    (balance) =>
+      balance.asset_code === "AQUA" && balance.asset_issuer === aquaAssetIssuer
   );
 
   const userAquaBalance = aquaRecord?.balance;

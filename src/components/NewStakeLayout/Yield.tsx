@@ -70,7 +70,8 @@ function Yield() {
   const staking = useSelector((state: RootState) => state.staking);
 
   const blubRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "BLUB"
+    (balance) =>
+      balance.asset_code === "BLUB" && balance.asset_issuer === blubIssuer
   );
 
   // //get user aqua record
@@ -675,11 +676,11 @@ function Yield() {
             throw new Error("Transaction failed on-chain");
           }
         } catch (error: any) {
-              // Transaction still pending
-            if(error?.message?.includes("Bad union switch")) {
-              confirmed = true;
-              break;
-            }
+          // Transaction still pending
+          if (error?.message?.includes("Bad union switch")) {
+            confirmed = true;
+            break;
+          }
         }
         attempts++;
       }

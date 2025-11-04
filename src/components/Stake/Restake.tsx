@@ -50,6 +50,7 @@ import {
   lpSignerPublicKey,
   blubIssuer,
   blubAssetCode,
+  aquaAssetIssuer,
 } from "../../utils/constants";
 import { StellarService } from "../../services/stellar.service";
 import { Balance } from "../../utils/interfaces";
@@ -66,18 +67,20 @@ function Restake() {
 
   const user = useSelector((state: RootState) => state.user);
 
-  const whlAquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "WHLAQUA"
+  // Get BLUB token balance (checking both asset code and issuer for security)
+  const blubRecord = user?.userRecords?.balances?.find(
+    (balance) =>
+      balance.asset_code === "BLUB" && balance.asset_issuer === blubIssuer
   );
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "AQUA"
+    (balance) =>
+      balance.asset_code === "AQUA" && balance.asset_issuer === aquaAssetIssuer
   );
 
   const userAquaBalance = aquaRecord?.balance;
-  // const whlAquaBalance = whlAquaRecord?.balance;
-  const blubBalance = whlAquaRecord?.balance;
+  const blubBalance = blubRecord?.balance;
 
   // Calculate accountClaimableRecords with defensive programming
   const accountClaimableRecords = useMemo(() => {
