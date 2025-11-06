@@ -613,7 +613,7 @@ function Yield() {
       // Pass raw values - the sorobanService will convert them properly to ScVal
       const { transaction } = await sorobanService.buildContractTransaction(
         "staking",
-        "stake_blub", // Contract function for BLUB restaking
+        "stake", // Contract function for BLUB staking (restaking)
         [
           user.userWalletAddress, // String address - will be converted to Address ScVal
           stakeAmountStroops.toString(), // String amount - will be converted to i128 ScVal

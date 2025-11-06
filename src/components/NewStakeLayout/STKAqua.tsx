@@ -161,7 +161,7 @@ function STKAqua() {
       const aquaTokenContract = SOROBAN_CONFIG.assets.aqua.sorobanContract;
       const durationPeriods = 1; // Minimal value - actual rewards calculated by elapsed time
 
-      console.log("[STKAqua] Building stake transaction with args:", {
+      console.log("[STKAqua] Building lock transaction with args:", {
         userAddress: user.userWalletAddress,
         aquaTokenContract,
         amountInStroops,
@@ -171,7 +171,7 @@ function STKAqua() {
       // Pass raw values - the sorobanService will convert them properly to ScVal
       const { transaction } = await soroban.buildContractTransaction(
         "staking",
-        "stake", // Function that transfers tokens and records stake
+        "lock", // Function that transfers AQUA tokens and records lock
         [
           user.userWalletAddress, // String address - will be converted to Address ScVal
           amountInStroops, // String amount - will be converted to i128 ScVal

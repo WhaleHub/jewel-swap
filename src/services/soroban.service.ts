@@ -1256,7 +1256,7 @@ export class SorobanService {
 
   /**
    * Stake BLUB tokens (restake)
-   * Calls stake_blub contract function
+   * Calls stake contract function
    */
   async stakeBlub(
     userAddress: string,
@@ -1273,7 +1273,7 @@ export class SorobanService {
       // Build contract transaction
       const { transaction } = await this.buildContractTransaction(
         "staking",
-        "stake_blub", // Contract function for BLUB restaking
+        "stake", // Contract function for BLUB staking (restaking)
         [
           userAddress, // user address
           amount, // amount in stroops

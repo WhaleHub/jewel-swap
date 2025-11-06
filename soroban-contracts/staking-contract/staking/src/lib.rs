@@ -637,7 +637,7 @@ impl StakingRegistry {
     /// - Creates a new lock entry for the user
     /// - Updates global state with new locked amounts
     /// - Updates POL contribution tracking
-    pub fn stake(
+    pub fn lock(
         env: Env,
         user: Address,
         amount: i128,
@@ -1118,7 +1118,7 @@ impl StakingRegistry {
     /// - Updates lock totals
     /// - Updates global state
     /// - Transfers BLUB from user to contract
-    pub fn stake_blub(
+    pub fn stake(
         env: Env,
         user: Address,
         amount: i128,
