@@ -131,6 +131,7 @@ pub struct GlobalState {
     pub reward_per_locked_token: i128, // accumulated rewards per token (with precision)
     pub reward_per_lp_token: i128, // accumulated rewards per LP token (with precision)
     pub total_blub_rewards_distributed: i128, // Track total BLUB rewards given
+    pub lock_counter: u64,                // Counter for generating predictable lock IDs
 }
 
 #[contracttype]
@@ -374,6 +375,7 @@ impl StakingRegistry {
             reward_per_locked_token: 0,
             reward_per_lp_token: 0,
             total_blub_rewards_distributed: 0,
+            lock_counter: 0,                  // Initialize lock counter
         };
         env.storage().instance().set(&DataKey::GlobalState, &global_state);
 
@@ -674,9 +676,11 @@ impl StakingRegistry {
         
         let reward_multiplier = Self::calculate_lock_multiplier(duration_minutes);
         
-        // Create transaction hash
-        let tx_hash_array = env.ledger().sequence().to_be_bytes();
-        let tx_hash_bytes = Bytes::from_array(&env, &tx_hash_array);
+        // Increment lock counter and create predictable lock ID
+        let lock_id = global_state.lock_counter;
+        global_state.lock_counter = global_state.lock_counter.saturating_add(1);
+        let lock_id_array = lock_id.to_be_bytes();
+        let tx_hash_bytes = Bytes::from_array(&env, &lock_id_array);
         
         // Calculate BLUB amounts: mint 1.1x AQUA, stake 1x, LP gets 0.1x
         let blub_minted = (amount * 11) / 10;      // 1.1x AQUA amount
@@ -816,13 +820,14 @@ impl StakingRegistry {
         amount: i128,
         duration_minutes: u64,
         timestamp: u64,
+        lock_id: u64,
     ) -> Result<(), Error> {
         let unlock_timestamp = timestamp + (duration_minutes * 60);
         let reward_multiplier = Self::calculate_lock_multiplier(duration_minutes);
         
-        // Create transaction hash
-        let tx_hash_array = env.ledger().sequence().to_be_bytes();
-        let tx_hash_bytes = Bytes::from_array(env, &tx_hash_array);
+        // Create lock ID from provided counter
+        let lock_id_array = lock_id.to_be_bytes();
+        let tx_hash_bytes = Bytes::from_array(env, &lock_id_array);
 
         // Create BLUB stake lock entry
         let blub_lock = LockEntry {
@@ -1116,7 +1121,7 @@ impl StakingRegistry {
     /// # State Changes
     /// - Creates a new BLUB lock entry
     /// - Updates lock totals
-    /// - Updates global state
+    /// - Updates global state:
     /// - Transfers BLUB from user to contract
     pub fn stake(
         env: Env,
@@ -1148,8 +1153,11 @@ impl StakingRegistry {
         
         // ===== EFFECTS: UPDATE ALL STATE FIRST =====
         
-        let tx_hash_array = env.ledger().sequence().to_be_bytes();
-        let tx_hash_bytes = Bytes::from_array(&env, &tx_hash_array);
+        // Increment lock counter and create predictable lock ID
+        let lock_id = global_state.lock_counter;
+        global_state.lock_counter = global_state.lock_counter.saturating_add(1);
+        let lock_id_array = lock_id.to_be_bytes();
+        let tx_hash_bytes = Bytes::from_array(&env, &lock_id_array);
 
         // Create lock record for BLUB restaking
         let lock = LockEntry {
@@ -2599,16 +2607,25 @@ impl StakingRegistry {
         let mut processed = 0u32;
         let process_limit = max_count.min(pending_count).min(10);
         
+        // Get global state to access lock counter
+        let mut global_state = Self::get_global_state(env.clone())?;
+        
         for i in 0..process_limit {
             if let Some(mut pending) = env.storage().instance().get::<DataKey, PendingStake>(&DataKey::PendingStakeByIndex(i)) {
                 if !pending.processed {
                     let now = env.ledger().timestamp();
+                    
+                    // Get and increment lock counter
+                    let lock_id = global_state.lock_counter;
+                    global_state.lock_counter = global_state.lock_counter.saturating_add(1);
+                    
                     let _ = Self::create_blub_stake_entry(
                         &env,
                         pending.user.clone(),
                         pending.amount,
                         pending.duration_minutes,
                         now,
+                        lock_id,
                     );
                     
                     pending.processed = true;
@@ -2623,6 +2640,9 @@ impl StakingRegistry {
                 }
             }
         }
+        
+        // Save updated global state with new lock counter
+        env.storage().instance().set(&DataKey::GlobalState, &global_state);
         
         Ok(processed)
     }

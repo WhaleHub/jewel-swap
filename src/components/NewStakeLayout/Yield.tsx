@@ -342,7 +342,7 @@ function Yield() {
         blubAssetCode,
         blubIssuer,
         user.walletName || walletTypes.FREIGHTER,
-        WalletNetwork.TESTNET
+        WalletNetwork.PUBLIC
       );
 
       if (!trustlineResult.hasTrustline && trustlineResult.error) {
@@ -394,7 +394,7 @@ function Yield() {
           ? new LobstrModule()
           : new FreighterModule();
       const kit = new StellarWalletsKit({
-        network: WalletNetwork.TESTNET,
+        network: WalletNetwork.PUBLIC,
         selectedWalletId: user.walletName || FREIGHTER_ID,
         modules: [selectedModule],
       });
@@ -407,7 +407,7 @@ function Yield() {
           transaction.toXDR(),
           {
             address: user.userWalletAddress,
-            networkPassphrase: WalletNetwork.TESTNET,
+            networkPassphrase: WalletNetwork.PUBLIC,
           }
         );
         signedTxXdr = signed;
@@ -488,7 +488,7 @@ function Yield() {
         : new FreighterModule();
 
     const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.TESTNET,
+      network: WalletNetwork.PUBLIC,
       selectedWalletId: FREIGHTER_ID,
       modules: [selectedModule],
     });
@@ -513,7 +513,7 @@ function Yield() {
           : new FreighterModule();
 
       const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.TESTNET,
+        network: WalletNetwork.PUBLIC,
         selectedWalletId: FREIGHTER_ID,
         modules: [selectedModule],
       });
@@ -570,7 +570,7 @@ function Yield() {
         blubAssetCode,
         blubIssuer,
         user.walletName || walletTypes.FREIGHTER,
-        WalletNetwork.TESTNET
+        WalletNetwork.PUBLIC
       );
 
       if (!trustlineResult.hasTrustline && trustlineResult.error) {
@@ -630,7 +630,7 @@ function Yield() {
           ? new LobstrModule()
           : new FreighterModule();
       const stellarKit = new StellarWalletsKit({
-        network: WalletNetwork.TESTNET,
+        network: WalletNetwork.PUBLIC,
         selectedWalletId: user.walletName || FREIGHTER_ID,
         modules: [selectedModule],
       });
@@ -639,7 +639,7 @@ function Yield() {
         transaction.toXDR(),
         {
           address: user.userWalletAddress,
-          networkPassphrase: WalletNetwork.TESTNET,
+          networkPassphrase: WalletNetwork.PUBLIC,
         }
       );
 
@@ -649,7 +649,7 @@ function Yield() {
       const txResponse = await sorobanService
         .getServer()
         .sendTransaction(
-          TransactionBuilder.fromXDR(signedTxXdr, Networks.TESTNET)
+          TransactionBuilder.fromXDR(signedTxXdr, Networks.PUBLIC)
         );
 
       console.log(

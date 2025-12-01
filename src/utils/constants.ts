@@ -35,9 +35,8 @@ export const BACKEND_API = getRequiredEnv("REACT_APP_BACKEND_URL");
 export const aquaAssetCode = "AQUA";
 export const aquaAssetIssuer = getRequiredEnv("REACT_APP_AQUA_ISSUER");
 
-export const blubAssetCode = "BLUA";
-export const blubIssuer =
-  "GACJBMPJQXCSPPYLXTZRSNNH36N2U7F4B5CLQMUE7CJ7STXRLXBGJZDR";
+export const blubAssetCode = "BLUB";
+export const blubIssuer = getRequiredEnv("REACT_APP_BLUB_ISSUER");
 
 export const usdcAssetCode = "USDC";
 export const usdcIssuer =

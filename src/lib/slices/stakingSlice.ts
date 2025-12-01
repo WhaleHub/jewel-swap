@@ -191,7 +191,7 @@ export const fetchUserLocks = createAsyncThunk(
       // Get lock count
       const countTx = new TransactionBuilder(account, {
         fee: "100",
-        networkPassphrase: Networks.TESTNET, // Using TESTNET
+        networkPassphrase: Networks.PUBLIC, // Using PUBLIC
       })
         .addOperation(
           contract.call(
@@ -214,7 +214,7 @@ export const fetchUserLocks = createAsyncThunk(
       for (let i = 0; i < lockCount; i++) {
         const lockTx = new TransactionBuilder(account, {
           fee: "100",
-          networkPassphrase: Networks.TESTNET, // Using TESTNET
+          networkPassphrase: Networks.PUBLIC, // Using PUBLIC
         })
           .addOperation(
             contract.call(

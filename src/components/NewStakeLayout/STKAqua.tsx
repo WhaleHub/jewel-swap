@@ -118,7 +118,7 @@ function STKAqua() {
         : new FreighterModule();
 
     const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.TESTNET,
+      network: WalletNetwork.PUBLIC,
       selectedWalletId: FREIGHTER_ID,
       modules: [selectedModule],
     });
@@ -190,14 +190,14 @@ function STKAqua() {
           ? new LobstrModule()
           : new FreighterModule();
       const kit = new StellarWalletsKit({
-        network: WalletNetwork.TESTNET,
+        network: WalletNetwork.PUBLIC,
         selectedWalletId: user.walletName || FREIGHTER_ID,
         modules: [selectedModule],
       });
 
       const { signedTxXdr } = await kit.signTransaction(transaction.toXDR(), {
         address: user.userWalletAddress,
-        networkPassphrase: WalletNetwork.TESTNET,
+        networkPassphrase: WalletNetwork.PUBLIC,
       });
 
       console.log("[STKAqua] Transaction signed, submitting to Soroban...");
@@ -328,7 +328,7 @@ function STKAqua() {
 
       const tx = new TransactionBuilder(account, {
         fee: "100",
-        networkPassphrase: Networks.TESTNET,
+        networkPassphrase: Networks.PUBLIC,
       })
         .addOperation(
           blubContract.call(
@@ -412,7 +412,7 @@ function STKAqua() {
 
       const tx = new TransactionBuilder(account, {
         fee: "100000",
-        networkPassphrase: Networks.TESTNET,
+        networkPassphrase: Networks.PUBLIC,
       })
         .addOperation(operation)
         .setTimeout(30)
@@ -482,7 +482,7 @@ function STKAqua() {
           : new FreighterModule();
 
       const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.TESTNET,
+        network: WalletNetwork.PUBLIC,
         selectedWalletId: FREIGHTER_ID,
         modules: [selectedModule],
       });
@@ -536,7 +536,7 @@ function STKAqua() {
     // Build transaction
     const transactionBuilder = new TransactionBuilder(senderAccount, {
       fee: BASE_FEE,
-      networkPassphrase: Networks.TESTNET,
+      networkPassphrase: Networks.PUBLIC,
     });
 
     // Add trustline operation
@@ -557,7 +557,7 @@ function STKAqua() {
       signedTxXdr = await signTransaction(transaction.toXDR());
     } else if (user?.walletName === walletTypes.FREIGHTER) {
       const kit = new StellarWalletsKit({
-        network: WalletNetwork.TESTNET,
+        network: WalletNetwork.PUBLIC,
         selectedWalletId: FREIGHTER_ID,
         modules: [new FreighterModule()],
       });
@@ -566,7 +566,7 @@ function STKAqua() {
         transaction.toXDR(),
         {
           address: user?.userWalletAddress || "",
-          networkPassphrase: WalletNetwork.TESTNET,
+          networkPassphrase: WalletNetwork.PUBLIC,
         }
       );
 
@@ -576,7 +576,7 @@ function STKAqua() {
         transaction.toXDR(),
         {
           address: user?.userWalletAddress || "",
-          networkPassphrase: WalletNetwork.TESTNET,
+          networkPassphrase: WalletNetwork.PUBLIC,
         }
       );
 
@@ -652,7 +652,7 @@ function STKAqua() {
 
       const transactionBuilder = new TransactionBuilder(senderAccount, {
         fee: BASE_FEE,
-        networkPassphrase: Networks.TESTNET,
+        networkPassphrase: Networks.PUBLIC,
       });
 
       transactionBuilder.addOperation(paymentOperation).setTimeout(180);
@@ -669,14 +669,14 @@ function STKAqua() {
           transaction.toXDR(),
           {
             address: user?.userWalletAddress || "",
-            networkPassphrase: WalletNetwork.TESTNET,
+            networkPassphrase: WalletNetwork.PUBLIC,
           }
         );
 
         signedTxXdr = signed;
       } else {
         const kit: StellarWalletsKit = new StellarWalletsKit({
-          network: WalletNetwork.TESTNET,
+          network: WalletNetwork.PUBLIC,
           selectedWalletId: FREIGHTER_ID,
           modules: [new FreighterModule()],
         });
@@ -685,7 +685,7 @@ function STKAqua() {
           transactionXDR,
           {
             address: user?.userWalletAddress,
-            networkPassphrase: WalletNetwork.TESTNET,
+            networkPassphrase: WalletNetwork.PUBLIC,
           }
         );
 

@@ -402,7 +402,7 @@ export class SorobanService {
       // Build transaction for simulation first
       let transaction = new TransactionBuilder(sourceAccount, {
         fee: recommendedFee.toString(),
-        networkPassphrase: Networks.TESTNET,
+        networkPassphrase: Networks.PUBLIC,
       })
         .addOperation(operation)
         .setTimeout(options.timeout || 180)
