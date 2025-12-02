@@ -26,7 +26,6 @@ import {
   clearError,
   clearTransaction,
   fetchComprehensiveStakingData,
-  optimisticStakeUpdate,
 } from "../../lib/slices/stakingSlice";
 import {
   issueIceTokens,
@@ -96,20 +95,6 @@ function STKAqua() {
 
   const userAquaBalance = aquaRecord?.balance;
 
-  // Debug logging for balance display
-  console.log("💎 [STKAqua] Balance state debug:", {
-    userConnected: !!user,
-    walletName: user?.walletName,
-    userWalletAddress: user?.userWalletAddress,
-    totalBalances: user?.userRecords?.balances?.length || 0,
-    allBalances: user?.userRecords?.balances?.map((b: any) => ({
-      asset_code: b.asset_code || "XLM",
-      balance: b.balance,
-    })),
-    aquaRecord: aquaRecord,
-    userAquaBalance: userAquaBalance,
-    timestamp: new Date().toISOString(),
-  });
 
   const updateWalletRecords = async () => {
     const selectedModule =
@@ -144,10 +129,6 @@ function STKAqua() {
     }
 
     try {
-      console.log("[STKAqua] Starting Soroban contract staking:", {
-        userAddress: user.userWalletAddress,
-        amount: aquaDepositAmount,
-      });
       // Use the soroban service
       const { sorobanService } = await import("../../services/soroban.service");
       const { SOROBAN_CONFIG } = await import("../../config/soroban.config");
@@ -161,13 +142,6 @@ function STKAqua() {
       const aquaTokenContract = SOROBAN_CONFIG.assets.aqua.sorobanContract;
       const durationPeriods = 1; // Minimal value - actual rewards calculated by elapsed time
 
-      console.log("[STKAqua] Building lock transaction with args:", {
-        userAddress: user.userWalletAddress,
-        aquaTokenContract,
-        amountInStroops,
-        durationPeriods,
-      });
-
       // Pass raw values - the sorobanService will convert them properly to ScVal
       const { transaction } = await soroban.buildContractTransaction(
         "staking",
@@ -178,10 +152,6 @@ function STKAqua() {
           durationPeriods, // Number duration - will be converted to u64 ScVal
         ],
         user.userWalletAddress
-      );
-
-      console.log(
-        "[STKAqua] Contract transaction built, requesting signature..."
       );
 
       // Sign transaction with user's wallet
@@ -200,8 +170,6 @@ function STKAqua() {
         networkPassphrase: WalletNetwork.PUBLIC,
       });
 
-      console.log("[STKAqua] Transaction signed, submitting to Soroban...");
-
       // Submit the signed Soroban contract transaction
       const result = await soroban.submitSignedTransaction(signedTxXdr);
 
@@ -209,12 +177,25 @@ function STKAqua() {
         throw new Error(result.error || "Transaction failed");
       }
 
-      console.log(
-        "[STKAqua] Soroban contract invocation successful:",
-        result.transactionHash
-      );
+      // Reset form
+      setAquaDepositAmount(0);
 
-      // Show success message
+      // Refresh all balances immediately after successful transaction
+      try {
+        // First, update wallet records to get fresh Horizon data
+        await updateWalletRecordsWithDelay(2000);
+
+        // Then fetch all other data (which may depend on updated wallet balances)
+        await Promise.all([
+          dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
+          fetchBlubBalance(),
+          fetchContractBalance(),
+        ]);
+      } catch (refreshError) {
+        console.error("[STKAqua] Refresh failed:", refreshError);
+      }
+
+      // Show success message after refresh
       toast.success(
         `Successfully staked ${aquaDepositAmount} AQUA via Soroban smart contract!`
       );
@@ -223,33 +204,6 @@ function STKAqua() {
         `Transaction Hash: ${result.transactionHash}\n\nYour AQUA has been staked. Rewards increase the longer you keep it staked. You can unstake at any time.`
       );
       setOptDialog(true);
-
-      // **OPTIMISTIC UPDATE** - Immediately update UI with expected values
-      console.log(
-        "[STKAqua] Applying optimistic update for immediate UI feedback..."
-      );
-      dispatch(optimisticStakeUpdate({ amount: aquaDepositAmount.toFixed(7) }));
-
-      // Reset form
-      setAquaDepositAmount(0);
-
-      // Refresh data in the background (non-blocking) to confirm the update
-      console.log("[STKAqua] Refreshing on-chain data in background...");
-      Promise.all([
-        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
-        dispatch(getAccountInfo(user.userWalletAddress)),
-        fetchBlubBalance(),
-        fetchContractBalance(),
-      ])
-        .then(() => {
-          console.log("[STKAqua] Background refresh completed!");
-          // Update wallet records with delay for backend sync
-          updateWalletRecordsWithDelay(2000);
-        })
-        .catch((error) => {
-          console.error("[STKAqua] Background refresh failed:", error);
-          // Even if background refresh fails, the optimistic update already happened
-        });
     } catch (error: any) {
       console.error("❌ [STKAqua] Soroban staking failed:", error);
       toast.error(`Staking failed: ${error.message}`);
@@ -264,19 +218,6 @@ function STKAqua() {
   // Load user staking data on component mount
   useEffect(() => {
     if (user.userWalletAddress && useSoroban) {
-      console.log(
-        "🔄 [STKAqua] Fetching data for user:",
-        user.userWalletAddress
-      );
-      console.log(
-        "📋 [STKAqua] Using Staking Contract:",
-        SOROBAN_CONFIG.contracts.staking
-      );
-      console.log(
-        "🟦 [STKAqua] Using BLUB Token:",
-        SOROBAN_CONFIG.assets.blub.sorobanContract
-      );
-
       // Initial data fetch
       const fetchAllData = async () => {
         if (!user.userWalletAddress) return;
@@ -290,7 +231,6 @@ function STKAqua() {
 
       // Set up auto-refresh every 30 seconds for real-time updates
       const refreshInterval = setInterval(() => {
-        console.log("🔄 [STKAqua] Auto-refreshing on-chain data...");
         fetchAllData();
       }, 30000);
 
@@ -305,68 +245,63 @@ function STKAqua() {
 
     setBlubBalanceLoading(true);
     try {
-      const { sorobanService } = await import("../../services/soroban.service");
-      const { SOROBAN_CONFIG } = await import("../../config/soroban.config");
-
-      const blubTokenContract = SOROBAN_CONFIG.assets.blub.sorobanContract;
-
-      console.log("🟦 [STKAqua] Fetching BLUB balance from token contract...");
-      console.log("BLUB Token Contract:", blubTokenContract);
-      console.log("User Address:", user.userWalletAddress);
-
-      const server = sorobanService.getServer();
-      const { Contract, Address } = await import("@stellar/stellar-sdk");
-
-      // Create BLUB token contract instance
-      const blubContract = new Contract(blubTokenContract);
-
-      // Build a simulation transaction to read balance
-      const account = await server.getAccount(user.userWalletAddress);
-      const { TransactionBuilder, Networks, Operation, xdr } = await import(
-        "@stellar/stellar-sdk"
+      // Fetch fresh account data directly from Horizon API
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(
+        user.userWalletAddress
       );
 
-      const tx = new TransactionBuilder(account, {
-        fee: "100",
-        networkPassphrase: Networks.PUBLIC,
-      })
-        .addOperation(
-          blubContract.call(
-            "balance",
-            ...[Address.fromString(user.userWalletAddress).toScVal()]
+      // Get BLUB balance from fresh Horizon data (source of truth)
+      const blubRecord = wrappedAccount.balances?.find(
+        (balance: any) =>
+          balance.asset_code === "BLUB" && balance.asset_issuer === blubIssuer
+      );
+
+      if (blubRecord?.balance) {
+        const horizonBalance = parseFloat(blubRecord.balance);
+        setBlubBalance(horizonBalance.toFixed(2));
+      } else {
+        // Fallback to Soroban if Horizon is not available
+        const { sorobanService } = await import("../../services/soroban.service");
+        const { SOROBAN_CONFIG } = await import("../../config/soroban.config");
+        const blubTokenContract = SOROBAN_CONFIG.assets.blub.sorobanContract;
+
+        const server = sorobanService.getServer();
+        const { Contract, Address, TransactionBuilder, Networks } = await import(
+          "@stellar/stellar-sdk"
+        );
+
+        const blubContract = new Contract(blubTokenContract);
+        const account = await server.getAccount(user.userWalletAddress);
+
+        const tx = new TransactionBuilder(account, {
+          fee: "100",
+          networkPassphrase: Networks.PUBLIC,
+        })
+          .addOperation(
+            blubContract.call(
+              "balance",
+              Address.fromString(user.userWalletAddress).toScVal()
+            )
           )
-        )
-        .setTimeout(30)
-        .build();
+          .setTimeout(30)
+          .build();
 
-      // Simulate to get the result
-      const simulation: any = await server.simulateTransaction(tx);
+        const simulation: any = await server.simulateTransaction(tx);
 
-      if (simulation && "result" in simulation && simulation.result) {
-        try {
+        if (simulation && "result" in simulation && simulation.result) {
           const { scValToNative } = await import("@stellar/stellar-sdk");
           const balance = scValToNative(simulation.result.retval);
-
-          // Handle both string and bigint
           const balanceValue =
             typeof balance === "bigint" ? balance : BigInt(balance || 0);
-          const blubAmount = Number(balanceValue) / 10000000; // Convert from stroops to BLUB
-
-          console.log("🟦 [STKAqua] BLUB balance fetched:", blubAmount, "BLUB");
+          const blubAmount = Number(balanceValue) / 10000000;
           setBlubBalance(blubAmount.toFixed(2));
-        } catch (conversionError) {
-          console.error(
-            "🟦 [STKAqua] Error converting BLUB balance:",
-            conversionError
-          );
+        } else {
           setBlubBalance("0.00");
         }
-      } else {
-        console.warn("🟦 [STKAqua] No BLUB balance result", simulation);
-        setBlubBalance("0.00");
       }
     } catch (error: any) {
-      console.error("🟦 [STKAqua] Error fetching BLUB balance:", error);
+      console.error("❌ [STKAqua] Error fetching BLUB balance:", error);
       setBlubBalance("0.00");
     } finally {
       setBlubBalanceLoading(false);
@@ -384,12 +319,6 @@ function STKAqua() {
 
       const stakingContractId = SOROBAN_CONFIG.contracts.staking;
       const aquaTokenContract = SOROBAN_CONFIG.assets.aqua.sorobanContract;
-
-      console.log(
-        "💰 [STKAqua] Fetching AQUA balance from staking contract..."
-      );
-      console.log("Staking Contract:", stakingContractId);
-      console.log("AQUA Token:", aquaTokenContract);
 
       // Read the AQUA token balance of the staking contract
       const server = sorobanService.getServer();
@@ -424,8 +353,6 @@ function STKAqua() {
         const { scValToNative } = await import("@stellar/stellar-sdk");
         const balance = scValToNative(simResult.result.retval);
         const aquaBalance = (BigInt(balance) / BigInt(10000000)).toString();
-
-        console.log("✅ [STKAqua] Contract AQUA balance:", aquaBalance, "AQUA");
         setContractBalance(aquaBalance);
       }
     } catch (error) {
@@ -435,32 +362,6 @@ function STKAqua() {
     }
   };
 
-  // Debug log for staking state
-  useEffect(() => {
-    if (staking.userLocks && staking.userLocks.length > 0) {
-      const totalAmount = staking.userLocks
-        .filter((lock: any) => lock.isActive !== false)
-        .reduce((total: number, lock: any) => {
-          const amount = parseFloat(lock.amount) || 0;
-          // Backend might return either stroops (>1000000) or AQUA (<1000)
-          const aquaAmount = amount > 1000 ? amount / 10000000 : amount;
-          return total + aquaAmount;
-        }, 0);
-
-      console.log("📊 [STKAqua] User locks received:", {
-        count: staking.userLocks.length,
-        locks: staking.userLocks.map((lock: any) => ({
-          amount: lock.amount,
-          isStroops: parseFloat(lock.amount) > 1000,
-          aquaValue:
-            parseFloat(lock.amount) > 1000
-              ? parseFloat(lock.amount) / 10000000
-              : parseFloat(lock.amount),
-        })),
-        totalAmount: totalAmount.toFixed(2),
-      });
-    }
-  }, [staking.userLocks]);
 
   // Clear errors when component unmounts
   useEffect(() => {
@@ -931,7 +832,6 @@ function STKAqua() {
                   <button
                     onClick={async () => {
                       if (!user.userWalletAddress) return;
-                      console.log("🔄 [STKAqua] Manual refresh triggered");
                       await dispatch(
                         fetchComprehensiveStakingData(user.userWalletAddress)
                       );

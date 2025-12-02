@@ -775,11 +775,6 @@ export class SorobanService {
    */
   async queryBlubBalance(userAddress: string): Promise<string> {
     try {
-      console.log(
-        "🔍 [SorobanService] Querying BLUB wallet balance for:",
-        userAddress
-      );
-
       // Get BLUB token contract address from config
       const { SOROBAN_CONFIG } = await import("../config/soroban.config");
       const blubTokenContract = SOROBAN_CONFIG.assets.blub.sorobanContract;
@@ -790,11 +785,6 @@ export class SorobanService {
         );
         return "0";
       }
-
-      console.log(
-        "🟦 [SorobanService] Using BLUB token contract:",
-        blubTokenContract
-      );
 
       // Create contract instance for BLUB token
       const contract = new Contract(blubTokenContract);
@@ -818,7 +808,6 @@ export class SorobanService {
       if (simulation.result?.retval) {
         const balance = scValToNative(simulation.result.retval);
         const balanceStr = (Number(balance) / 10000000).toFixed(7);
-        console.log("✅ [SorobanService] BLUB wallet balance:", balanceStr);
         return balanceStr;
       }
 
