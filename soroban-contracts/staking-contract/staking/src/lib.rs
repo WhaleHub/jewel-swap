@@ -3,6 +3,58 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, Vec,
 };
 
+// ============================================================================
+// Aquarius Pool Interface (External Contract)
+// ============================================================================
+
+mod aquarius_pool {
+    use soroban_sdk::{Address, Env, Map, Symbol, Val, Vec, contractclient};
+
+    #[contractclient(name = "AquariusPoolClient")]
+    pub trait AquariusPoolTrait {
+        /// Claims rewards from the pool
+        /// Returns: Amount of reward tokens claimed
+        fn claim(env: Env, user: Address) -> u128;
+
+        /// Deposits tokens to the pool
+        /// Parameters:
+        /// - user: Address depositing
+        /// - desired_amounts: Vec<u128> of [token_a_amount, token_b_amount]
+        /// - min_shares: u128 minimum LP tokens to receive
+        /// Returns: (actual_amounts: Vec<u128>, shares_minted: u128)
+        fn deposit(
+            env: Env,
+            user: Address,
+            desired_amounts: Vec<u128>,
+            min_shares: u128,
+        ) -> (Vec<u128>, u128);
+
+        /// Withdraws from the pool
+        /// Parameters:
+        /// - user: Address withdrawing
+        /// - share_amount: u128 LP tokens to burn
+        /// - min_amounts: Vec<u128> minimum tokens to receive
+        /// Returns: Vec<u128> actual amounts withdrawn
+        fn withdraw(
+            env: Env,
+            user: Address,
+            share_amount: u128,
+            min_amounts: Vec<u128>,
+        ) -> Vec<u128>;
+
+        /// Gets pool information
+        fn get_info(env: Env) -> Map<Symbol, Val>;
+
+        /// Gets pool reserves
+        fn get_reserves(env: Env) -> Vec<u128>;
+
+        /// Gets total LP shares in circulation
+        fn get_total_shares(env: Env) -> u128;
+    }
+}
+
+use aquarius_pool::AquariusPoolClient;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
@@ -14,8 +66,24 @@ pub struct Config {
     pub aqua_token: Address, // AQUA token contract address
     pub blub_token: Address, // External BLUB token (Stellar asset)
     pub liquidity_contract: Address, // AQUA/BLUB StableSwap pool contract on Stellar network
-    pub ice_contract: Address, // ICE locking contract for 90% AQUA
+    // ICE token addresses (4 types)
+    pub ice_token: Address, // Base ICE token (SAC)
+    pub govern_ice_token: Address, // governICE token (SAC)
+    pub upvote_ice_token: Address, // upvoteICE token (SAC)
+    pub downvote_ice_token: Address, // downvoteICE token (SAC)
     pub period_unit_minutes: u64, // Staking period unit in minutes
+    // Vault settings
+    pub vault_treasury: Address, // Treasury for vault fees (30%)
+    pub vault_fee_bps: u32, // Vault fee in basis points (3000 = 30%)
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IceTokens {
+    pub ice_token: Address,           // Base ICE token (SAC)
+    pub govern_ice_token: Address,    // governICE token (SAC)
+    pub upvote_ice_token: Address,    // upvoteICE token (SAC)
+    pub downvote_ice_token: Address,  // downvoteICE token (SAC)
 }
 
 #[contracttype]
@@ -132,6 +200,15 @@ pub struct GlobalState {
     pub reward_per_lp_token: i128, // accumulated rewards per LP token (with precision)
     pub total_blub_rewards_distributed: i128, // Track total BLUB rewards given
     pub lock_counter: u64,                // Counter for generating predictable lock IDs
+    // ICE locking (Request 1)
+    pub pending_aqua_for_ice: i128,      // AQUA accumulated for ICE locking
+    pub ice_balance: i128,                // Base ICE token balance
+    pub govern_ice_balance: i128,         // governICE token balance
+    pub upvote_ice_balance: i128,         // upvoteICE token balance
+    pub downvote_ice_balance: i128,       // downvoteICE token balance
+    pub ice_lock_counter: u64,            // Counter for ICE lock authorizations
+    // Vault (Request 2)
+    pub pool_count: u32,                  // Number of vault pools (max 10)
 }
 
 #[contracttype]
@@ -143,6 +220,47 @@ pub struct ProtocolOwnedLiquidity {
     pub total_pol_rewards_earned: i128, // Total rewards earned from POL voting
     pub last_reward_claim: u64,
     pub ice_voting_power_used: i128, // ICE tokens used for voting on AQUA-BLUB pair
+}
+
+// ============================================================================
+// ICE Locking Structures (Request 1)
+// ============================================================================
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IceLockAuthorization {
+    pub lock_id: u64,
+    pub aqua_amount: i128,
+    pub duration_years: u64,
+    pub authorized_at: u64,
+    pub executed: bool,
+}
+
+// ============================================================================
+// Vault Structures (Request 2)
+// ============================================================================
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PoolInfo {
+    pub pool_id: u32,
+    pub pool_address: Address, // Aquarius pool contract
+    pub token_a: Address,
+    pub token_b: Address,
+    pub share_token: Address, // LP token address
+    pub total_lp_tokens: i128, // Contract's total LP in this pool
+    pub active: bool,
+    pub added_at: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserVaultPosition {
+    pub user: Address,
+    pub pool_id: u32,
+    pub share_ratio: i128, // User's share in basis points × 1000000 (10 decimals precision)
+    pub deposited_at: u64,
+    pub active: bool,
 }
 
 // ============================================================================
@@ -175,6 +293,11 @@ pub enum DataKey {
     UserLp(Address, Bytes), // User LP position by pool
     PendingStakeCount, // Total pending stakes
     PendingStakeByIndex(u32), // Pending stake by index
+    // ICE locking (Request 1)
+    IceLockAuth(u64), // ICE lock authorization by ID
+    // Vault (Request 2)
+    PoolInfo(u32), // Pool info by pool_id
+    UserVaultPosition(Address, u32), // User vault position by (user, pool_id)
 }
 
 #[contracttype]
@@ -194,6 +317,14 @@ pub enum Error {
     InsufficientAllowance = 19,
     InvalidPeriod = 21,
     NoUnlockableAmount = 22,
+    // ICE Errors
+    AlreadyExecuted = 23,
+    InsufficientPendingAqua = 24,
+    // Vault Errors
+    PoolNotActive = 25,
+    PoolNotFound = 26,
+    MaxPoolsReached = 27,
+    PositionNotFound = 28,
 }
 
 impl From<Error> for soroban_sdk::Error {
@@ -342,14 +473,16 @@ impl StakingRegistry {
         aqua_token: Address,
         blub_token: Address,
         liquidity_contract: Address,
-        ice_contract: Address,
+        ice_tokens: IceTokens,
+        vault_treasury: Address,
+        vault_fee_bps: u32,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Config) {
             return Err(Error::AlreadyInitialized);
         }
         admin.require_auth();
 
-        let cfg = Config { 
+        let cfg = Config {
             admin: admin.clone(),
             version: 5,
             total_supply: 0,
@@ -358,9 +491,13 @@ impl StakingRegistry {
             aqua_token,
             blub_token,
             liquidity_contract,
-            ice_contract,
-            // Staking Period Config
+            ice_token: ice_tokens.ice_token,
+            govern_ice_token: ice_tokens.govern_ice_token,
+            upvote_ice_token: ice_tokens.upvote_ice_token,
+            downvote_ice_token: ice_tokens.downvote_ice_token,
             period_unit_minutes: 1,
+            vault_treasury,
+            vault_fee_bps,
         };
         env.storage().instance().set(&DataKey::Config, &cfg);
 
@@ -369,13 +506,20 @@ impl StakingRegistry {
             total_locked: 0,
             total_blub_supply: 0,
             total_lp_staked: 0,
-            locked: false,                    // Initialize re-entrancy guard
+            locked: false,
             total_users: 0,
             last_reward_update: env.ledger().timestamp(),
             reward_per_locked_token: 0,
             reward_per_lp_token: 0,
             total_blub_rewards_distributed: 0,
-            lock_counter: 0,                  // Initialize lock counter
+            lock_counter: 0,
+            pending_aqua_for_ice: 0,
+            ice_balance: 0,
+            govern_ice_balance: 0,
+            upvote_ice_balance: 0,
+            downvote_ice_balance: 0,
+            ice_lock_counter: 0,
+            pool_count: 0,
         };
         env.storage().instance().set(&DataKey::GlobalState, &global_state);
 
@@ -389,7 +533,7 @@ impl StakingRegistry {
             ice_voting_power_used: 0,
         };
         env.storage().instance().set(&DataKey::ProtocolOwnedLiquidity, &pol);
-        
+
         Ok(())
     }
 
@@ -742,16 +886,9 @@ impl StakingRegistry {
             return Err(Error::InsufficientBalance);
         }
         
-        // EXTERNAL CALL #2: Send 90% AQUA to ICE contract for governance
-        if ice_aqua > 0 {
-            let ice_transfer_result = aqua_client.try_transfer(&contract_address, &config.ice_contract, &ice_aqua);
-            if ice_transfer_result.is_err() {
-                // Release lock before returning error
-                global_state.locked = false;
-                env.storage().instance().set(&DataKey::GlobalState, &global_state);
-                return Err(Error::InvalidInput);
-            }
-        }
+        // CHANGED: Keep 90% AQUA in contract for ICE locking (Request 1)
+        // Track as pending instead of sending to ICE contract
+        global_state.pending_aqua_for_ice = global_state.pending_aqua_for_ice.saturating_add(ice_aqua);
         
         // EXTERNAL CALL #3: Auto-deposit POL (always enabled)
         if pol_aqua > 0 && blub_to_lp > 0 {
@@ -2507,11 +2644,14 @@ impl StakingRegistry {
         Ok(())
     }
 
-    /// Updates the ICE contract address (admin-only).
+    /// Updates ICE token addresses (admin-only).
     ///
     /// # Arguments
     /// * `admin` - The admin address authorizing this operation
-    /// * `new_ice_contract` - The new ICE contract address
+    /// * `ice_token` - The ICE token contract address
+    /// * `govern_ice_token` - The governICE token contract address
+    /// * `upvote_ice_token` - The upvoteICE token contract address
+    /// * `downvote_ice_token` - The downvoteICE token contract address
     ///
     /// # Returns
     /// * `Ok(())` on success
@@ -2519,17 +2659,27 @@ impl StakingRegistry {
     ///
     /// # Authorization
     /// Requires authorization from the `admin` address.
-    pub fn update_ice_contract(env: Env, admin: Address, new_ice_contract: Address) -> Result<(), Error> {
+    pub fn update_ice_tokens(
+        env: Env,
+        admin: Address,
+        ice_token: Address,
+        govern_ice_token: Address,
+        upvote_ice_token: Address,
+        downvote_ice_token: Address,
+    ) -> Result<(), Error> {
         let mut cfg = Self::get_config(env.clone())?;
         admin.require_auth();
         if cfg.admin != admin { return Err(Error::Unauthorized); }
 
-        cfg.ice_contract = new_ice_contract.clone();
+        cfg.ice_token = ice_token.clone();
+        cfg.govern_ice_token = govern_ice_token.clone();
+        cfg.upvote_ice_token = upvote_ice_token.clone();
+        cfg.downvote_ice_token = downvote_ice_token.clone();
         env.storage().instance().set(&DataKey::Config, &cfg);
-        
+
         env.events().publish(
             (symbol_short!("ice_upd"),),
-            new_ice_contract,
+            ice_token,
         );
 
         Ok(())
@@ -2925,6 +3075,763 @@ impl StakingRegistry {
         );
 
         Ok(())
+    }
+
+    // ============================================================================
+    // ICE LOCKING FUNCTIONS (Request 1)
+    // ============================================================================
+
+    /// One-time setup to establish trustlines for all 4 ICE token types.
+    /// Must be called by admin before contract can receive ICE tokens.
+    ///
+    /// # Authorization
+    /// Requires admin authorization
+    pub fn setup_ice_trustlines(env: Env) -> Result<(), Error> {
+        let config = Self::get_config(env.clone())?;
+        config.admin.require_auth();
+
+        use soroban_sdk::token;
+        let contract_address = env.current_contract_address();
+
+        // Establish trustlines by calling balance() on each SAC token
+        // This ensures the contract can receive these tokens
+        let ice_client = token::Client::new(&env, &config.ice_token);
+        let _ = ice_client.balance(&contract_address);
+
+        let govern_ice_client = token::Client::new(&env, &config.govern_ice_token);
+        let _ = govern_ice_client.balance(&contract_address);
+
+        let upvote_ice_client = token::Client::new(&env, &config.upvote_ice_token);
+        let _ = upvote_ice_client.balance(&contract_address);
+
+        let downvote_ice_client = token::Client::new(&env, &config.downvote_ice_token);
+        let _ = downvote_ice_client.balance(&contract_address);
+
+        env.events().publish(
+            (symbol_short!("ice_tl"),),
+            symbol_short!("setup"),
+        );
+
+        Ok(())
+    }
+
+    /// Authorizes an ICE lock for a specific amount and duration.
+    /// Backend cron will execute the actual locking on Stellar Classic.
+    ///
+    /// # Arguments
+    /// * `aqua_amount` - Amount of AQUA to lock for ICE
+    /// * `duration_years` - Lock duration (1-3 years)
+    ///
+    /// # Returns
+    /// Lock ID for tracking
+    ///
+    /// # Authorization
+    /// Requires admin authorization
+    pub fn authorize_ice_lock(
+        env: Env,
+        aqua_amount: i128,
+        duration_years: u64,
+    ) -> Result<u64, Error> {
+        let config = Self::get_config(env.clone())?;
+        config.admin.require_auth();
+
+        if aqua_amount <= 0 || duration_years == 0 || duration_years > 3 {
+            return Err(Error::InvalidInput);
+        }
+
+        let mut global_state: GlobalState = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalState)
+            .ok_or(Error::NotInitialized)?;
+
+        if global_state.pending_aqua_for_ice < aqua_amount {
+            return Err(Error::InsufficientPendingAqua);
+        }
+
+        let lock_id = global_state.ice_lock_counter;
+        global_state.ice_lock_counter += 1;
+
+        let authorization = IceLockAuthorization {
+            lock_id,
+            aqua_amount,
+            duration_years,
+            authorized_at: env.ledger().timestamp(),
+            executed: false,
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::IceLockAuth(lock_id), &authorization);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::GlobalState, &global_state);
+
+        env.events().publish(
+            (symbol_short!("ice_auth"), lock_id),
+            (aqua_amount, duration_years),
+        );
+
+        Ok(lock_id)
+    }
+
+    /// Transfers authorized AQUA from contract to admin for ICE locking.
+    /// Backend calls this after authorization to move AQUA to admin wallet,
+    /// then creates claimable balance on Stellar Classic.
+    ///
+    /// # Arguments
+    /// * `lock_id` - The authorization ID
+    ///
+    /// # Authorization
+    /// Requires admin authorization
+    pub fn transfer_authorized_aqua(env: Env, lock_id: u64) -> Result<(), Error> {
+        let config = Self::get_config(env.clone())?;
+        config.admin.require_auth();
+
+        let mut authorization: IceLockAuthorization = env
+            .storage()
+            .persistent()
+            .get(&DataKey::IceLockAuth(lock_id))
+            .ok_or(Error::NotFound)?;
+
+        if authorization.executed {
+            return Err(Error::AlreadyExecuted);
+        }
+
+        let mut global_state: GlobalState = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalState)
+            .ok_or(Error::NotInitialized)?;
+
+        if global_state.pending_aqua_for_ice < authorization.aqua_amount {
+            return Err(Error::InsufficientPendingAqua);
+        }
+
+        // Transfer AQUA to admin wallet
+        use soroban_sdk::token;
+        let aqua_client = token::Client::new(&env, &config.aqua_token);
+        let contract_address = env.current_contract_address();
+
+        aqua_client.transfer(
+            &contract_address,
+            &config.admin,
+            &authorization.aqua_amount,
+        );
+
+        // Update state
+        global_state.pending_aqua_for_ice = global_state
+            .pending_aqua_for_ice
+            .saturating_sub(authorization.aqua_amount);
+        authorization.executed = true;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::IceLockAuth(lock_id), &authorization);
+        env.storage()
+            .instance()
+            .set(&DataKey::GlobalState, &global_state);
+
+        env.events().publish(
+            (symbol_short!("ice_xfer"), lock_id),
+            authorization.aqua_amount,
+        );
+
+        Ok(())
+    }
+
+    /// Syncs all ICE token balances from SAC contracts.
+    /// Backend calls this after ICE tokens are received.
+    ///
+    /// # Authorization
+    /// Requires admin authorization
+    pub fn sync_all_ice_balances(env: Env) -> Result<(), Error> {
+        let config = Self::get_config(env.clone())?;
+        config.admin.require_auth();
+
+        use soroban_sdk::token;
+        let contract_address = env.current_contract_address();
+
+        let ice_client = token::Client::new(&env, &config.ice_token);
+        let ice_balance = ice_client.balance(&contract_address);
+
+        let govern_ice_client = token::Client::new(&env, &config.govern_ice_token);
+        let govern_ice_balance = govern_ice_client.balance(&contract_address);
+
+        let upvote_ice_client = token::Client::new(&env, &config.upvote_ice_token);
+        let upvote_ice_balance = upvote_ice_client.balance(&contract_address);
+
+        let downvote_ice_client = token::Client::new(&env, &config.downvote_ice_token);
+        let downvote_ice_balance = downvote_ice_client.balance(&contract_address);
+
+        let mut global_state: GlobalState = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalState)
+            .ok_or(Error::NotInitialized)?;
+
+        global_state.ice_balance = ice_balance;
+        global_state.govern_ice_balance = govern_ice_balance;
+        global_state.upvote_ice_balance = upvote_ice_balance;
+        global_state.downvote_ice_balance = downvote_ice_balance;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::GlobalState, &global_state);
+
+        env.events().publish(
+            (symbol_short!("ice_sync"),),
+            (ice_balance, govern_ice_balance, upvote_ice_balance, downvote_ice_balance),
+        );
+
+        Ok(())
+    }
+
+    // ============================================================================
+    // VAULT FUNCTIONS (Request 2 - Boost Farming)
+    // ============================================================================
+
+    /// Adds a new pool to the vault (max 10 pools).
+    ///
+    /// # Arguments
+    /// * `pool_address` - Aquarius pool contract address
+    /// * `token_a` - First token in the pair
+    /// * `token_b` - Second token in the pair
+    /// * `share_token` - LP token address
+    ///
+    /// # Authorization
+    /// Requires admin authorization
+    pub fn add_pool(
+        env: Env,
+        pool_address: Address,
+        token_a: Address,
+        token_b: Address,
+        share_token: Address,
+    ) -> Result<u32, Error> {
+        let config = Self::get_config(env.clone())?;
+        config.admin.require_auth();
+
+        let mut global_state: GlobalState = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalState)
+            .ok_or(Error::NotInitialized)?;
+
+        if global_state.pool_count >= 10 {
+            return Err(Error::MaxPoolsReached);
+        }
+
+        let pool_id = global_state.pool_count;
+        global_state.pool_count += 1;
+
+        let pool_info = PoolInfo {
+            pool_id,
+            pool_address: pool_address.clone(),
+            token_a: token_a.clone(),
+            token_b: token_b.clone(),
+            share_token: share_token.clone(),
+            total_lp_tokens: 0,
+            active: true,
+            added_at: env.ledger().timestamp(),
+        };
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolInfo(pool_id), &pool_info);
+
+        env.storage()
+            .instance()
+            .set(&DataKey::GlobalState, &global_state);
+
+        env.events().publish(
+            (symbol_short!("pool_add"), pool_id),
+            (pool_address, token_a, token_b),
+        );
+
+        Ok(pool_id)
+    }
+
+    /// Updates a pool's active status.
+    ///
+    /// # Authorization
+    /// Requires admin authorization
+    pub fn update_pool_status(env: Env, pool_id: u32, active: bool) -> Result<(), Error> {
+        let config = Self::get_config(env.clone())?;
+        config.admin.require_auth();
+
+        let mut pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)?;
+
+        pool_info.active = active;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolInfo(pool_id), &pool_info);
+
+        env.events().publish(
+            (symbol_short!("pool_upd"), pool_id),
+            active,
+        );
+
+        Ok(())
+    }
+
+    /// Deposits tokens to a vault pool.
+    /// User deposits token_a + token_b, contract adds liquidity to Aquarius pool.
+    ///
+    /// # Arguments
+    /// * `user` - User address
+    /// * `pool_id` - Pool ID
+    /// * `desired_a` - Amount of token_a to deposit
+    /// * `desired_b` - Amount of token_b to deposit
+    /// * `min_shares` - Minimum LP shares to receive (slippage protection)
+    ///
+    /// # Authorization
+    /// Requires user authorization
+    pub fn vault_deposit(
+        env: Env,
+        user: Address,
+        pool_id: u32,
+        desired_a: i128,
+        desired_b: i128,
+        min_shares: u128,
+    ) -> Result<(), Error> {
+        user.require_auth();
+
+        if desired_a <= 0 || desired_b <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        let mut pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)?;
+
+        if !pool_info.active {
+            return Err(Error::PoolNotActive);
+        }
+
+        let contract_address = env.current_contract_address();
+
+        // STEP 1: Transfer tokens from user to contract
+        use soroban_sdk::token;
+        let token_a_client = token::Client::new(&env, &pool_info.token_a);
+        let token_b_client = token::Client::new(&env, &pool_info.token_b);
+
+        token_a_client.transfer(&user, &contract_address, &desired_a);
+        token_b_client.transfer(&user, &contract_address, &desired_b);
+
+        // STEP 2: Deposit tokens to Aquarius pool
+        let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
+
+        let mut desired_amounts = Vec::new(&env);
+        desired_amounts.push_back(desired_a as u128);
+        desired_amounts.push_back(desired_b as u128);
+
+        let (_actual_amounts, lp_shares_minted) = aquarius_pool.deposit(
+            &contract_address,
+            &desired_amounts,
+            &min_shares,
+        );
+
+        // STEP 3: Update pool's total LP tokens
+        let old_total = pool_info.total_lp_tokens;
+        pool_info.total_lp_tokens = old_total.saturating_add(lp_shares_minted as i128);
+
+        // STEP 4: Get or create user position
+        let mut user_position: UserVaultPosition = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserVaultPosition(user.clone(), pool_id))
+            .unwrap_or(UserVaultPosition {
+                user: user.clone(),
+                pool_id,
+                share_ratio: 0,
+                deposited_at: env.ledger().timestamp(),
+                active: true,
+            });
+
+        // STEP 5: Calculate user's new share ratio
+        // Old user LP = (pool_total_before * user_share_ratio) / 1_000_000_000_000
+        let user_old_lp = if old_total > 0 && user_position.share_ratio > 0 {
+            (old_total as i128)
+                .checked_mul(user_position.share_ratio)
+                .unwrap_or(0)
+                .checked_div(1_000_000_000_000)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        // New user LP = old + newly minted
+        let user_new_lp = user_old_lp.saturating_add(lp_shares_minted as i128);
+
+        // Update share ratio: (user_new_lp / pool_total_new) * 1_000_000_000_000
+        if pool_info.total_lp_tokens > 0 {
+            user_position.share_ratio = (user_new_lp as i128)
+                .checked_mul(1_000_000_000_000)
+                .unwrap_or(0)
+                .checked_div(pool_info.total_lp_tokens)
+                .unwrap_or(0);
+        }
+
+        user_position.active = true;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolInfo(pool_id), &pool_info);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserVaultPosition(user.clone(), pool_id), &user_position);
+
+        env.events().publish(
+            (symbol_short!("vault_dep"), user.clone(), pool_id),
+            (desired_a, desired_b, lp_shares_minted, user_position.share_ratio),
+        );
+
+        Ok(())
+    }
+
+    /// Withdraws tokens from a vault pool.
+    /// User withdraws their share, contract removes liquidity from Aquarius pool.
+    ///
+    /// # Arguments
+    /// * `user` - User address
+    /// * `pool_id` - Pool ID
+    /// * `share_percent` - Percentage of user's position to withdraw (0-10000 = 0-100%)
+    /// * `min_a` - Minimum amount of token_a to receive (slippage protection)
+    /// * `min_b` - Minimum amount of token_b to receive (slippage protection)
+    ///
+    /// # Authorization
+    /// Requires user authorization
+    pub fn vault_withdraw(
+        env: Env,
+        user: Address,
+        pool_id: u32,
+        share_percent: u32,
+        min_a: u128,
+        min_b: u128,
+    ) -> Result<(), Error> {
+        user.require_auth();
+
+        if share_percent == 0 || share_percent > 10000 {
+            return Err(Error::InvalidInput);
+        }
+
+        let mut pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)?;
+
+        let mut user_position: UserVaultPosition = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserVaultPosition(user.clone(), pool_id))
+            .ok_or(Error::PositionNotFound)?;
+
+        if !user_position.active {
+            return Err(Error::PositionNotFound);
+        }
+
+        // STEP 1: Calculate user's LP share amount
+        let user_total_lp = (pool_info.total_lp_tokens as i128)
+            .checked_mul(user_position.share_ratio)
+            .unwrap_or(0)
+            .checked_div(1_000_000_000_000)
+            .unwrap_or(0);
+
+        if user_total_lp <= 0 {
+            return Err(Error::InsufficientBalance);
+        }
+
+        // Calculate LP amount to withdraw based on percentage
+        let lp_to_withdraw = (user_total_lp as i128)
+            .checked_mul(share_percent as i128)
+            .unwrap_or(0)
+            .checked_div(10000)
+            .unwrap_or(0);
+
+        if lp_to_withdraw <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        // STEP 2: Withdraw from Aquarius pool
+        let contract_address = env.current_contract_address();
+        let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
+
+        let mut min_amounts = Vec::new(&env);
+        min_amounts.push_back(min_a);
+        min_amounts.push_back(min_b);
+
+        let withdrawn_amounts = aquarius_pool.withdraw(
+            &contract_address,
+            &(lp_to_withdraw as u128),
+            &min_amounts,
+        );
+
+        // STEP 3: Transfer tokens to user
+        use soroban_sdk::token;
+        let token_a_client = token::Client::new(&env, &pool_info.token_a);
+        let token_b_client = token::Client::new(&env, &pool_info.token_b);
+
+        let amount_a = withdrawn_amounts.get(0).unwrap_or(0);
+        let amount_b = withdrawn_amounts.get(1).unwrap_or(0);
+
+        token_a_client.transfer(&contract_address, &user, &(amount_a as i128));
+        token_b_client.transfer(&contract_address, &user, &(amount_b as i128));
+
+        // STEP 4: Update pool total LP
+        pool_info.total_lp_tokens = pool_info.total_lp_tokens.saturating_sub(lp_to_withdraw);
+
+        // STEP 5: Update user share ratio
+        let remaining_user_lp = user_total_lp.saturating_sub(lp_to_withdraw);
+
+        if pool_info.total_lp_tokens > 0 && remaining_user_lp > 0 {
+            user_position.share_ratio = (remaining_user_lp as i128)
+                .checked_mul(1_000_000_000_000)
+                .unwrap_or(0)
+                .checked_div(pool_info.total_lp_tokens)
+                .unwrap_or(0);
+        } else {
+            user_position.share_ratio = 0;
+            user_position.active = false;
+        }
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolInfo(pool_id), &pool_info);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserVaultPosition(user.clone(), pool_id), &user_position);
+
+        env.events().publish(
+            (symbol_short!("vault_wd"), user.clone(), pool_id),
+            (lp_to_withdraw, amount_a, amount_b),
+        );
+
+        Ok(())
+    }
+
+    /// Claims boosted rewards from a pool and auto-compounds.
+    /// 30% to treasury, 70% auto-compound back to pool.
+    /// Backend cron calls this 4x daily using ICE balance for boost.
+    ///
+    /// # Arguments
+    /// * `pool_id` - Pool ID to claim rewards from
+    ///
+    /// # Authorization
+    /// Requires admin authorization
+    pub fn claim_and_compound(env: Env, pool_id: u32) -> Result<(), Error> {
+        let config = Self::get_config(env.clone())?;
+        config.admin.require_auth();
+
+        let mut pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)?;
+
+        if !pool_info.active {
+            return Err(Error::PoolNotActive);
+        }
+
+        let contract_address = env.current_contract_address();
+
+        // STEP 1: Claim rewards from Aquarius pool
+        // Our contract holds LP tokens, so Aquarius tracks our position with ICE boost
+        let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
+        let total_rewards = aquarius_pool.claim(&contract_address);
+
+        if total_rewards == 0 {
+            env.events().publish(
+                (symbol_short!("compound"), pool_id),
+                symbol_short!("no_reward"),
+            );
+            return Ok(());
+        }
+
+        // STEP 2: Split rewards - 30% to treasury, 70% for auto-compound
+        let treasury_amount = (total_rewards as u128)
+            .checked_mul(config.vault_fee_bps as u128)
+            .unwrap_or(0)
+            .checked_div(10000)
+            .unwrap_or(0);
+
+        let compound_amount = total_rewards.saturating_sub(treasury_amount);
+
+        // STEP 3: Transfer 30% to vault treasury
+        if treasury_amount > 0 {
+            use soroban_sdk::token;
+            let aqua_client = token::Client::new(&env, &config.aqua_token);
+            aqua_client.transfer(&contract_address, &config.vault_treasury, &(treasury_amount as i128));
+        }
+
+        // STEP 4: Auto-compound 70% back to the pool
+        if compound_amount > 0 {
+            // Determine how to split AQUA for the pool's token pair
+            let (token_a_is_aqua, token_b_is_aqua) = (
+                pool_info.token_a == config.aqua_token,
+                pool_info.token_b == config.aqua_token,
+            );
+
+            let mut token_a_amount: u128 = 0;
+            let mut token_b_amount: u128 = 0;
+
+            if token_a_is_aqua && token_b_is_aqua {
+                // Both tokens are AQUA (shouldn't happen, but handle it)
+                token_a_amount = compound_amount / 2;
+                token_b_amount = compound_amount - token_a_amount;
+            } else if token_a_is_aqua {
+                // token_a is AQUA, need to swap half for token_b
+                token_a_amount = compound_amount / 2;
+                // TODO: Swap remaining half AQUA to token_b via liquidity_contract
+                // For now, we just hold the AQUA and emit event for backend to handle
+                token_b_amount = 0; // Backend will handle swap
+
+                env.events().publish(
+                    (symbol_short!("need_swap"), pool_id),
+                    (compound_amount - token_a_amount, symbol_short!("to_b")),
+                );
+            } else if token_b_is_aqua {
+                // token_b is AQUA, need to swap half for token_a
+                token_b_amount = compound_amount / 2;
+                // TODO: Swap remaining half AQUA to token_a via liquidity_contract
+                token_a_amount = 0; // Backend will handle swap
+
+                env.events().publish(
+                    (symbol_short!("need_swap"), pool_id),
+                    (compound_amount - token_b_amount, symbol_short!("to_a")),
+                );
+            } else {
+                // Neither token is AQUA - need to swap AQUA to both tokens
+                // TODO: Swap half AQUA to token_a, half to token_b via liquidity_contract
+                // Backend will handle this complex swap scenario
+
+                env.events().publish(
+                    (symbol_short!("need_swap"), pool_id),
+                    (compound_amount, symbol_short!("to_both")),
+                );
+            }
+
+            // STEP 5: Deposit tokens back to Aquarius pool (if we have both tokens)
+            // Note: For non-AQUA pairs, backend must complete swaps first, then call this again
+            if token_a_amount > 0 && token_b_amount > 0 {
+                let mut desired_amounts = Vec::new(&env);
+                desired_amounts.push_back(token_a_amount);
+                desired_amounts.push_back(token_b_amount);
+
+                // Deposit to Aquarius pool - get LP shares back
+                let (_actual_amounts, lp_shares_minted) = aquarius_pool.deposit(
+                    &contract_address,
+                    &desired_amounts,
+                    &0u128, // min_shares = 0 for auto-compound (we trust the pool)
+                );
+
+                // Update pool's total LP tokens
+                pool_info.total_lp_tokens = pool_info
+                    .total_lp_tokens
+                    .saturating_add(lp_shares_minted as i128);
+
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::PoolInfo(pool_id), &pool_info);
+
+                env.events().publish(
+                    (symbol_short!("compound"), pool_id),
+                    (lp_shares_minted, pool_info.total_lp_tokens),
+                );
+            }
+        }
+
+        env.events().publish(
+            (symbol_short!("compound"), pool_id),
+            (total_rewards, treasury_amount, compound_amount),
+        );
+
+        Ok(())
+    }
+
+    // ============================================================================
+    // QUERY FUNCTIONS - ICE & Vault
+    // ============================================================================
+
+    /// Gets pending AQUA available for ICE locking.
+    pub fn get_pending_aqua_for_ice(env: Env) -> Result<i128, Error> {
+        let global_state: GlobalState = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalState)
+            .ok_or(Error::NotInitialized)?;
+
+        Ok(global_state.pending_aqua_for_ice)
+    }
+
+    /// Gets all 4 ICE token balances.
+    pub fn get_all_ice_balances(env: Env) -> Result<(i128, i128, i128, i128), Error> {
+        let global_state: GlobalState = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalState)
+            .ok_or(Error::NotInitialized)?;
+
+        Ok((
+            global_state.ice_balance,
+            global_state.govern_ice_balance,
+            global_state.upvote_ice_balance,
+            global_state.downvote_ice_balance,
+        ))
+    }
+
+    /// Gets upvoteICE balance for voting.
+    pub fn get_upvote_ice_balance(env: Env) -> Result<i128, Error> {
+        let global_state: GlobalState = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalState)
+            .ok_or(Error::NotInitialized)?;
+
+        Ok(global_state.upvote_ice_balance)
+    }
+
+    /// Gets ICE lock authorization by ID.
+    pub fn get_ice_lock_authorization(env: Env, lock_id: u64) -> Result<IceLockAuthorization, Error> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::IceLockAuth(lock_id))
+            .ok_or(Error::NotFound)
+    }
+
+    /// Gets pool information by ID.
+    pub fn get_pool_info(env: Env, pool_id: u32) -> Result<PoolInfo, Error> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)
+    }
+
+    /// Gets user's vault position in a specific pool.
+    pub fn get_user_vault_position(env: Env, user: Address, pool_id: u32) -> Result<UserVaultPosition, Error> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::UserVaultPosition(user, pool_id))
+            .ok_or(Error::PositionNotFound)
+    }
+
+    /// Gets total number of vault pools.
+    pub fn get_pool_count(env: Env) -> Result<u32, Error> {
+        let global_state: GlobalState = env
+            .storage()
+            .instance()
+            .get(&DataKey::GlobalState)
+            .ok_or(Error::NotInitialized)?;
+
+        Ok(global_state.pool_count)
     }
 }
 

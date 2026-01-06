@@ -1,223 +1,224 @@
-import {
-  Asset,
-  BASE_FEE,
-  Networks,
-  Operation,
-  TransactionBuilder,
-} from "@stellar/stellar-sdk";
-import {
-  aquaAssetCode,
-  aquaAssetIssuer,
-  blubAssetCode,
-  blubIssuer,
-  blubIssuerPublicKey,
-  lpSignerPublicKey,
-  usdcAssetCode,
-  usdcIssuer,
-  XlmAssetCode,
-} from "../../utils/constants";
-import aquaLogo from "../../assets/images/aqua_logo.png";
-import xlmLogo from "../../assets/images/xlm.png";
-import usdcLogo from "../../assets/images/usdc.svg";
 import { useEffect, useState } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
 import clsx from "clsx";
 import { Button, Input } from "@headlessui/react";
-import {
-  FREIGHTER_ID,
-  FreighterModule,
-  LOBSTR_ID,
-  LobstrModule,
-  StellarWalletsKit,
-  WalletNetwork,
-} from "@creit.tech/stellar-wallets-kit";
-import {
-  getAccountInfo,
-  provideLiquidity,
-  providingLp,
-  resetStateValues,
-  storeAccountBalance,
-} from "../../lib/slices/userSlice";
 import { toast } from "react-toastify";
-import { StellarService } from "../../services/stellar.service";
 import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import DialogC from "./Dialog";
+import { SorobanVaultService } from "../../services/soroban-vault.service";
+
+interface PoolInfo {
+  pool_id: number;
+  pool_address: string;
+  token_a: string;
+  token_b: string;
+  share_token: string;
+  total_lp_tokens: string;
+  active: boolean;
+  added_at: number;
+  // Display info
+  token_a_code: string;
+  token_b_code: string;
+  token_a_logo: string;
+  token_b_logo: string;
+}
+
+interface UserPosition {
+  pool_id: number;
+  share_ratio: string;
+  deposited_at: number;
+  active: boolean;
+  // Calculated fields
+  user_lp_amount: string;
+  percentage: string;
+}
 
 function AddLiquidity() {
-  const poolRecords: Record<
-    string,
-    { img1: string; img2: string; assetA: Asset; assetB: Asset }
-  > = {
-    "BLUB/AQUA": {
-      img1: "/blub_logo.png",
-      img2: aquaLogo,
-      assetA: new Asset(blubAssetCode, blubIssuer),
-      assetB: new Asset(aquaAssetCode, blubIssuer),
-    },
-    "USDC/XLM": {
-      img1: usdcLogo,
-      img2: xlmLogo,
-      assetA: new Asset(usdcAssetCode, usdcIssuer),
-      assetB: new Asset(XlmAssetCode),
-    },
-  };
+  const [pools, setPools] = useState<PoolInfo[]>([]);
+  const [selectedPool, setSelectedPool] = useState<PoolInfo | null>(null);
+  const [userPositions, setUserPositions] = useState<UserPosition[]>([]);
 
-  const [lpAmount1, setLPDepositAmount1] = useState<number | null>();
-  const [lpAmount2, setLPDepositAmount2] = useState<number | null>();
-  const [activePool, setActivePool] = useState("");
+  const [depositAmount1, setDepositAmount1] = useState<string>("");
+  const [depositAmount2, setDepositAmount2] = useState<string>("");
+  const [withdrawPercent, setWithdrawPercent] = useState<number>(100);
+
+  const [isDepositing, setIsDepositing] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [isLoadingPools, setIsLoadingPools] = useState(true);
+
+  const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
 
   const [dialogMsg, setDialogMsg] = useState<string>("");
   const [dialogTitle, setDialogTitle] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
 
-  const poolImage1 = poolRecords[activePool]?.img1;
-  const poolImage2 = poolRecords[activePool]?.img2;
-
-  const poolAsset1 = poolRecords[activePool]?.assetA;
-  const poolAsset2 = poolRecords[activePool]?.assetB;
-
   const dispatch = useAppDispatch();
-
   const user = useSelector((state: RootState) => state.user);
 
-  const handleProvideLiquidity = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
+  const vaultService = new SorobanVaultService();
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+  // Load pools from contract
+  useEffect(() => {
+    loadPools();
+  }, []);
 
-    const wallet = await kit.getAddress();
-
-    if (!wallet.address) {
-      dispatch(providingLp(false));
-      return toast.warn("Please connect wallet.");
+  // Load user positions when pool selected or user changes
+  useEffect(() => {
+    if (selectedPool && user?.userWalletAddress) {
+      loadUserPosition(selectedPool.pool_id);
     }
+  }, [selectedPool, user?.userWalletAddress]);
 
-    if (!user) {
-      dispatch(providingLp(false));
-      return toast.warn("Global state not initialized");
-    }
-
-    if (!lpAmount1) {
-      dispatch(providingLp(false));
-      return toast.warn(
-        `Please input ${activePool.split("/")[0]} amount to stake.`
-      );
-    }
-
-    if (!lpAmount2) {
-      dispatch(providingLp(false));
-      return toast.warn(
-        `Please input ${activePool.split("/")[1]}  amount to stake.`
-      );
-    }
-    dispatch(providingLp(true));
-
+  const loadPools = async () => {
     try {
-      // Retrieve the wallet address from the Stellar Kit
-      const stellarService = new StellarService();
-      const senderAccount = await stellarService.loadAccount(wallet.address);
+      setIsLoadingPools(true);
+      const poolCount = await vaultService.getPoolCount();
 
-      // Load the sponsor (whaleHub) account details from the Stellar network
-      await stellarService.loadAccount(lpSignerPublicKey);
+      const loadedPools: PoolInfo[] = [];
+      for (let i = 0; i < poolCount; i++) {
+        const poolInfo = await vaultService.getPoolInfo(i);
+        if (poolInfo.active) {
+          loadedPools.push(poolInfo);
+        }
+      }
 
-      const aquaAsset = new Asset(aquaAssetCode, aquaAssetIssuer);
-
-      const stakeAmount1 = lpAmount1.toFixed(7);
-      const stakeAmount2 = lpAmount2.toFixed(7);
-
-      //transfer asset to server wallet
-      const paymentOperation1 = Operation.payment({
-        destination: lpSignerPublicKey,
-        asset: poolAsset1,
-        amount: `${stakeAmount1}`,
-      });
-
-      const paymentOperation2 = Operation.payment({
-        destination: lpSignerPublicKey,
-        asset: poolAsset2,
-        amount: `${stakeAmount2}`,
-      });
-
-      // Build transaction
-      const transactionBuilder = new TransactionBuilder(senderAccount, {
-        fee: BASE_FEE,
-        networkPassphrase: Networks.PUBLIC,
-      })
-        .addOperation(
-          Operation.changeTrust({
-            asset: aquaAsset,
-            limit: "100000000",
-            source: blubIssuerPublicKey,
-          })
-        )
-        .addOperation(paymentOperation1)
-        .addOperation(paymentOperation2)
-        .setTimeout(30)
-        .build();
-
-      // Convert the transaction to XDR format for signing
-      const transactionXDR = transactionBuilder.toXDR();
-
-      const address = wallet.address;
-
-      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-        address,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
-
-      dispatch(
-        provideLiquidity({
-          asset1: {
-            code: poolAsset1.code,
-            issuer: poolAsset1.isNative() ? "" : poolAsset1.issuer,
-            amount: stakeAmount1,
-          },
-          asset2: {
-            code: poolAsset2.code,
-            issuer: poolAsset2.isNative() ? "" : poolAsset2.issuer,
-            amount: stakeAmount2,
-          },
-          signedTxXdr,
-          senderPublicKey: address,
-        })
-      );
-      dispatch(providingLp(true));
-      toast.success("Transaction sent!");
-    } catch (err) {
-      console.error("Transaction failed:", err);
-      dispatch(providingLp(false));
+      setPools(loadedPools);
+      if (loadedPools.length > 0) {
+        setSelectedPool(loadedPools[0]);
+      }
+    } catch (error) {
+      console.error("Failed to load pools:", error);
+      toast.error("Failed to load pools");
+    } finally {
+      setIsLoadingPools(false);
     }
   };
 
-  const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
+  const loadUserPosition = async (poolId: number) => {
+    if (!user?.userWalletAddress) return;
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+    try {
+      const position = await vaultService.getUserVaultPosition(
+        user.userWalletAddress,
+        poolId
+      );
 
-    const { address } = await kit.getAddress();
-    const stellarService = new StellarService();
-    const wrappedAccount = await stellarService.loadAccount(address);
+      if (position) {
+        setUserPositions([position]);
+      } else {
+        setUserPositions([]);
+      }
+    } catch (error) {
+      console.error("Failed to load user position:", error);
+      setUserPositions([]);
+    }
+  };
 
-    dispatch(getAccountInfo(address));
-    dispatch(storeAccountBalance(wrappedAccount.balances));
+  const handleDeposit = async () => {
+    if (!selectedPool) {
+      return toast.warn("Please select a pool");
+    }
+
+    if (!user?.userWalletAddress) {
+      return toast.warn("Please connect your wallet");
+    }
+
+    if (!user?.walletName) {
+      return toast.warn("Please connect your wallet");
+    }
+
+    const amount1 = parseFloat(depositAmount1);
+    const amount2 = parseFloat(depositAmount2);
+
+    if (!amount1 || amount1 <= 0) {
+      return toast.warn(
+        `Please enter ${selectedPool.token_a_code} amount`
+      );
+    }
+
+    if (!amount2 || amount2 <= 0) {
+      return toast.warn(
+        `Please enter ${selectedPool.token_b_code} amount`
+      );
+    }
+
+    setIsDepositing(true);
+
+    try {
+      const result = await vaultService.vaultDeposit({
+        userAddress: user.userWalletAddress,
+        poolId: selectedPool.pool_id,
+        desiredA: amount1.toString(),
+        desiredB: amount2.toString(),
+        minShares: "0", // TODO: Calculate based on slippage tolerance
+        walletName: user.walletName,
+      });
+
+      if (result.success) {
+        toast.success("Deposit successful!");
+        setDepositAmount1("");
+        setDepositAmount2("");
+        await loadUserPosition(selectedPool.pool_id);
+      } else {
+        toast.error(result.error || "Deposit failed");
+      }
+    } catch (error: any) {
+      console.error("Deposit error:", error);
+      toast.error(error.message || "Deposit failed");
+    } finally {
+      setIsDepositing(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!selectedPool) {
+      return toast.warn("Please select a pool");
+    }
+
+    if (!user?.userWalletAddress) {
+      return toast.warn("Please connect your wallet");
+    }
+
+    if (userPositions.length === 0) {
+      return toast.warn("No position to withdraw");
+    }
+
+    if (withdrawPercent <= 0 || withdrawPercent > 100) {
+      return toast.warn("Invalid withdrawal percentage");
+    }
+
+    if (!user?.walletName) {
+      return toast.warn("Please connect your wallet");
+    }
+
+    setIsWithdrawing(true);
+
+    try {
+      const result = await vaultService.vaultWithdraw({
+        userAddress: user.userWalletAddress,
+        poolId: selectedPool.pool_id,
+        sharePercent: withdrawPercent * 100, // Convert to basis points
+        minA: "0", // TODO: Calculate based on slippage tolerance
+        minB: "0",
+        walletName: user.walletName,
+      });
+
+      if (result.success) {
+        toast.success("Withdrawal successful!");
+        setWithdrawPercent(100);
+        await loadUserPosition(selectedPool.pool_id);
+      } else {
+        toast.error(result.error || "Withdrawal failed");
+      }
+    } catch (error: any) {
+      console.error("Withdrawal error:", error);
+      toast.error(error.message || "Withdrawal failed");
+    } finally {
+      setIsWithdrawing(false);
+    }
   };
 
   const onDialogOpen = (msg: string, title: string) => {
@@ -230,137 +231,293 @@ function AddLiquidity() {
     setOptDialog(false);
   };
 
-  // Close modal on ESC key press or click outside
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Escape") {
-      setOptDialog(false);
-    }
-  };
+  const userPosition = userPositions[0];
 
-  useEffect(() => {
-    if (openDialog) {
-      window.addEventListener("keydown", handleKeyDown);
-    } else {
-      window.removeEventListener("keydown", handleKeyDown);
-    }
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [openDialog]);
-
-  useEffect(() => {
-    if (user?.providedLp) {
-      updateWalletRecords();
-      toast.success("Provided Liquidity successfully!");
-      setLPDepositAmount1(0);
-      setLPDepositAmount1(0);
-      dispatch(providingLp(false));
-      dispatch(resetStateValues());
-    }
-
-    setActivePool("BLUB/AQUA");
-  }, [user?.providedLp]);
+  if (isLoadingPools) {
+    return (
+      <div className="bg-[#0E111BCC] p-10 rounded-[16px] flex justify-center items-center min-h-[400px]">
+        <TailSpin
+          height="40"
+          width="40"
+          color="#00CC99"
+          ariaLabel="tail-spin-loading"
+          radius="1"
+          visible={true}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div
-        className="bg-[#0E111BCC] p-10 rounded-[16px]"
-        style={{
-          filter: "blur(1.5px)",
-        }}
-      >
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <img
-              src={"/Blub_logo2.svg"}
-              alt="Aqua"
-              className="w-8 h-8 rounded-full"
-            />
-            <span className="text-lg">BLUB</span>
-          </div>
-        </div>
-        <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
+      <div className="bg-[#0E111BCC] p-10 rounded-[16px]">
+        {/* Header */}
+        <div className="text-2xl font-medium text-white flex items-center space-x-2">
           <div>Boost liquidity pool for yield</div>
           <InformationCircleIcon
             className="h-[15px] w-[15px] text-white cursor-pointer"
             onClick={() =>
               onDialogOpen(
-                `Maximize your earnings by locking an equal amount of BLUB and AQUA tokens in a liquidity pool. Both tokens are required to enhance your yield potential. This liquidity pool can also be found in AQUA AMM. Recommended for experienced users to utilize full cycle of investment opportunity.`,
-                "Boost liquidity pool for yield"
+                `Deposit tokens into Aquarius AMM pools and earn boosted rewards using WhaleHub's ICE balance. The vault automatically claims rewards 4x daily and auto-compounds 70% back into the pool, increasing your position value. 30% goes to treasury.`,
+                "Boost Liquidity Pool for Yield"
               )
             }
           />
         </div>
 
-        <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
-          <Input
-            placeholder="0 BLUB"
-            className={clsx(
-              "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",
-              "focus:outline-none data-[focus]:outline-2 data-[focus]:-outline-offset-2 data-[focus]:outline-[#3C404D]",
-              "w-full p-3 bg-none"
-            )}
-            onChange={(e) =>
-              setLPDepositAmount1(
-                e.target.value ? Number(e.target.value) : null
-              )
-            }
-          />
-          <button className="bg-[#3C404D] p-2 rounded-[4px]">Max</button>
-        </div>
-        <div className="flex items-center text-normal mt-2 space-x-1">
-          <div className="font-normal text-[#B1B3B8]">Balance:</div>
-          <div className="font-medium">0 BLUB</div>
-        </div>
-
-        <div className="flex items-center bg-[#0E111B]  py-2 space-x-2 mt-5 rounded-[8px]">
-          <Input
-            placeholder="0 AQUA"
-            className={clsx(
-              "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",
-              "focus:outline-none data-[focus]:outline-2 data-[focus]:-outline-offset-2 data-[focus]:outline-[#3C404D]",
-              "w-full p-3 bg-none"
-            )}
-            onChange={(e) =>
-              setLPDepositAmount2(
-                e.target.value ? Number(e.target.value) : null
-              )
-            }
-          />
-          <button className="bg-[#3C404D] p-2 rounded-[4px]">Max</button>
-        </div>
-        <div className="flex items-center text-normal mt-2 space-x-1">
-          <div className="font-normal text-[#B1B3B8]">Balance:</div>
-          <div className="font-medium">0 AQUA</div>
+        {/* Pool Selection */}
+        <div className="mt-5">
+          <label className="text-sm text-[#B1B3B8] mb-2 block">
+            Select Pool
+          </label>
+          <select
+            className="w-full bg-[#0E111B] text-white p-3 rounded-[8px] border-none focus:outline-none focus:ring-2 focus:ring-[#00CC99]"
+            value={selectedPool?.pool_id || ""}
+            onChange={(e) => {
+              const pool = pools.find(
+                (p) => p.pool_id === parseInt(e.target.value)
+              );
+              setSelectedPool(pool || null);
+            }}
+          >
+            {pools.map((pool) => (
+              <option key={pool.pool_id} value={pool.pool_id}>
+                {pool.token_a_code}/{pool.token_b_code}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <Button
-          className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold backdrop-filter: blur(10px"
-          onClick={handleProvideLiquidity}
-          disabled={true}
-          // style={{
-          //   filter: "blur(1.5px)"
-          // }}
-        >
-          {!user?.providingLp ? (
-            <span>Generate Yield (Coming soon)</span>
-          ) : (
-            <div className="flex justify-center items-center gap-[10px]">
-              <span className="text-white">Processing...</span>
-              <TailSpin
-                height="18"
-                width="18"
-                color="#ffffff"
-                ariaLabel="tail-spin-loading"
-                radius="1"
-                wrapperStyle={{}}
-                wrapperClass=""
-                visible={true}
+        {/* Pool Info Display */}
+        {selectedPool && (
+          <div className="mt-4 flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <img
+                src={selectedPool.token_a_logo}
+                alt={selectedPool.token_a_code}
+                className="w-8 h-8 rounded-full"
               />
+              <span className="text-lg">{selectedPool.token_a_code}</span>
             </div>
-          )}
-        </Button>
+            <span className="text-[#B1B3B8]">/</span>
+            <div className="flex items-center space-x-2">
+              <img
+                src={selectedPool.token_b_logo}
+                alt={selectedPool.token_b_code}
+                className="w-8 h-8 rounded-full"
+              />
+              <span className="text-lg">{selectedPool.token_b_code}</span>
+            </div>
+          </div>
+        )}
+
+        {/* User Position Display */}
+        {userPosition && userPosition.active && (
+          <div className="mt-4 bg-[#0E111B] p-4 rounded-[8px]">
+            <div className="text-sm text-[#B1B3B8] mb-2">Your Position</div>
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-white font-medium">
+                  {userPosition.user_lp_amount} LP
+                </div>
+                <div className="text-xs text-[#B1B3B8]">
+                  {userPosition.percentage}% of pool
+                </div>
+              </div>
+              <div className="text-sm text-[#00CC99]">
+                Earning Boosted Rewards
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="flex mt-6 space-x-2">
+          <button
+            className={clsx(
+              "flex-1 py-2 rounded-[8px] font-medium transition-colors",
+              activeTab === "deposit"
+                ? "bg-[#00CC99] text-white"
+                : "bg-[#0E111B] text-[#B1B3B8] hover:bg-[#1A1D28]"
+            )}
+            onClick={() => setActiveTab("deposit")}
+          >
+            Deposit
+          </button>
+          <button
+            className={clsx(
+              "flex-1 py-2 rounded-[8px] font-medium transition-colors",
+              activeTab === "withdraw"
+                ? "bg-[#00CC99] text-white"
+                : "bg-[#0E111B] text-[#B1B3B8] hover:bg-[#1A1D28]"
+            )}
+            onClick={() => setActiveTab("withdraw")}
+          >
+            Withdraw
+          </button>
+        </div>
+
+        {/* Deposit Tab */}
+        {activeTab === "deposit" && selectedPool && (
+          <div className="mt-6">
+            {/* Token A Input */}
+            <div>
+              <label className="text-sm text-[#B1B3B8] mb-2 block">
+                {selectedPool.token_a_code} Amount
+              </label>
+              <div className="flex items-center bg-[#0E111B] py-2 space-x-2 rounded-[8px]">
+                <Input
+                  placeholder={`0 ${selectedPool.token_a_code}`}
+                  value={depositAmount1}
+                  className={clsx(
+                    "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",
+                    "focus:outline-none focus:ring-0",
+                    "w-full p-3"
+                  )}
+                  onChange={(e) => setDepositAmount1(e.target.value)}
+                />
+                <button className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]">
+                  Max
+                </button>
+              </div>
+              <div className="flex items-center text-sm mt-1 space-x-1">
+                <div className="font-normal text-[#B1B3B8]">Balance:</div>
+                <div className="font-medium">0 {selectedPool.token_a_code}</div>
+              </div>
+            </div>
+
+            {/* Token B Input */}
+            <div className="mt-4">
+              <label className="text-sm text-[#B1B3B8] mb-2 block">
+                {selectedPool.token_b_code} Amount
+              </label>
+              <div className="flex items-center bg-[#0E111B] py-2 space-x-2 rounded-[8px]">
+                <Input
+                  placeholder={`0 ${selectedPool.token_b_code}`}
+                  value={depositAmount2}
+                  className={clsx(
+                    "block w-full rounded-lg border-none bg-[#0E111B] px-3 text-sm/6 text-white",
+                    "focus:outline-none focus:ring-0",
+                    "w-full p-3"
+                  )}
+                  onChange={(e) => setDepositAmount2(e.target.value)}
+                />
+                <button className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]">
+                  Max
+                </button>
+              </div>
+              <div className="flex items-center text-sm mt-1 space-x-1">
+                <div className="font-normal text-[#B1B3B8]">Balance:</div>
+                <div className="font-medium">0 {selectedPool.token_b_code}</div>
+              </div>
+            </div>
+
+            <Button
+              className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleDeposit}
+              disabled={isDepositing || !selectedPool}
+            >
+              {isDepositing ? (
+                <div className="flex justify-center items-center gap-[10px]">
+                  <span className="text-white">Depositing...</span>
+                  <TailSpin
+                    height="18"
+                    width="18"
+                    color="#ffffff"
+                    ariaLabel="tail-spin-loading"
+                    radius="1"
+                    visible={true}
+                  />
+                </div>
+              ) : (
+                <span>Deposit & Start Earning</span>
+              )}
+            </Button>
+          </div>
+        )}
+
+        {/* Withdraw Tab */}
+        {activeTab === "withdraw" && selectedPool && (
+          <div className="mt-6">
+            {!userPosition || !userPosition.active ? (
+              <div className="text-center py-8 text-[#B1B3B8]">
+                No position to withdraw
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="text-sm text-[#B1B3B8] mb-2 block">
+                    Withdrawal Percentage
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={withdrawPercent}
+                    className={clsx(
+                      "block w-full rounded-lg border-none bg-[#0E111B] px-3 py-3 text-sm/6 text-white",
+                      "focus:outline-none focus:ring-2 focus:ring-[#00CC99]"
+                    )}
+                    onChange={(e) =>
+                      setWithdrawPercent(
+                        Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
+                      )
+                    }
+                  />
+                  <div className="flex justify-between mt-2">
+                    {[25, 50, 75, 100].map((percent) => (
+                      <button
+                        key={percent}
+                        className="bg-[#3C404D] px-3 py-1 rounded-[4px] text-sm hover:bg-[#00CC99] transition-colors"
+                        onClick={() => setWithdrawPercent(percent)}
+                      >
+                        {percent}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4 bg-[#0E111B] p-4 rounded-[8px]">
+                  <div className="text-sm text-[#B1B3B8] mb-2">
+                    You will receive approximately:
+                  </div>
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-white">
+                      <span>{selectedPool.token_a_code}:</span>
+                      <span>~0.00</span>
+                    </div>
+                    <div className="flex justify-between text-white">
+                      <span>{selectedPool.token_b_code}:</span>
+                      <span>~0.00</span>
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#CC0000_0%,_#990000_100%)] text-base font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleWithdraw}
+                  disabled={isWithdrawing}
+                >
+                  {isWithdrawing ? (
+                    <div className="flex justify-center items-center gap-[10px]">
+                      <span className="text-white">Withdrawing...</span>
+                      <TailSpin
+                        height="18"
+                        width="18"
+                        color="#ffffff"
+                        ariaLabel="tail-spin-loading"
+                        radius="1"
+                        visible={true}
+                      />
+                    </div>
+                  ) : (
+                    <span>Withdraw {withdrawPercent}%</span>
+                  )}
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       <DialogC
