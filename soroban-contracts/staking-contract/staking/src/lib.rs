@@ -55,11 +55,30 @@ mod aquarius_pool {
 
 use aquarius_pool::AquariusPoolClient;
 
+/// Old Config struct for migration (matches deployed v1.0.0 contract)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OldConfig {
+    pub admin: Address,
+    pub aqua_token: Address,
+    pub blub_token: Address,
+    pub ice_contract: Address,
+    pub liquidity_contract: Address,
+    pub period_unit_minutes: u64,
+    pub reward_rate: i128,
+    pub total_supply: i128,
+    pub treasury_address: Address,
+    pub version: u32,
+}
+
+/// New Config struct (v1.1.0)
+/// Version encoding: major * 10000 + minor * 100 + patch
+/// 1.1.0 = 10100
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
     pub admin: Address,
-    pub version: u32,
+    pub version: u32, // 10100 = v1.1.0
     pub total_supply: i128,
     pub treasury_address: Address,
     pub reward_rate: i128, // basis points per period
@@ -2683,6 +2702,133 @@ impl StakingRegistry {
         );
 
         Ok(())
+    }
+
+    // ============================================================================
+    // Contract Upgrade & Migration Functions
+    // ============================================================================
+
+    /// Upgrades the contract to a new WASM hash (admin-only).
+    ///
+    /// # Arguments
+    /// * `admin` - The admin address authorizing this operation
+    /// * `new_wasm_hash` - The hash of the new WASM to upgrade to
+    ///
+    /// # Authorization
+    /// Requires authorization from the `admin` address.
+    pub fn upgrade(env: Env, admin: Address, new_wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
+        // Try to get config - works with both old and new format
+        // For old format, we need to check admin differently
+        let is_admin = if let Ok(cfg) = Self::get_config(env.clone()) {
+            admin.require_auth();
+            cfg.admin == admin
+        } else {
+            // Try reading as OldConfig
+            let old_cfg: OldConfig = env.storage().instance()
+                .get(&DataKey::Config)
+                .ok_or(Error::NotInitialized)?;
+            admin.require_auth();
+            old_cfg.admin == admin
+        };
+
+        if !is_admin {
+            return Err(Error::Unauthorized);
+        }
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+
+        env.events().publish(
+            (symbol_short!("upgraded"),),
+            env.current_contract_address(),
+        );
+
+        Ok(())
+    }
+
+    /// Migrates config from v1.0.0 format to v1.1.0 format (admin-only, one-time).
+    ///
+    /// This function reads the old config format and writes the new config format
+    /// with additional ICE token addresses and vault settings.
+    ///
+    /// # Arguments
+    /// * `admin` - The admin address authorizing this operation
+    /// * `ice_tokens` - The 4 ICE token addresses (ICE, governICE, upvoteICE, downvoteICE)
+    /// * `vault_treasury` - Treasury address for vault fees
+    /// * `vault_fee_bps` - Vault fee in basis points (3000 = 30%)
+    ///
+    /// # Authorization
+    /// Requires authorization from the `admin` address.
+    pub fn migrate_config(
+        env: Env,
+        admin: Address,
+        ice_tokens: IceTokens,
+        vault_treasury: Address,
+        vault_fee_bps: u32,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        // Read old config format
+        let old_cfg: OldConfig = env.storage().instance()
+            .get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+
+        // Verify admin
+        if old_cfg.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        // Check if already migrated (version >= 10100)
+        if old_cfg.version >= 10100 {
+            return Err(Error::AlreadyInitialized);
+        }
+
+        // Create new config with all fields
+        let new_cfg = Config {
+            admin: old_cfg.admin,
+            version: 10100, // v1.1.0
+            total_supply: old_cfg.total_supply,
+            treasury_address: old_cfg.treasury_address,
+            reward_rate: old_cfg.reward_rate,
+            aqua_token: old_cfg.aqua_token,
+            blub_token: old_cfg.blub_token,
+            liquidity_contract: old_cfg.liquidity_contract,
+            // New ICE token fields (replacing single ice_contract)
+            ice_token: ice_tokens.ice_token,
+            govern_ice_token: ice_tokens.govern_ice_token,
+            upvote_ice_token: ice_tokens.upvote_ice_token,
+            downvote_ice_token: ice_tokens.downvote_ice_token,
+            period_unit_minutes: old_cfg.period_unit_minutes,
+            // New vault settings
+            vault_treasury,
+            vault_fee_bps,
+        };
+
+        // Save new config
+        env.storage().instance().set(&DataKey::Config, &new_cfg);
+
+        env.events().publish(
+            (symbol_short!("migrated"),),
+            10100u32,
+        );
+
+        Ok(())
+    }
+
+    /// Returns the current config version.
+    /// For old config: returns the old version number
+    /// For new config: returns encoded version (10100 = v1.1.0)
+    pub fn get_version(env: Env) -> Result<u32, Error> {
+        // Try new config first
+        if let Ok(cfg) = Self::get_config(env.clone()) {
+            return Ok(cfg.version);
+        }
+
+        // Fall back to old config
+        let old_cfg: OldConfig = env.storage().instance()
+            .get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+
+        Ok(old_cfg.version)
     }
 
     /// Test function to validate staking calculations without executing transactions.
