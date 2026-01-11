@@ -741,7 +741,7 @@ function STKAqua() {
                   </div>
                 </div>
                 <div className="text-xs text-[#B1B3B8]">
-                  Your rewards increase the longer you keep your AQUA staked.
+                  Your rewards increase the longer you keep your BLUB staked.
                   Unstake anytime without penalty.
                 </div>
               </div>
@@ -759,7 +759,7 @@ function STKAqua() {
                     onClick={() =>
                       onDialogOpen(
                         useSoroban
-                          ? "Soroban staking provides time-based rewards - the longer you stake, the more you earn. You can unstake anytime. Includes ICE governance tokens and Protocol Owned Liquidity contribution."
+                          ? "Soroban staking provides time-based rewards - the longer you stake, the more you earn. You can unstake anytime."
                           : "Legacy staking uses the original BLUB conversion system without time-based rewards or governance features.",
                         useSoroban ? "Soroban Staking" : "Legacy Staking"
                       )
@@ -767,7 +767,7 @@ function STKAqua() {
                   />
                 </div>
               </div>
-              <button
+              {/* <button
                 className={clsx(
                   "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
                   useSoroban ? "bg-[#00CC99]" : "bg-[#3C404D]"
@@ -780,7 +780,7 @@ function STKAqua() {
                     useSoroban ? "translate-x-6" : "translate-x-1"
                   )}
                 />
-              </button>
+              </button> */}
             </div>
 
             <div className="flex items-center text-normal mt-6 space-x-1">
