@@ -563,7 +563,7 @@ impl RewardsContract {
         admin.require_auth();
 
         let config = Self::get_config(&env)?;
-        
+
         if config.admin != admin {
             return Err(RewardError::Unauthorized);
         }
@@ -574,6 +574,59 @@ impl RewardsContract {
 
         pool.active = active;
         env.storage().instance().set(&DataKey::RewardPool(pool_type), &pool);
+
+        Ok(())
+    }
+
+    // ============================================================================
+    // Contract Upgrade Function
+    // ============================================================================
+
+    pub fn upgrade(
+        env: Env,
+        admin: Address,
+        new_wasm_hash: soroban_sdk::BytesN<32>,
+    ) -> Result<(), RewardError> {
+        admin.require_auth();
+
+        let config = Self::get_config(&env)?;
+
+        if config.admin != admin {
+            return Err(RewardError::Unauthorized);
+        }
+
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+
+        env.events().publish(
+            (symbol_short!("upgraded"),),
+            env.current_contract_address(),
+        );
+
+        Ok(())
+    }
+
+    /// Updates the admin address (admin-only).
+
+    pub fn update_admin(
+        env: Env,
+        admin: Address,
+        new_admin: Address,
+    ) -> Result<(), RewardError> {
+        admin.require_auth();
+
+        let mut config = Self::get_config(&env)?;
+
+        if config.admin != admin {
+            return Err(RewardError::Unauthorized);
+        }
+
+        config.admin = new_admin.clone();
+        env.storage().instance().set(&DataKey::Config, &config);
+
+        env.events().publish(
+            (symbol_short!("adm_upd"),),
+            new_admin,
+        );
 
         Ok(())
     }
