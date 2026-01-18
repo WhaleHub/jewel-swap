@@ -2002,7 +2002,8 @@ impl StakingRegistry {
     }
 
     fn calculate_pending_rewards(env: &Env, user: &Address, totals: &LockTotals, current_time: u64) -> Result<i128, Error> {
-        if totals.total_locked_aqua == 0 || totals.last_update_ts >= current_time {
+        // Check for zero OR negative total_locked_aqua to prevent negative rewards
+        if totals.total_locked_aqua <= 0 || totals.last_update_ts >= current_time {
             return Ok(0);
         }
 
@@ -2021,7 +2022,8 @@ impl StakingRegistry {
             .saturating_mul(total_multiplier)
             / 100_000_000;
 
-        Ok(base_reward)
+        // Ensure reward is never negative
+        Ok(base_reward.max(0))
     }
 
     fn get_user_total_multiplier(env: &Env, user: &Address) -> Result<i128, Error> {
@@ -3154,10 +3156,12 @@ impl StakingRegistry {
                 accumulated_rewards: 0,
             });
 
-        let pending_blub_rewards = Self::calculate_pending_rewards(&env, &user, &totals, now)?;
-        totals.accumulated_rewards = totals.accumulated_rewards.saturating_add(pending_blub_rewards);
+        // Ensure pending rewards is never negative
+        let pending_blub_rewards = Self::calculate_pending_rewards(&env, &user, &totals, now)?.max(0);
+        totals.accumulated_rewards = totals.accumulated_rewards.saturating_add(pending_blub_rewards).max(0);
 
-        let total_blub_to_transfer = total_blub_unstaked + pending_blub_rewards;
+        // Ensure total transfer amount is never negative
+        let total_blub_to_transfer = (total_blub_unstaked + pending_blub_rewards).max(0);
         if total_blub_to_transfer > 0 {
             use soroban_sdk::token;
             let config = Self::get_config(env.clone())?;
@@ -3170,13 +3174,16 @@ impl StakingRegistry {
             }
         }
 
-        totals.total_locked_aqua = totals.total_locked_aqua.saturating_sub(total_aqua_unlocked);
-        totals.total_blub_minted = totals.total_blub_minted.saturating_sub(total_blub_unstaked);
+        // Prevent negative values using .max(0)
+        totals.total_locked_aqua = totals.total_locked_aqua.saturating_sub(total_aqua_unlocked).max(0);
+        totals.total_blub_minted = totals.total_blub_minted.saturating_sub(total_blub_unstaked).max(0);
+        totals.accumulated_rewards = totals.accumulated_rewards.max(0);
         totals.last_update_ts = now;
         env.storage().persistent().set(&DataKey::UserLockTotals(user.clone()), &totals);
 
-        global_state.total_locked = global_state.total_locked.saturating_sub(total_aqua_unlocked);
-        global_state.total_blub_supply = global_state.total_blub_supply.saturating_sub(total_blub_unstaked);
+        // Prevent negative values in global state
+        global_state.total_locked = global_state.total_locked.saturating_sub(total_aqua_unlocked).max(0);
+        global_state.total_blub_supply = global_state.total_blub_supply.saturating_sub(total_blub_unstaked).max(0);
         global_state.locked = false;
         env.storage().instance().set(&DataKey::GlobalState, &global_state);
 
