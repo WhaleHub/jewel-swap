@@ -2663,6 +2663,40 @@ impl StakingRegistry {
         Ok(())
     }
 
+    /// Updates BLUB token contract address (admin-only).
+    ///
+    /// # Arguments
+    /// * `admin` - The admin address authorizing this operation
+    /// * `new_blub_token` - The new BLUB token contract address
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(Error::Unauthorized)` if caller is not the admin
+    ///
+    /// # Authorization
+    /// Requires authorization from the `admin` address.
+    pub fn update_blub_token(
+        env: Env,
+        admin: Address,
+        new_blub_token: Address,
+    ) -> Result<(), Error> {
+        let mut cfg = Self::get_config(env.clone())?;
+        admin.require_auth();
+        if cfg.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        cfg.blub_token = new_blub_token.clone();
+        env.storage().instance().set(&DataKey::Config, &cfg);
+
+        env.events().publish(
+            (symbol_short!("blub_upd"),),
+            new_blub_token,
+        );
+
+        Ok(())
+    }
+
     /// Updates ICE token addresses (admin-only).
     ///
     /// # Arguments
