@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
@@ -67,24 +67,35 @@ function AddLiquidity() {
 
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
+  const userWalletAddress = user?.userWalletAddress;
 
-  const vaultService = new SorobanVaultService();
+  // Create vaultService only once
+  const vaultService = useMemo(() => new SorobanVaultService(), []);
 
-  // Load pools from contract
+  // Load pools from contract on mount
   useEffect(() => {
     loadPools();
   }, []);
 
-  // Load user positions, balances, and reserves when pool selected or user changes
+  // Load pool reserves when pool is selected
   useEffect(() => {
     if (selectedPool) {
       loadPoolReserves(selectedPool);
-      if (user?.userWalletAddress) {
-        loadUserPosition(selectedPool.pool_id);
-        loadBalances(selectedPool);
-      }
     }
-  }, [selectedPool, user?.userWalletAddress]);
+  }, [selectedPool?.pool_id]);
+
+  // Load user position and balances when pool or wallet changes
+  useEffect(() => {
+    if (selectedPool && userWalletAddress) {
+      loadUserPosition(selectedPool.pool_id);
+      loadBalances(selectedPool);
+    } else {
+      // Reset balances if no wallet connected
+      setBalanceA("0");
+      setBalanceB("0");
+      setUserPositions([]);
+    }
+  }, [selectedPool?.pool_id, userWalletAddress]);
 
   const loadPools = async () => {
     try {
@@ -111,12 +122,12 @@ function AddLiquidity() {
     }
   };
 
-  const loadUserPosition = async (poolId: number) => {
-    if (!user?.userWalletAddress) return;
+  const loadUserPosition = useCallback(async (poolId: number) => {
+    if (!userWalletAddress) return;
 
     try {
       const position = await vaultService.getUserVaultPosition(
-        user.userWalletAddress,
+        userWalletAddress,
         poolId
       );
 
@@ -129,10 +140,10 @@ function AddLiquidity() {
       console.error("Failed to load user position:", error);
       setUserPositions([]);
     }
-  };
+  }, [vaultService, userWalletAddress]);
 
-  const loadBalances = async (pool: PoolInfo) => {
-    if (!user?.userWalletAddress) {
+  const loadBalances = useCallback(async (pool: PoolInfo) => {
+    if (!userWalletAddress) {
       setBalanceA("0");
       setBalanceB("0");
       return;
@@ -141,8 +152,8 @@ function AddLiquidity() {
     setIsLoadingBalances(true);
     try {
       const [balA, balB] = await Promise.all([
-        vaultService.getTokenBalance(pool.token_a, user.userWalletAddress),
-        vaultService.getTokenBalance(pool.token_b, user.userWalletAddress),
+        vaultService.getTokenBalance(pool.token_a, userWalletAddress),
+        vaultService.getTokenBalance(pool.token_b, userWalletAddress),
       ]);
       setBalanceA(balA);
       setBalanceB(balB);
@@ -153,9 +164,9 @@ function AddLiquidity() {
     } finally {
       setIsLoadingBalances(false);
     }
-  };
+  }, [vaultService, userWalletAddress]);
 
-  const loadPoolReserves = async (pool: PoolInfo) => {
+  const loadPoolReserves = useCallback(async (pool: PoolInfo) => {
     try {
       const data = await vaultService.getPoolReserves(pool.pool_address, pool.share_token);
       setReserveA(data.reserveA);
@@ -167,7 +178,7 @@ function AddLiquidity() {
       setReserveB("0");
       setTotalLpSupply("0");
     }
-  };
+  }, [vaultService]);
 
   // Calculate estimated withdrawal amounts
   const getEstimatedWithdrawAmounts = () => {
