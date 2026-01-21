@@ -75,7 +75,7 @@ const poolRecords: Record<
     img1: "/blub_logo.png",
     img2: aquaLogo,
     assetA: new Asset(blubAssetCode, blubIssuer),
-    assetB: new Asset(aquaAssetCode, blubIssuer),
+    assetB: new Asset(aquaAssetCode, aquaAssetIssuer),
   },
   "USDC/XLM": {
     img1: usdcLogo,
@@ -239,11 +239,13 @@ function BlubAqua() {
       dispatch(
         provideLiquidity({
           asset1: {
-            ...poolAsset1,
+            code: poolAsset1.code,
+            issuer: poolAsset1.isNative() ? "" : poolAsset1.issuer,
             amount: stakeAmount1,
           },
           asset2: {
-            ...poolAsset2,
+            code: poolAsset2.code,
+            issuer: poolAsset2.isNative() ? "" : poolAsset2.issuer,
             amount: stakeAmount2,
           },
           signedTxXdr,

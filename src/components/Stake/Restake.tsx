@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -27,12 +27,17 @@ import {
   getAccountInfo,
   lockingAqua,
   resetStateValues,
-  restakeBlub,
   restaking,
   storeAccountBalance,
-  unStakeAqua,
   unStakingAqua,
 } from "../../lib/slices/userSlice";
+import {
+  unlockAqua,
+  restakeBlub as restakeBlubSoroban,
+  optimisticUnstakeUpdate,
+  optimisticRestakeUpdate,
+  fetchComprehensiveStakingData,
+} from "../../lib/slices/stakingSlice";
 import {
   Asset,
   BASE_FEE,
@@ -45,9 +50,13 @@ import {
   lpSignerPublicKey,
   blubIssuer,
   blubAssetCode,
+  aquaAssetIssuer,
 } from "../../utils/constants";
 import { StellarService } from "../../services/stellar.service";
 import { Balance } from "../../utils/interfaces";
+import { walletTypes } from "../../enums";
+import { signTransaction } from "@lobstrco/signer-extension-api";
+import { ensureTrustline } from "../../utils/trustline.helper";
 
 function Restake() {
   const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
@@ -58,39 +67,75 @@ function Restake() {
 
   const user = useSelector((state: RootState) => state.user);
 
-  const whlAquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "WHLAQUA"
+  // Get BLUB token balance (checking both asset code and issuer for security)
+  const blubRecord = user?.userRecords?.balances?.find(
+    (balance) =>
+      balance.asset_code === "BLUB" && balance.asset_issuer === blubIssuer
   );
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "AQUA"
+    (balance) =>
+      balance.asset_code === "AQUA" && balance.asset_issuer === aquaAssetIssuer
   );
 
   const userAquaBalance = aquaRecord?.balance;
-  // const whlAquaBalance = whlAquaRecord?.balance;
-  const blubBalance = whlAquaRecord?.balance;
+  const blubBalance = blubRecord?.balance;
 
-  // Calculate accountClaimableRecords
-  const accountClaimableRecords =
-    user?.userRecords?.account?.claimableRecords
-      ?.filter((record: any) => record.claimed === "UNCLAIMED")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.amount);
-      }, 0) || 0;
+  // Calculate accountClaimableRecords with defensive programming
+  const accountClaimableRecords = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.claimableRecords) {
+        console.warn(
+          "🔄 [Restake] No claimable records found for accountClaimableRecords"
+        );
+        return 0;
+      }
 
-  const userPoolBalances =
-    user?.userRecords?.account?.pools
-      ?.filter((pool: any) => pool.claimed === "UNCLAIMED")
-      ?.filter((pool: any) => pool.depositType === "LOCKER")
-      ?.filter((pool: any) => pool.assetB.code === "AQUA")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.assetBAmount);
-      }, 0) || 0;
+      const result = user.userRecords.account.claimableRecords
+        .filter((record: any) => record && record.claimed === "UNCLAIMED")
+        .reduce((total, record: any) => {
+          const amount = Number(record.amount) || 0;
+          return Number(total) + amount;
+        }, 0);
+
+      return result || 0;
+    } catch (error) {
+      console.error(
+        "🔄 [Restake] Error calculating accountClaimableRecords:",
+        error
+      );
+      return 0;
+    }
+  }, [user?.userRecords?.account?.claimableRecords]);
+
+  const userPoolBalances = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.pools) {
+        console.warn("🔄 [Restake] No pools found for userPoolBalances");
+        return 0;
+      }
+
+      const result = user.userRecords.account.pools
+        .filter((pool: any) => pool && pool.claimed === "UNCLAIMED")
+        .filter((pool: any) => pool.depositType === "LOCKER")
+        .filter((pool: any) => pool.assetB && pool.assetB.code === "AQUA")
+        .reduce((total, record: any) => {
+          const amount = Number(record.assetBAmount) || 0;
+          return Number(total) + amount;
+        }, 0);
+
+      return result || 0;
+    } catch (error) {
+      console.error("🔄 [Restake] Error calculating userPoolBalances:", error);
+      return 0;
+    }
+  }, [user?.userRecords?.account?.pools]);
 
   // Add the two calculated values
-  const poolAndClaimBalance =
-    Number(userPoolBalances) + Number(accountClaimableRecords);
+  const poolAndClaimBalance = useMemo(() => {
+    return Number(userPoolBalances) + Number(accountClaimableRecords);
+  }, [userPoolBalances, accountClaimableRecords]);
 
   const handleSetMaxDepositForBlub = () => {
     setBlubUnstakeAmount(Number(accountClaimableRecords));
@@ -103,26 +148,134 @@ function Restake() {
     if (Number(blubUnstakeAmount) > poolAndClaimBalance)
       return toast.warn("Unstake amount exceeds the pool balance");
 
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
+    if (!user?.userWalletAddress) {
+      return toast.error("Please connect your wallet");
+    }
 
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+    try {
+      console.log("[Restake] Starting unstaking:", {
+        userAddress: user.userWalletAddress,
+        amount: blubUnstakeAmount,
+      });
 
-    const { address } = await kit.getAddress();
-    dispatch(unStakingAqua(true));
-    dispatch(
-      unStakeAqua({
-        senderPublicKey: address,
-        amountToUnstake: Number(blubUnstakeAmount),
+      // Ensure BLUB trustline exists before unstaking
+      console.log("[Restake] Checking BLUB trustline...");
+      const trustlineResult = await ensureTrustline(
+        user.userWalletAddress,
+        blubAssetCode,
+        blubIssuer,
+        user.walletName || walletTypes.FREIGHTER,
+        WalletNetwork.PUBLIC
+      );
+
+      if (!trustlineResult.hasTrustline && trustlineResult.error) {
+        throw new Error(
+          `Failed to setup BLUB trustline: ${trustlineResult.error}`
+        );
+      }
+
+      if (trustlineResult.trustlineCreated) {
+        toast.success("BLUB trustline created successfully!");
+        // Add a small delay to ensure the trustline is propagated
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      const stellarService = new StellarService();
+      const senderAccount = await stellarService.loadAccount(
+        user.userWalletAddress
+      );
+
+      // Create validation transaction (minimal self-payment)
+      const validationOperation = Operation.payment({
+        destination: user.userWalletAddress,
+        asset: Asset.native(),
+        amount: "0.0000001",
+      });
+
+      const transaction = new TransactionBuilder(senderAccount, {
+        fee: BASE_FEE,
+        networkPassphrase: Networks.PUBLIC,
       })
-    );
+        .addOperation(validationOperation)
+        .setTimeout(180)
+        .build();
+
+      // Sign transaction
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+      const kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId:
+          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      let signedTxXdr: string = "";
+      if (user?.walletName === walletTypes.LOBSTR) {
+        signedTxXdr = await signTransaction(transaction.toXDR());
+      } else {
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      }
+
+      console.log("[Restake] Transaction signed, submitting...");
+
+      // Submit transaction
+      if (!stellarService.server) {
+        throw new Error("Horizon server is not initialized");
+      }
+
+      const txResponse = await stellarService.server.submitTransaction(
+        TransactionBuilder.fromXDR(signedTxXdr, Networks.PUBLIC)
+      );
+
+      console.log("[Restake] Transaction successful:", txResponse.hash);
+
+      console.log(
+        "[Restake] Applying optimistic unstake update for immediate UI feedback..."
+      );
+      dispatch(
+        optimisticUnstakeUpdate({ amount: (blubUnstakeAmount || 0).toFixed(7) })
+      );
+
+      toast.success(`Successfully unstaked ${blubUnstakeAmount} BLUB!`);
+      setBlubUnstakeAmount(0);
+      dispatch(unStakingAqua(false));
+
+      dispatch(
+        unlockAqua({
+          userAddress: user.userWalletAddress,
+          lockId: 0,
+          amount: (blubUnstakeAmount || 0).toString(),
+          txHash: txResponse.hash,
+        })
+      );
+
+      // Refresh data in the background to confirm the update
+      console.log("[Restake] Refreshing on-chain data in background...");
+      Promise.all([
+        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
+        updateWalletRecords(),
+      ])
+        .then(() => {
+          console.log("[Restake] Background refresh completed!");
+        })
+        .catch((error) => {
+          console.error("[Restake] Background refresh failed:", error);
+        });
+    } catch (err: any) {
+      console.error("[Restake] Unstaking failed:", err);
+      toast.error(`Unstaking failed: ${err.message || "Please try again"}`);
+      dispatch(unStakingAqua(false));
+    }
   };
 
   const handleSetRestakeMaxDeposit = () => {
@@ -150,87 +303,131 @@ function Restake() {
   };
 
   const handleRestake = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
-    const { address } = await kit.getAddress();
-
-    if (!address) {
-      dispatch(lockingAqua(false));
+    if (!user?.userWalletAddress) {
       return toast.warn("Please connect wallet.");
     }
 
-    if (!user) {
-      dispatch(lockingAqua(false));
-      return toast.warn("Global state not initialized.");
-    }
-
     if (!blubStakeAmount) {
-      dispatch(lockingAqua(false));
       return toast.warn("Please input amount to stake.");
     }
 
     if (Number(blubBalance) < blubStakeAmount) {
-      dispatch(lockingAqua(false));
       return toast.warn(`Your balance is low`);
     }
 
-    dispatch(restaking(true));
-    const stellarService = new StellarService();
-    const senderAccount = await stellarService.loadAccount(address);
-
-    const existingTrustlines = senderAccount.balances.map(
-      (balance: Balance) => balance.asset_code
-    );
-
-    if (!existingTrustlines.includes(blubAssetCode)) return;
-
     try {
+      console.log("[Restake] Starting BLUB restaking:", {
+        userAddress: user.userWalletAddress,
+        amount: blubStakeAmount,
+      });
+
+      // Ensure BLUB trustline exists before restaking
+      console.log("[Restake] Checking BLUB trustline...");
+      const trustlineResult = await ensureTrustline(
+        user.userWalletAddress,
+        blubAssetCode,
+        blubIssuer,
+        user.walletName || walletTypes.FREIGHTER,
+        WalletNetwork.PUBLIC
+      );
+
+      if (!trustlineResult.hasTrustline && trustlineResult.error) {
+        throw new Error(
+          `Failed to setup BLUB trustline: ${trustlineResult.error}`
+        );
+      }
+
+      if (trustlineResult.trustlineCreated) {
+        toast.success("BLUB trustline created successfully!");
+        // Add a small delay to ensure the trustline is propagated
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      const stellarService = new StellarService();
+      const senderAccount = await stellarService.loadAccount(
+        user.userWalletAddress
+      );
+
       const stakeAmount = blubStakeAmount.toFixed(7);
 
+      // Create payment operation
       const paymentOperation = Operation.payment({
         destination: lpSignerPublicKey,
         asset: new Asset(blubAssetCode, blubIssuer),
         amount: stakeAmount,
       });
 
-      const transactionBuilder = new TransactionBuilder(senderAccount, {
+      // Build transaction
+      const transaction = new TransactionBuilder(senderAccount, {
         fee: BASE_FEE,
         networkPassphrase: Networks.PUBLIC,
+      })
+        .addOperation(paymentOperation)
+        .setTimeout(180)
+        .build();
+
+      // Sign transaction
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+      const kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId:
+          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
+        modules: [selectedModule],
       });
 
-      transactionBuilder.addOperation(paymentOperation).setTimeout(180);
-
-      const transaction = transactionBuilder.build();
-
-      const transactionXDR = transaction.toXDR();
-
-      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-        address,
+      const { signedTxXdr } = await kit.signTransaction(transaction.toXDR(), {
+        address: user.userWalletAddress,
         networkPassphrase: WalletNetwork.PUBLIC,
       });
 
+      console.log("[Restake] Transaction signed, submitting...");
+
+      // Submit transaction
+      if (!stellarService.server) {
+        throw new Error("Horizon server is not initialized");
+      }
+
+      const txResponse = await stellarService.server.submitTransaction(
+        TransactionBuilder.fromXDR(signedTxXdr, Networks.PUBLIC)
+      );
+
+      console.log("[Restake] Transaction successful:", txResponse.hash);
+
+      console.log(
+        "[Restake] Applying optimistic restake update for immediate UI feedback..."
+      );
+      dispatch(optimisticRestakeUpdate({ amount: stakeAmount }));
+
+      toast.success(`Successfully restaked ${blubStakeAmount} BLUB!`);
+      setBlubStakeAmount(0);
+      dispatch(restaking(false));
+
       dispatch(
-        restakeBlub({
-          assetCode: "WHLAQUA",
-          assetIssuer: blubIssuerPublicKey,
-          amount: `${blubStakeAmount}`,
-          signedTxXdr,
-          senderPublicKey: address,
+        restakeBlubSoroban({
+          userAddress: user.userWalletAddress,
+          amount: stakeAmount,
+          txHash: txResponse.hash,
         })
       );
-      dispatch(restaking(true));
-    } catch (err) {
-      console.log(err);
+
+      // Refresh data in the background to confirm the update
+      console.log("[Restake] Refreshing on-chain data in background...");
+      Promise.all([
+        dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
+        updateWalletRecords(),
+      ])
+        .then(() => {
+          console.log("[Restake] Background refresh completed!");
+        })
+        .catch((error) => {
+          console.error("[Restake] Background refresh failed:", error);
+        });
+    } catch (err: any) {
+      console.error("[Restake] Restaking failed:", err);
+      toast.error(`Restaking failed: ${err.message || "Please try again"}`);
       dispatch(restaking(false));
     }
   };

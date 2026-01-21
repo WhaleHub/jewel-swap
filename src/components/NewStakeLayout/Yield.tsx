@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { Button, Input } from "@headlessui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
@@ -17,12 +17,12 @@ import {
   getAccountInfo,
   lockingAqua,
   resetStateValues,
-  restakeBlub,
   restaking,
   storeAccountBalance,
-  unStakeAqua,
   unStakingAqua,
 } from "../../lib/slices/userSlice";
+// Note: Backend API calls (lockAqua, unlockAqua, restakeBlub) are deprecated for Soroban
+// We now query data directly from smart contracts using fetchComprehensiveStakingData
 import { StellarService } from "../../services/stellar.service";
 import { Balance } from "../../utils/interfaces";
 import {
@@ -45,6 +45,7 @@ import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
 import { kit } from "../Navbar";
+import { ensureTrustline } from "../../utils/trustline.helper";
 
 function Yield() {
   const dispatch = useAppDispatch();
@@ -54,10 +55,19 @@ function Yield() {
   const [openDialog, setOptDialog] = useState<boolean>(false);
   const [dialogTitle, setDialogTitle] = useState<string>("");
 
+  // Soroban BLUB balance state
+  const [sorobanBlubBalance, setSorobanBlubBalance] = useState<string>("0.00");
+  const [blubStakedBalance, setBlubStakedBalance] = useState<string>("0.00");
+  const [lpPositionData, setLpPositionData] = useState<any>(null);
+  const [polData, setPolData] = useState<any>(null);
+  const [blubBalanceLoading, setBlubBalanceLoading] = useState<boolean>(false);
+
   const user = useSelector((state: RootState) => state.user);
+  const staking = useSelector((state: RootState) => state.staking);
 
   const blubRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "BLUB"
+    (balance) =>
+      balance.asset_code === "BLUB" && balance.asset_issuer === blubIssuer
   );
 
   // //get user aqua record
@@ -65,32 +75,207 @@ function Yield() {
   //   (balance) => balance.asset_code === "AQUA"
   // );
 
-  const claimableBalance = user?.userRecords?.account?.claimableRecords
-    ?.filter((item: any) => item.claimed === "UNCLAIMED")
-    .reduce((total: any, item: any) => total + parseFloat(item.amount), 0);
+  // Add defensive programming for claimable balance calculation
+  const claimableBalance = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.claimableRecords) {
+        console.warn("💎 [Yield] No claimable records found, returning 0");
+        return 0;
+      }
 
-  const blubBalance = blubRecord?.balance;
+      const filtered = user.userRecords.account.claimableRecords.filter(
+        (item: any) => item && item.claimed === "UNCLAIMED"
+      );
 
-  // Calculate accountClaimableRecords
-  const accountClaimableRecords =
-    user?.userRecords?.account?.claimableRecords
-      ?.filter((record: any) => record.claimed === "UNCLAIMED")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.amount);
-      }, 0) || 0;
+      if (filtered.length === 0) {
+        return 0;
+      }
 
-  const userPoolBalances =
-    user?.userRecords?.account?.pools
-      ?.filter((pool: any) => pool.claimed === "UNCLAIMED")
-      ?.filter((pool: any) => pool.depositType === "LOCKER")
-      ?.filter((pool: any) => pool.assetB.code === "AQUA")
-      ?.reduce((total, record: any) => {
-        return Number(total) + Number(record.assetBAmount);
-      }, 0) || 0;
+      const total = filtered.reduce((total: any, item: any) => {
+        const amount = parseFloat(item.amount) || 0;
+        return total + amount;
+      }, 0);
+
+      return total;
+    } catch (error) {
+      console.error("💎 [Yield] Error calculating claimable balance:", error);
+      return 0;
+    }
+  }, [user?.userRecords?.account?.claimableRecords]);
+
+  // Use Soroban BLUB balance instead of Horizon API balance
+  const blubBalance = sorobanBlubBalance;
+
+  // Calculate accountClaimableRecords with defensive programming
+  const accountClaimableRecords = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.claimableRecords) {
+        console.warn(
+          "💎 [Yield] No claimable records found for accountClaimableRecords"
+        );
+        return 0;
+      }
+
+      const result = user.userRecords.account.claimableRecords
+        .filter((record: any) => record && record.claimed === "UNCLAIMED")
+        .reduce((total, record: any) => {
+          const amount = Number(record.amount) || 0;
+          return Number(total) + amount;
+        }, 0);
+
+      return result || 0;
+    } catch (error) {
+      console.error(
+        "💎 [Yield] Error calculating accountClaimableRecords:",
+        error
+      );
+      return 0;
+    }
+  }, [user?.userRecords?.account?.claimableRecords]);
+
+  const userPoolBalances = useMemo(() => {
+    try {
+      if (!user?.userRecords?.account?.pools) {
+        console.warn("💎 [Yield] No pools found for userPoolBalances");
+        return 0;
+      }
+
+      const result = user.userRecords.account.pools
+        .filter((pool: any) => pool && pool.claimed === "UNCLAIMED")
+        .filter((pool: any) => pool.depositType === "LOCKER")
+        .filter((pool: any) => pool.assetB && pool.assetB.code === "AQUA")
+        .reduce((total, record: any) => {
+          const amount = Number(record.assetBAmount) || 0;
+          return Number(total) + amount;
+        }, 0);
+
+      return result || 0;
+    } catch (error) {
+      console.error("💎 [Yield] Error calculating userPoolBalances:", error);
+      return 0;
+    }
+  }, [user?.userRecords?.account?.pools]);
 
   // Add the two calculated values
-  const poolAndClaimBalance =
-    Number(userPoolBalances) + Number(accountClaimableRecords);
+  // Calculate unstakable BLUB from Soroban staking info
+  // NOTE: total_staked_blub is immediately unstakeable (no time lock in contract)
+  // unstaking_available is for already-unlocked entries (partial unstakes)
+  const poolAndClaimBalance = useMemo(() => {
+    const totalStaked = staking.userStats?.activeAmount || "0";
+    const unstakingAvailable = staking.userStats?.unstakingAvailable || "0";
+    // Sum both: actively staked (immediately unstakeable) + already unlocked entries
+    return Math.max(
+      0,
+      parseFloat(totalStaked) + parseFloat(unstakingAvailable)
+    );
+  }, [staking.userStats?.activeAmount, staking.userStats?.unstakingAvailable]);
+
+  // Fetch BLUB balance from Soroban contract
+  const fetchSorobanBlubBalance = async () => {
+    if (!user.userWalletAddress) return;
+
+    setBlubBalanceLoading(true);
+    try {
+      const { sorobanService } = await import("../../services/soroban.service");
+      const { fetchComprehensiveStakingData } = await import(
+        "../../lib/slices/stakingSlice"
+      );
+
+      // Fetch comprehensive staking data to update Redux state (includes unstaking_available)
+      await dispatch(fetchComprehensiveStakingData(user.userWalletAddress));
+
+      // Fetch comprehensive user staking info (replaces deprecated queryAllBlubRestakes)
+      const stakingInfo = await sorobanService.queryUserStakingInfo(
+        user.userWalletAddress
+      );
+
+      // Fetch BLUB balance (wallet balance - unstaked)
+      const balance = await sorobanService.queryBlubBalance(
+        user.userWalletAddress
+      );
+
+      // Fetch LP position
+      const poolId = "AQUA-BLUB";
+      const lpPosition = await sorobanService
+        .queryUserLpPosition(user.userWalletAddress, poolId)
+        .catch(() => null);
+
+      // Fetch POL info
+      const polInfo = await sorobanService.queryPolInfo();
+
+      // Set wallet balance (unstaked BLUB)
+      const blubBalanceNumber = parseFloat(balance);
+
+      // Fetch fresh account data directly from Horizon API
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(
+        user.userWalletAddress
+      );
+
+      // Get BLUB balance from fresh Horizon data (source of truth)
+      const freshBlubRecord = wrappedAccount.balances?.find(
+        (balance: any) =>
+          balance.asset_code === "BLUB" && balance.asset_issuer === blubIssuer
+      );
+
+      // PRIORITIZE Horizon API balance over Soroban contract balance
+      // Horizon API is the source of truth for actual wallet balance
+      if (freshBlubRecord?.balance) {
+        const horizonBalance = parseFloat(freshBlubRecord.balance);
+        setSorobanBlubBalance(horizonBalance.toFixed(2));
+      } else if (blubBalanceNumber > 0) {
+        // Only use Soroban if Horizon is not available
+        setSorobanBlubBalance(blubBalanceNumber.toFixed(2));
+      } else {
+        setSorobanBlubBalance("0.00");
+      }
+
+      // Set staked BLUB amount from the comprehensive staking info
+      // Include BOTH locked positions AND unlockable positions (expired but not yet unstaked)
+      if (stakingInfo) {
+        const totalStaked =
+          parseFloat(stakingInfo.total_staked_blub || "0") +
+          parseFloat(stakingInfo.unstaking_available || "0");
+        setBlubStakedBalance(totalStaked.toFixed(2));
+      } else {
+        setBlubStakedBalance("0.00");
+      }
+
+      // Set LP position data
+      setLpPositionData(lpPosition);
+
+      // Set POL data
+      setPolData(polInfo);
+    } catch (error: any) {
+      console.error("❌ [Yield] Error fetching BLUB data:", error);
+
+      // Fallback: Try to fetch from Horizon API directly
+      try {
+        const stellarService = new StellarService();
+        const wrappedAccount = await stellarService.loadAccount(
+          user.userWalletAddress
+        );
+        const freshBlubRecord = wrappedAccount.balances?.find(
+          (balance: any) =>
+            balance.asset_code === "BLUB" && balance.asset_issuer === blubIssuer
+        );
+
+        if (freshBlubRecord?.balance) {
+          const horizonBalance = parseFloat(freshBlubRecord.balance);
+          setSorobanBlubBalance(horizonBalance.toFixed(2));
+        } else {
+          setSorobanBlubBalance("0.00");
+        }
+      } catch (horizonError) {
+        console.error("❌ [Yield] Horizon fallback failed:", horizonError);
+        setSorobanBlubBalance("0.00");
+      }
+
+      setBlubStakedBalance("0.00");
+    } finally {
+      setBlubBalanceLoading(false);
+    }
+  };
 
   const handleSetMaxStakeBlub = () => {
     // const depositAmount =
@@ -103,12 +288,9 @@ function Yield() {
   };
 
   const handleSetMaxDepositForUnstakeBlub = () => {
-    const depositAmount =
-      typeof accountClaimableRecords === "number" &&
-      !isNaN(accountClaimableRecords)
-        ? Number(accountClaimableRecords)
-        : 0;
-
+    // Use unstakingAvailable from Soroban staking info (expired but not yet unstaked)
+    const unstakingAvailable = staking.userStats?.unstakingAvailable || "0";
+    const depositAmount = Math.max(0, parseFloat(unstakingAvailable));
     setBlubUnstakeAmount(depositAmount);
   };
 
@@ -119,13 +301,128 @@ function Yield() {
     if (Number(blubUnstakeAmount) > poolAndClaimBalance)
       return toast.warn("Unstake amount exceeds the pool balance");
 
+    if (!user.userWalletAddress) {
+      return toast.error("Please connect your wallet");
+    }
+
+    // Set loading state
     dispatch(unStakingAqua(true));
-    dispatch(
-      unStakeAqua({
-        senderPublicKey: `${user?.userWalletAddress}`,
-        amountToUnstake: Number(blubUnstakeAmount),
-      })
-    );
+
+    try {
+      // Ensure BLUB trustline exists before unstaking
+      const trustlineResult = await ensureTrustline(
+        user.userWalletAddress,
+        blubAssetCode,
+        blubIssuer,
+        user.walletName || walletTypes.FREIGHTER,
+        WalletNetwork.PUBLIC
+      );
+
+      if (!trustlineResult.hasTrustline && trustlineResult.error) {
+        throw new Error(
+          `Failed to setup BLUB trustline: ${trustlineResult.error}`
+        );
+      }
+
+      if (trustlineResult.trustlineCreated) {
+        toast.success("BLUB trustline created successfully!");
+        // Add a small delay to ensure the trustline is propagated
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      // Import Soroban service
+      const { sorobanService } = await import("../../services/soroban.service");
+      const soroban = sorobanService;
+
+      // Convert amount to stroops (7 decimals)
+      const amountInStroops = Math.floor(
+        Number(blubUnstakeAmount) * 10000000
+      ).toString();
+
+      // Build Soroban contract invocation transaction
+      // unstake(user: Address, amount: i128)
+      // Pass raw values - the sorobanService will convert them properly to ScVal
+      const { transaction } = await soroban.buildContractTransaction(
+        "staking",
+        "unstake",
+        [
+          user.userWalletAddress, // String address - will be converted to Address ScVal
+          amountInStroops, // String amount - will be converted to i128 ScVal
+        ],
+        user.userWalletAddress
+      );
+
+      // Sign transaction with user's wallet
+      const selectedModule =
+        user.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+      const kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: user.walletName || FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      let signedTxXdr: string = "";
+      if (user?.walletName === walletTypes.LOBSTR) {
+        signedTxXdr = await signTransaction(transaction.toXDR());
+      } else {
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      }
+
+      // Submit the signed Soroban contract transaction
+      const result = await soroban.submitSignedTransaction(signedTxXdr);
+
+      if (!result.success) {
+        throw new Error(result.error || "Unstaking transaction failed");
+      }
+
+      // Reset form
+      setBlubUnstakeAmount(0);
+
+      // Refresh all balances immediately after successful transaction
+      try {
+        // First, update wallet records to get fresh Horizon data
+        await updateWalletRecordsWithDelay(2000);
+
+        // Then fetch all other data (which may depend on updated wallet balances)
+        const { fetchComprehensiveStakingData } = await import(
+          "../../lib/slices/stakingSlice"
+        );
+        await Promise.all([
+          dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
+          fetchSorobanBlubBalance(),
+        ]);
+      } catch (refreshError) {
+        console.error("[Yield] Refresh failed:", refreshError);
+      }
+
+      // Show success message after refresh
+      toast.success(`Successfully unstaked ${blubUnstakeAmount} BLUB!`);
+      setDialogTitle("Unstaking Successful!");
+      setDialogMsg(
+        `Transaction Hash: ${result.transactionHash}\n\nYour BLUB has been unstaked and transferred to your wallet.`
+      );
+      setOptDialog(true);
+    } catch (err: any) {
+      console.error("[Yield] Unstaking failed:", err);
+      toast.error(`Unstaking failed: ${err.message || "Please try again"}`);
+      setDialogTitle("Unstaking Failed");
+      setDialogMsg(
+        `Error: ${err.message}\n\nPlease try again or contact support.`
+      );
+      setOptDialog(true);
+    } finally {
+      // Always reset the loading state
+      dispatch(unStakingAqua(false));
+    }
   };
 
   const updateWalletRecords = async () => {
@@ -148,104 +445,201 @@ function Yield() {
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };
 
+  // Add delay-based balance refresh for better sync with backend
+  const updateWalletRecordsWithDelay = async (delayMs: number = 3000) => {
+    // Wait for backend to complete transaction processing
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+    try {
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+
+      const kit: StellarWalletsKit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      const { address } = await kit.getAddress();
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
+
+      dispatch(getAccountInfo(address));
+      dispatch(storeAccountBalance(wrappedAccount.balances));
+
+      // Double-check after another short delay to ensure balance changes are visible
+      setTimeout(async () => {
+        try {
+          const freshAccount = await stellarService.loadAccount(address);
+          dispatch(storeAccountBalance(freshAccount.balances));
+        } catch (error) {
+          console.warn("Secondary balance refresh failed:", error);
+        }
+      }, 2000);
+    } catch (error) {
+      console.error("Error updating wallet records:", error);
+      // Fallback to regular update
+      updateWalletRecords();
+    }
+  };
+
   const handleRestake = async () => {
     if (!user?.userWalletAddress) {
-      dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
     }
 
-    if (!user) {
-      dispatch(lockingAqua(false));
-      return toast.warn("Global state not initialized.");
-    }
-
     if (!blubStakeAmount) {
-      dispatch(lockingAqua(false));
       return toast.warn("Please input amount to stake.");
     }
 
     if (Number(blubBalance) < blubStakeAmount || !blubBalance) {
-      dispatch(lockingAqua(false));
       return toast.warn(`Your balance is low`);
     }
 
+    // Set loading state
     dispatch(restaking(true));
-    const stellarService = new StellarService();
-    const senderAccount = await stellarService.loadAccount(
-      user?.userWalletAddress
-    );
-
-    const existingTrustlines = senderAccount.balances.map(
-      (balance: Balance) => balance.asset_code
-    );
-
-    if (!existingTrustlines.includes(blubAssetCode)) {
-      dispatch(restaking(false));
-      return toast.warn(`You need trustline for ${blubAssetCode}`);
-    }
 
     try {
-      const stakeAmount = blubStakeAmount.toFixed(7);
-
-      const paymentOperation = Operation.payment({
-        destination: lpSignerPublicKey,
-        asset: new Asset(blubAssetCode, blubIssuer),
-        amount: stakeAmount,
-      });
-
-      const transactionBuilder = new TransactionBuilder(senderAccount, {
-        fee: BASE_FEE,
-        networkPassphrase: Networks.PUBLIC,
-      });
-
-      const transaction = transactionBuilder.setTimeout(3000).build();
-
-      let signedTxXdr: string = "";
-      if (user?.walletName === walletTypes.LOBSTR) {
-        signedTxXdr = await signTransaction(transaction.toXDR());
-      }
-      if (user?.walletName === walletTypes.WALLETCONNECT) {
- const { signedTxXdr: signed } = await kit.signTransaction(
-           transaction.toXDR(),
-           {
-             address: user?.userWalletAddress || "",
-             networkPassphrase: WalletNetwork.PUBLIC,
-           }
-         );
-   
-         signedTxXdr = signed;
-      }
-
-      
-      else {
-        const kit: StellarWalletsKit = new StellarWalletsKit({
-          network: WalletNetwork.PUBLIC,
-          selectedWalletId: FREIGHTER_ID,
-          modules: [new FreighterModule()],
-        });
-        transactionBuilder.addOperation(paymentOperation).setTimeout(180);
-        const transactionXDR = transaction.toXDR();
-        const { signedTxXdr: signed } = await kit.signTransaction(
-          transactionXDR,
-          {
-            address: `${user?.userWalletAddress}`,
-            networkPassphrase: WalletNetwork.PUBLIC,
-          }
-        );
-        signedTxXdr = signed;
-      }
-      dispatch(
-        restakeBlub({
-          assetCode: "BLUB",
-          assetIssuer: blubIssuerPublicKey,
-          amount: `${blubStakeAmount}`,
-          signedTxXdr,
-          senderPublicKey: `${user?.userWalletAddress}`,
-        })
+      // Ensure BLUB trustline exists before restaking
+      const trustlineResult = await ensureTrustline(
+        user.userWalletAddress,
+        blubAssetCode,
+        blubIssuer,
+        user.walletName || walletTypes.FREIGHTER,
+        WalletNetwork.PUBLIC
       );
-      dispatch(restaking(true));
-    } catch (err) {
-      console.log(err);
+
+      if (!trustlineResult.hasTrustline && trustlineResult.error) {
+        throw new Error(
+          `Failed to setup BLUB trustline: ${trustlineResult.error}`
+        );
+      }
+
+      if (trustlineResult.trustlineCreated) {
+        toast.success("BLUB trustline created successfully!");
+        // Add a small delay to ensure the trustline is propagated
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+
+      // Import Soroban service and config
+      const { sorobanService } = await import("../../services/soroban.service");
+      const { SOROBAN_CONFIG } = await import("../../config/soroban.config");
+
+      // Build Soroban transaction for staking BLUB
+      const stakeAmountStroops = Math.floor(blubStakeAmount * 10000000); // Convert to stroops
+      const durationPeriods = 1; // Minimal value - rewards based on actual time staked
+
+      // Build contract transaction with raw parameters
+      // Pass raw values - the sorobanService will convert them properly to ScVal
+      const { transaction } = await sorobanService.buildContractTransaction(
+        "staking",
+        "stake", // Contract function for BLUB staking (restaking)
+        [
+          user.userWalletAddress, // String address - will be converted to Address ScVal
+          stakeAmountStroops.toString(), // String amount - will be converted to i128 ScVal
+          durationPeriods, // Number duration - will be converted to u64 ScVal
+        ],
+        user.userWalletAddress
+      );
+
+      // Sign transaction with user's wallet
+      const selectedModule =
+        user.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+      const stellarKit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: user.walletName || FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      const { signedTxXdr } = await stellarKit.signTransaction(
+        transaction.toXDR(),
+        {
+          address: user.userWalletAddress,
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
+      );
+
+      // Submit transaction
+      const txResponse = await sorobanService
+        .getServer()
+        .sendTransaction(
+          TransactionBuilder.fromXDR(signedTxXdr, Networks.PUBLIC)
+        );
+
+      // Wait for transaction confirmation
+      let confirmed = false;
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      while (!confirmed && attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        try {
+          const statusResponse = await sorobanService
+            .getServer()
+            .getTransaction(txResponse.hash);
+          if (statusResponse.status === "SUCCESS") {
+            confirmed = true;
+            break;
+          } else if (statusResponse.status === "FAILED") {
+            throw new Error("Transaction failed on-chain");
+          }
+        } catch (error: any) {
+          // Transaction still pending
+          if (error?.message?.includes("Bad union switch")) {
+            confirmed = true;
+            break;
+          }
+        }
+        attempts++;
+      }
+
+      if (!confirmed) {
+        throw new Error("Transaction confirmation timeout");
+      }
+
+      const transactionHash = txResponse.hash;
+
+      // Reset form
+      setBlubStakeAmount(0);
+
+      // Refresh all balances immediately after successful transaction
+      try {
+        // First, update wallet records to get fresh Horizon data
+        await updateWalletRecordsWithDelay(2000);
+
+        // Then fetch all other data (which may depend on updated wallet balances)
+        const { fetchComprehensiveStakingData: fetchData } = await import(
+          "../../lib/slices/stakingSlice"
+        );
+        await Promise.all([
+          dispatch(fetchData(user.userWalletAddress)),
+          fetchSorobanBlubBalance(),
+        ]);
+      } catch (refreshError) {
+        console.error("[Yield] Refresh failed:", refreshError);
+      }
+
+      // Show success message after refresh
+      toast.success(`Successfully restaked ${blubStakeAmount} BLUB!`);
+      setDialogTitle("Restaking Successful!");
+      setDialogMsg(
+        `Transaction Hash: ${transactionHash}\n\nYour BLUB has been restaked.`
+      );
+      setOptDialog(true);
+    } catch (err: any) {
+      console.error("[Yield] Restaking failed:", err);
+      toast.error(`Restaking failed: ${err.message || "Please try again"}`);
+      setDialogTitle("Restaking Failed");
+      setDialogMsg(
+        `Error: ${err.message}\n\nPlease try again or contact support.`
+      );
+      setOptDialog(true);
+    } finally {
+      // Always reset the loading state
       dispatch(restaking(false));
     }
   };
@@ -279,18 +673,34 @@ function Yield() {
     };
   }, [openDialog]);
 
+  // Fetch Soroban BLUB balance on component mount and when user changes
   useEffect(() => {
-    console.log("tst");
-    console.log(user?.userRecords?.account?.claimableRecords);
+    if (user?.userWalletAddress) {
+      // Initial fetch
+      fetchSorobanBlubBalance();
+
+      // Set up auto-refresh every 30 seconds for real-time updates
+      const refreshInterval = setInterval(() => {
+        fetchSorobanBlubBalance();
+      }, 30000);
+
+      // Cleanup interval on unmount
+      return () => clearInterval(refreshInterval);
+    }
+  }, [user?.userWalletAddress]);
+
+  useEffect(() => {
     if (user?.restaked) {
-      updateWalletRecords();
+      updateWalletRecordsWithDelay(3000); // Add delay for backend processing
+      fetchSorobanBlubBalance(); // Refresh BLUB balance
       toast.success("BLUB Locked successfully!");
       dispatch(resetStateValues());
       dispatch(restaking(false));
     }
 
     if (user?.unStakedAqua) {
-      updateWalletRecords();
+      updateWalletRecordsWithDelay(3000); // Add delay for backend processing
+      fetchSorobanBlubBalance(); // Refresh BLUB balance
       toast.success("Blub unstaked successfully!");
       dispatch(resetStateValues());
       dispatch(unStakingAqua(false));
@@ -361,9 +771,7 @@ function Yield() {
               </div>
 
               <div className="flex items-center text-normal mt-6 space-x-1">
-                <div className="font-normal text-[#B1B3B8]">
-                  BLUB Balance:
-                </div>
+                <div className="font-normal text-[#B1B3B8]">BLUB Balance:</div>
                 <div className="font-medium">
                   {`${
                     isNaN(Number(blubBalance))
@@ -427,7 +835,9 @@ function Yield() {
                 <div className="font-normal text-[#B1B3B8]">
                   Staked Balance:
                 </div>
-                <div className="font-medium">{Number(claimableBalance).toFixed(2)} BLUB</div>
+                <div className="font-medium">
+                  {`${parseFloat(blubStakedBalance).toFixed(2)} BLUB`}
+                </div>
               </div>
 
               <Button

@@ -21,12 +21,27 @@ import {
   resetStateValues,
   storeAccountBalance,
 } from "../../lib/slices/userSlice";
+// Import new Soroban functionality
+import {
+  clearError,
+  clearTransaction,
+  fetchComprehensiveStakingData,
+} from "../../lib/slices/stakingSlice";
+import {
+  issueIceTokens,
+  fetchUserGovernance,
+  syncGovernanceData,
+} from "../../lib/slices/governanceSlice";
+import { sorobanService } from "../../services/soroban.service";
+import { apiService } from "../../services/api.service";
+import { SOROBAN_CONFIG, isFeatureEnabled } from "../../config/soroban.config";
 import {
   Asset,
   BASE_FEE,
   Networks,
   Operation,
   TransactionBuilder,
+  Keypair,
 } from "@stellar/stellar-sdk";
 import {
   aquaAssetCode,
@@ -42,23 +57,44 @@ import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
-import { WALLET_CONNECT_ID, WalletConnectAllowedMethods, WalletConnectModule } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import {
+  WALLET_CONNECT_ID,
+  WalletConnectAllowedMethods,
+  WalletConnectModule,
+} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { kit } from "../Navbar";
+import { enhancedBalanceRefresh } from "../../utils/helpers";
 
 function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
+  const staking = useSelector((state: RootState) => state.staking);
+  const governance = useSelector((state: RootState) => state.governance);
+
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
   const [dialogMsg, setDialogMsg] = useState<string>("");
   const [dialogTitle, setDialogTitle] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
+  const [useSoroban, setUseSoroban] = useState<boolean>(
+    isFeatureEnabled("useSoroban")
+  );
+
+  // BLUB token balance state
+  const [blubBalance, setBlubBalance] = useState<string>("0.00");
+  const [blubBalanceLoading, setBlubBalanceLoading] = useState<boolean>(false);
+
+  // Contract balance state
+  const [contractBalance, setContractBalance] = useState<string>("0.00");
+  const [balanceLoading, setBalanceLoading] = useState<boolean>(false);
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
-    (balance) => balance.asset_code === "AQUA"
+    (balance) =>
+      balance.asset_code === "AQUA" && balance.asset_issuer === aquaAssetIssuer
   );
 
   const userAquaBalance = aquaRecord?.balance;
+
 
   const updateWalletRecords = async () => {
     const selectedModule =
@@ -78,6 +114,301 @@ function STKAqua() {
 
     dispatch(getAccountInfo(address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
+  };
+
+  // Soroban staking functionality
+  const handleSorobanStake = async () => {
+    if (!user.userWalletAddress || !aquaDepositAmount) {
+      toast.error("Please connect wallet and enter amount");
+      return;
+    }
+
+    if (aquaDepositAmount < MIN_DEPOSIT_AMOUNT) {
+      toast.error(`Minimum deposit amount is ${MIN_DEPOSIT_AMOUNT} AQUA`);
+      return;
+    }
+
+    try {
+      // Use the soroban service
+      const { sorobanService } = await import("../../services/soroban.service");
+      const { SOROBAN_CONFIG } = await import("../../config/soroban.config");
+      const soroban = sorobanService;
+
+      // Build Soroban contract invocation transaction
+      // stake() function: user, amount, duration_periods (minimal value for time-based rewards)
+      const amountInStroops = Math.floor(
+        aquaDepositAmount * 10000000
+      ).toString(); // Convert to 7 decimal places
+      const aquaTokenContract = SOROBAN_CONFIG.assets.aqua.sorobanContract;
+      const durationPeriods = 1; // Minimal value - actual rewards calculated by elapsed time
+
+      // Pass raw values - the sorobanService will convert them properly to ScVal
+      const { transaction } = await soroban.buildContractTransaction(
+        "staking",
+        "lock", // Function that transfers AQUA tokens and records lock
+        [
+          user.userWalletAddress, // String address - will be converted to Address ScVal
+          amountInStroops, // String amount - will be converted to i128 ScVal
+          durationPeriods, // Number duration - will be converted to u64 ScVal
+        ],
+        user.userWalletAddress
+      );
+
+      // Sign transaction with user's wallet
+      const selectedModule =
+        user.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+      const kit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: user.walletName || FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      const { signedTxXdr } = await kit.signTransaction(transaction.toXDR(), {
+        address: user.userWalletAddress,
+        networkPassphrase: WalletNetwork.PUBLIC,
+      });
+
+      // Submit the signed Soroban contract transaction
+      const result = await soroban.submitSignedTransaction(signedTxXdr);
+
+      if (!result.success) {
+        throw new Error(result.error || "Transaction failed");
+      }
+
+      // Reset form
+      setAquaDepositAmount(0);
+
+      // Refresh all balances immediately after successful transaction
+      try {
+        // First, update wallet records to get fresh Horizon data
+        await updateWalletRecordsWithDelay(2000);
+
+        // Then fetch all other data (which may depend on updated wallet balances)
+        await Promise.all([
+          dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
+          fetchBlubBalance(),
+          fetchContractBalance(),
+        ]);
+      } catch (refreshError) {
+        console.error("[STKAqua] Refresh failed:", refreshError);
+      }
+
+      // Show success message after refresh
+      toast.success(
+        `Successfully staked ${aquaDepositAmount} AQUA via Soroban smart contract!`
+      );
+      setDialogTitle("Staking Successful!");
+      setDialogMsg(
+        `Transaction Hash: ${result.transactionHash}\n\nYour AQUA has been staked. Rewards increase the longer you keep it staked. You can unstake at any time.`
+      );
+      setOptDialog(true);
+    } catch (error: any) {
+      console.error("❌ [STKAqua] Soroban staking failed:", error);
+      toast.error(`Staking failed: ${error.message}`);
+      setDialogTitle("Staking Failed");
+      setDialogMsg(
+        `Error: ${error.message}\n\nPlease try again or contact support.`
+      );
+      setOptDialog(true);
+    }
+  };
+
+  // Load user staking data on component mount
+  useEffect(() => {
+    if (user.userWalletAddress && useSoroban) {
+      // Initial data fetch
+      const fetchAllData = async () => {
+        if (!user.userWalletAddress) return;
+        await dispatch(fetchComprehensiveStakingData(user.userWalletAddress));
+        await dispatch(fetchUserGovernance(user.userWalletAddress));
+        await fetchContractBalance();
+        await fetchBlubBalance();
+      };
+
+      fetchAllData();
+
+      // Set up auto-refresh every 30 seconds for real-time updates
+      const refreshInterval = setInterval(() => {
+        fetchAllData();
+      }, 30000);
+
+      // Cleanup interval on unmount
+      return () => clearInterval(refreshInterval);
+    }
+  }, [user.userWalletAddress, useSoroban, dispatch]);
+
+  // Function to fetch BLUB balance from contract
+  const fetchBlubBalance = async () => {
+    if (!user.userWalletAddress) return;
+
+    setBlubBalanceLoading(true);
+    try {
+      // Fetch fresh account data directly from Horizon API
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(
+        user.userWalletAddress
+      );
+
+      // Get BLUB balance from fresh Horizon data (source of truth)
+      const blubRecord = wrappedAccount.balances?.find(
+        (balance: any) =>
+          balance.asset_code === "BLUB" && balance.asset_issuer === blubIssuer
+      );
+
+      if (blubRecord?.balance) {
+        const horizonBalance = parseFloat(blubRecord.balance);
+        setBlubBalance(horizonBalance.toFixed(2));
+      } else {
+        // Fallback to Soroban if Horizon is not available
+        const { sorobanService } = await import("../../services/soroban.service");
+        const { SOROBAN_CONFIG } = await import("../../config/soroban.config");
+        const blubTokenContract = SOROBAN_CONFIG.assets.blub.sorobanContract;
+
+        const server = sorobanService.getServer();
+        const { Contract, Address, TransactionBuilder, Networks } = await import(
+          "@stellar/stellar-sdk"
+        );
+
+        const blubContract = new Contract(blubTokenContract);
+        const account = await server.getAccount(user.userWalletAddress);
+
+        const tx = new TransactionBuilder(account, {
+          fee: "100",
+          networkPassphrase: Networks.PUBLIC,
+        })
+          .addOperation(
+            blubContract.call(
+              "balance",
+              Address.fromString(user.userWalletAddress).toScVal()
+            )
+          )
+          .setTimeout(30)
+          .build();
+
+        const simulation: any = await server.simulateTransaction(tx);
+
+        if (simulation && "result" in simulation && simulation.result) {
+          const { scValToNative } = await import("@stellar/stellar-sdk");
+          const balance = scValToNative(simulation.result.retval);
+          const balanceValue =
+            typeof balance === "bigint" ? balance : BigInt(balance || 0);
+          const blubAmount = Number(balanceValue) / 10000000;
+          setBlubBalance(blubAmount.toFixed(2));
+        } else {
+          setBlubBalance("0.00");
+        }
+      }
+    } catch (error: any) {
+      console.error("❌ [STKAqua] Error fetching BLUB balance:", error);
+      setBlubBalance("0.00");
+    } finally {
+      setBlubBalanceLoading(false);
+    }
+  };
+
+  // Function to fetch AQUA balance from contract directly
+  const fetchContractBalance = async () => {
+    if (!user.userWalletAddress) return;
+
+    setBalanceLoading(true);
+    try {
+      const { sorobanService } = await import("../../services/soroban.service");
+      const { SOROBAN_CONFIG } = await import("../../config/soroban.config");
+
+      const stakingContractId = SOROBAN_CONFIG.contracts.staking;
+      const aquaTokenContract = SOROBAN_CONFIG.assets.aqua.sorobanContract;
+
+      // Read the AQUA token balance of the staking contract
+      const server = sorobanService.getServer();
+      const { Contract, Address } = await import("@stellar/stellar-sdk");
+
+      // Create AQUA token contract instance
+      const aquaContract = new Contract(aquaTokenContract);
+
+      // Build a simulation transaction to read balance
+      const account = await server.getAccount(user.userWalletAddress);
+      const { TransactionBuilder, Networks } = await import(
+        "@stellar/stellar-sdk"
+      );
+
+      // Call balance method on AQUA token contract for staking contract
+      const operation = aquaContract.call(
+        "balance",
+        Address.fromString(stakingContractId).toScVal()
+      );
+
+      const tx = new TransactionBuilder(account, {
+        fee: "100000",
+        networkPassphrase: Networks.PUBLIC,
+      })
+        .addOperation(operation)
+        .setTimeout(30)
+        .build();
+
+      const simResult = await server.simulateTransaction(tx);
+
+      if ("result" in simResult && simResult.result?.retval) {
+        const { scValToNative } = await import("@stellar/stellar-sdk");
+        const balance = scValToNative(simResult.result.retval);
+        const aquaBalance = (BigInt(balance) / BigInt(10000000)).toString();
+        setContractBalance(aquaBalance);
+      }
+    } catch (error) {
+      console.error("❌ [STKAqua] Failed to fetch contract balance:", error);
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
+
+
+  // Clear errors when component unmounts
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+      dispatch(clearTransaction());
+    };
+  }, [dispatch]);
+
+  // Add delay-based balance refresh for better sync with backend
+  const updateWalletRecordsWithDelay = async (delayMs: number = 3000) => {
+    // Wait for backend to complete BLUB minting
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+
+    try {
+      const selectedModule =
+        user?.walletName === LOBSTR_ID
+          ? new LobstrModule()
+          : new FreighterModule();
+
+      const kit: StellarWalletsKit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [selectedModule],
+      });
+
+      const { address } = await kit.getAddress();
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(address);
+
+      dispatch(getAccountInfo(address));
+      dispatch(storeAccountBalance(wrappedAccount.balances));
+
+      // Double-check after another short delay to ensure BLUB tokens are visible
+      setTimeout(async () => {
+        try {
+          const freshAccount = await stellarService.loadAccount(address);
+          dispatch(storeAccountBalance(freshAccount.balances));
+        } catch (error) {
+          console.warn("Secondary balance refresh failed:", error);
+        }
+      }, 2000);
+    } catch (error) {
+      console.error("Error updating wallet records:", error);
+      // Fallback to regular update
+      updateWalletRecords();
+    }
   };
 
   const handleSetMaxDeposit = () => {
@@ -125,7 +456,7 @@ function STKAqua() {
 
     if (user?.walletName === walletTypes.LOBSTR) {
       signedTxXdr = await signTransaction(transaction.toXDR());
-    } else if(user?.walletName === walletTypes.FREIGHTER) {
+    } else if (user?.walletName === walletTypes.FREIGHTER) {
       const kit = new StellarWalletsKit({
         network: WalletNetwork.PUBLIC,
         selectedWalletId: FREIGHTER_ID,
@@ -141,10 +472,7 @@ function STKAqua() {
       );
 
       signedTxXdr = signed;
-    }
-    else if(user?.walletName === walletTypes.WALLETCONNECT){
-    
-
+    } else if (user?.walletName === walletTypes.WALLETCONNECT) {
       const { signedTxXdr: signed } = await kit.signTransaction(
         transaction.toXDR(),
         {
@@ -237,24 +565,17 @@ function STKAqua() {
 
       if (user?.walletName === walletTypes.LOBSTR) {
         signedTxXdr = await signTransaction(transactionXDR);
-      } 
+      } else if (user?.walletName === walletTypes.WALLETCONNECT) {
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user?.userWalletAddress || "",
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
 
-      else if(user?.walletName === walletTypes.WALLETCONNECT){
-      
-   
-         const { signedTxXdr: signed } = await kit.signTransaction(
-           transaction.toXDR(),
-           {
-             address: user?.userWalletAddress || "",
-             networkPassphrase: WalletNetwork.PUBLIC,
-           }
-         );
-   
-         signedTxXdr = signed;
-       }
-      
-      
-      else {
+        signedTxXdr = signed;
+      } else {
         const kit: StellarWalletsKit = new StellarWalletsKit({
           network: WalletNetwork.PUBLIC,
           selectedWalletId: FREIGHTER_ID,
@@ -320,22 +641,15 @@ function STKAqua() {
   }, [openDialog]);
 
   useEffect(() => {
-    if (user?.lockedAqua) {
-      updateWalletRecords();
+    if (user?.lockedAqua && user?.userWalletAddress) {
+      // Use the enhanced balance refresh utility for better reliability
+      enhancedBalanceRefresh(user.userWalletAddress, dispatch, 1000, 4000);
       toast.success("Aqua locked successfully!");
       setAquaDepositAmount(0);
       dispatch(lockingAqua(false));
       dispatch(resetStateValues());
     }
-
-    if (user?.lockedAqua) {
-      updateWalletRecords();
-      toast.success("Aqua locked successfully!");
-      setAquaDepositAmount(0);
-      dispatch(lockingAqua(false));
-      dispatch(resetStateValues());
-    }
-  }, [user?.lockedAqua, user?.lockedAqua]);
+  }, [user?.lockedAqua]);
 
   return (
     <div id="reward_section">
@@ -394,7 +708,7 @@ function STKAqua() {
               </div>
             </div>
 
-            <div className="flex items-center bg-[#0E111B]  py-2 space-x-2 mt-2 rounded-[8px]">
+            <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
               <Input
                 placeholder="0 AQUA"
                 className={clsx(
@@ -417,6 +731,58 @@ function STKAqua() {
               </button>
             </div>
 
+            {/* Time-based rewards info */}
+            {useSoroban && (
+              <div className="mt-4 p-3 bg-[#1A1E2E] rounded-[8px]">
+                <div className="flex items-center space-x-2 mb-1">
+                  <InformationCircleIcon className="h-[15px] w-[15px] text-[#00CC99]" />
+                  <div className="text-sm font-medium text-white">
+                    Time-Based Rewards
+                  </div>
+                </div>
+                <div className="text-xs text-[#B1B3B8]">
+                  Your rewards increase the longer you keep your BLUB staked.
+                  Unstake anytime without penalty.
+                </div>
+              </div>
+            )}
+
+            {/* Soroban/Legacy Toggle */}
+            <div className="mt-4 flex items-center justify-between p-3 bg-[#1A1E2E] rounded-[8px]">
+              <div className="flex items-center space-x-2">
+                <div className="text-sm font-medium text-white">
+                  {useSoroban ? "Soroban Staking" : "Legacy Staking"}
+                </div>
+                <div className="relative group">
+                  <InformationCircleIcon
+                    className="h-[15px] w-[15px] text-white cursor-pointer"
+                    onClick={() =>
+                      onDialogOpen(
+                        useSoroban
+                          ? "Soroban staking provides time-based rewards - the longer you stake, the more you earn. You can unstake anytime."
+                          : "Legacy staking uses the original BLUB conversion system without time-based rewards or governance features.",
+                        useSoroban ? "Soroban Staking" : "Legacy Staking"
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              {/* <button
+                className={clsx(
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                  useSoroban ? "bg-[#00CC99]" : "bg-[#3C404D]"
+                )}
+                onClick={() => setUseSoroban(!useSoroban)}
+              >
+                <span
+                  className={clsx(
+                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
+                    useSoroban ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button> */}
+            </div>
+
             <div className="flex items-center text-normal mt-6 space-x-1">
               <div className="font-normal text-[#B1B3B8]">Your balance:</div>
               <div className="font-medium">
@@ -428,12 +794,163 @@ function STKAqua() {
             </div>
 
             <Button
-              className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold cursor-pointer"
-              onClick={handleLockAqua}
-              disabled={user?.lockingAqua}
+              className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={useSoroban ? handleSorobanStake : handleLockAqua}
+              disabled={useSoroban ? staking.isStaking : user?.lockingAqua}
             >
-              Convert & Stake
+              {useSoroban
+                ? staking.isStaking
+                  ? "Staking..."
+                  : "Stake AQUA"
+                : user?.lockingAqua
+                ? "Converting..."
+                : "Convert & Stake"}
             </Button>
+
+            {/* Loading indicator for Soroban operations */}
+            {useSoroban && staking.isStaking && (
+              <div className="flex items-center justify-center mt-3">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#00CC99]"></div>
+                <span className="ml-2 text-sm text-[#B1B3B8]">
+                  Processing transaction...
+                </span>
+              </div>
+            )}
+
+            {/* Display current staking stats for Soroban */}
+            {useSoroban && user.userWalletAddress && (
+              <div className="mt-4 p-3 bg-[#1A1E2E] rounded-[8px]">
+                <div className="text-sm font-medium text-white mb-2 flex items-center justify-between">
+                  <div>
+                    Your Staking Stats
+                    {staking.isLoading && (
+                      <span className="ml-2 text-xs text-[#00CC99]">
+                        (Loading on-chain data...)
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!user.userWalletAddress) return;
+                      await dispatch(
+                        fetchComprehensiveStakingData(user.userWalletAddress)
+                      );
+                      await fetchBlubBalance();
+                      await fetchContractBalance();
+                    }}
+                    className="text-[#00CC99] hover:text-[#00AA77] text-lg"
+                    title="Refresh on-chain data"
+                  >
+                    ⟳
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <div className="text-[#B1B3B8] flex items-center">
+                      <span>Staked BLUB</span>
+                      <span className="ml-1 text-[10px] text-[#00CC99]">
+                        🔒 Staked
+                      </span>
+                    </div>
+                    <div className="text-white font-medium text-base">
+                      {staking.isLoading ? (
+                        <span className="text-[#B1B3B8]">Loading...</span>
+                      ) : (
+                        <span className="text-[#00CC99]">
+                          {staking.userStats?.activeAmount
+                            ? parseFloat(
+                                staking.userStats.activeAmount
+                              ).toFixed(2)
+                            : "0.00"}{" "}
+                          BLUB
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-[#B1B3B8] mt-1">
+                      ⚡ Unstakeable anytime
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8] flex items-center">
+                      <span>BLUB Balance</span>
+                      <span className="ml-1 text-[10px] text-[#4169E1]">
+                        💎 Wallet
+                      </span>
+                    </div>
+                    <div className="text-white font-medium text-base">
+                      {blubBalanceLoading ? (
+                        <span className="text-[#B1B3B8]">Loading...</span>
+                      ) : (
+                        <span className="text-[#4169E1]">
+                          {blubBalance} BLUB
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8] flex items-center">
+                      <span>Unstakeable BLUB</span>
+                      <span className="ml-1 text-[10px] text-[#FFA500]">
+                        🔓 Ready
+                      </span>
+                    </div>
+                    <div className="text-white font-medium">
+                      {staking.isLoading
+                        ? "..."
+                        : staking.userStats?.activeAmount
+                        ? (
+                            parseFloat(staking.userStats.activeAmount || "0") +
+                            parseFloat(
+                              staking.userStats.unstakingAvailable || "0"
+                            )
+                          ).toFixed(2)
+                        : "0.00"}{" "}
+                      BLUB
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8] flex items-center">
+                      <span>Pending Rewards</span>
+                      <span className="ml-1 text-[10px] text-[#FFD700]">
+                        🎁 Earned
+                      </span>
+                    </div>
+                    <div className="text-white font-medium">
+                      {staking.isLoading ? "..." : "0.00"} BLUB
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8]">ICE Balance</div>
+                    <div className="text-white font-medium">
+                      {governance.iceBalance
+                        ? parseFloat(governance.iceBalance).toFixed(2)
+                        : "0.00"}{" "}
+                      ICE
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8]">Voting Power</div>
+                    <div className="text-white font-medium">
+                      {governance.votingPower
+                        ? parseFloat(governance.votingPower).toFixed(2)
+                        : "0.00"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8] flex items-center">
+                      <span>POL Contribution</span>
+                      <span className="ml-1 text-[10px]">💧</span>
+                    </div>
+                    <div className="text-white font-medium">
+                      {staking.polInfo?.totalAqua
+                        ? parseFloat(staking.polInfo.totalAqua).toFixed(2)
+                        : "0.00"}{" "}
+                      AQUA
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div>

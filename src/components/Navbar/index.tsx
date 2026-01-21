@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import {
   fetchingWalletInfo,
+  logOut,
   setConnectingWallet,
   setUserbalances,
   setUserWalletAddress,
@@ -32,95 +33,145 @@ import {
   WALLET_CONNECT_ID,
   WalletConnectAllowedMethods,
   WalletConnectModule,
-} from '@creit.tech/stellar-wallets-kit/modules/walletconnect.module';
+} from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
+import { persistor } from "../../lib/store";
+import { WALLET_NETWORK } from "../../config";
+
 export const kit = new StellarWalletsKit({
   selectedWalletId: WALLET_CONNECT_ID,
-  network: WalletNetwork.PUBLIC,
+  network: WALLET_NETWORK,
   modules: [
     new WalletConnectModule({
-      url: 'app.whalehub.io',
-      projectId: '3dcbb538e6a1ff9db2cdbf0b1c209a9d',
+      url: "app.whalehub.io",
+      projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
       method: WalletConnectAllowedMethods.SIGN,
       description: `A DESCRIPTION TO SHOW USERS`,
-      name: 'Whalehub',
-      icons: ['A LOGO/ICON TO SHOW TO YOUR USERS'],
-      network: WalletNetwork.PUBLIC,
+      name: "Whalehub",
+      icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+      network: WALLET_NETWORK,
     }),
   ],
 });
+
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
-
-
 
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
       try {
         if (user?.connectingWallet) return;
+
+        dispatch(setConnectingWallet(true));
+
         if (walletType === walletTypes.FREIGHTER) {
+          console.log("🌌 [Navbar] Connecting to Freighter wallet");
+
           const kit: StellarWalletsKit = new StellarWalletsKit({
-            network: WalletNetwork.PUBLIC,
+            network: WALLET_NETWORK,
             selectedWalletId: FREIGHTER_ID,
             modules: [new FreighterModule()],
           });
 
           const { address } = await kit.getAddress();
 
+          console.log("📍 [Navbar] Freighter address received:", {
+            address: address,
+            addressLength: address?.length,
+            isValidFormat: address ? /^G[A-Z0-9]{55}$/.test(address) : false,
+            timestamp: new Date().toISOString(),
+          });
+
           await setAllowed();
           await isAllowed();
+
           dispatch(setUserWalletAddress(address));
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(FREIGHTER_ID));
           dispatch(setWalletConnected(true));
           dispatch(walletSelectionAction(false));
         } else if (walletType === walletTypes.WALLETCONNECT) {
-          console.log("started");
-    
+          console.log("🔗 [Navbar] Connecting to WalletConnect");
 
-             await kit.openModal({
-                    onWalletSelected: async (option: ISupportedWallet) => {
-                      kit.setWallet(option.id);
-                      const { address } = await kit.getAddress();
-                      console.log(address);
-                
-                      dispatch(setConnectingWallet(false));
-                      dispatch(setWalletConnectName(WALLET_CONNECT_ID));
-                      dispatch(walletSelectionAction(false));
-                      dispatch(setWalletConnected(true));
-                      // const publicKey = await getPublicKey();
-                      dispatch(setUserWalletAddress(address));
-                    },
-                  });
+          await kit.openModal({
+            onWalletSelected: async (option: ISupportedWallet) => {
+              console.log(
+                "🔗 [Navbar] WalletConnect wallet selected:",
+                option.id
+              );
 
+              kit.setWallet(option.id);
+              const { address } = await kit.getAddress();
 
-      
+              console.log("📍 [Navbar] WalletConnect address received:", {
+                address: address,
+                addressLength: address?.length,
+                isValidFormat: address
+                  ? /^G[A-Z0-9]{55}$/.test(address)
+                  : false,
+                timestamp: new Date().toISOString(),
+              });
 
-
-       
+              dispatch(setConnectingWallet(false));
+              dispatch(setWalletConnectName(WALLET_CONNECT_ID));
+              dispatch(walletSelectionAction(false));
+              dispatch(setWalletConnected(true));
+              dispatch(setUserWalletAddress(address));
+            },
+          });
         } else {
+          console.log("🦞 [Navbar] Connecting LOBSTR wallet");
+
+          const publicKey = await getPublicKey();
+
+          console.log("📍 [Navbar] LOBSTR public key received:", {
+            publicKey: publicKey,
+            keyLength: publicKey?.length,
+            isValidFormat: publicKey
+              ? /^G[A-Z0-9]{55}$/.test(publicKey)
+              : false,
+            timestamp: new Date().toISOString(),
+          });
+
           dispatch(setConnectingWallet(false));
           dispatch(setWalletConnectName(LOBSTR_ID));
           dispatch(walletSelectionAction(false));
           dispatch(setWalletConnected(true));
-          const publicKey = await getPublicKey();
           dispatch(setUserWalletAddress(publicKey));
         }
       } catch (err) {
+        console.error("❌ [Navbar] Wallet connection failed:", {
+          walletType: walletType,
+          error: err,
+          timestamp: new Date().toISOString(),
+        });
+
         dispatch(setWalletConnectName(null));
-      } finally {
+        dispatch(setConnectingWallet(false));
+        dispatch(setWalletConnected(false));
+
+        toast.error("Failed to connect wallet. Please try again.");
       }
     },
     [user?.walletConnected, user?.connectingWallet, dispatch]
   );
 
-  const handleDisconnect = useCallback(() => {
-    dispatch(setUserWalletAddress(null));
-    dispatch(fetchingWalletInfo(false));
-    dispatch(setWalletConnectName(null));
-    dispatch(setUserbalances(null));
+  const handleDisconnect = useCallback(async () => {
+    // Clear all user-related Redux state
+    dispatch(logOut());
+
+    // Clear persisted Redux state from localStorage
+    try {
+      await persistor.purge();
+      localStorage.removeItem("persist:root");
+    } catch (error) {
+      console.error("Error clearing persisted state:", error);
+    }
+
+    // Force a page reload to ensure clean state
+    window.location.reload();
   }, [dispatch]);
 
   const onScrollToRwards = () => {
@@ -164,15 +215,12 @@ const Navbar = () => {
           <div className="fixed w-52 text-right">
             <Menu>
               <MenuButton
-                // onClick={async () => {
-                //   await kit.openModal({
-                //     onWalletSelected: async (option: ISupportedWallet) => {
-                //       kit.setWallet(option.id);
-                //       const { address } = await kit.getAddress();
-                //       // Do something else
-                //     },
-                //   });
-                // }}
+                onClick={(e) => {
+                  if (user?.userWalletAddress && user?.walletConnected) {
+                    e.preventDefault();
+                    handleDisconnect();
+                  }
+                }}
                 className={clsx(
                   `inline-flex items-center gap-2 py-3 px-8 text-sm/6 font-semibold text-white shadow-inner shadow-white/10 focus:outline-none data-[hover]:bg-gray-700 data-[open]:bg-gray-700 data-[focus]:outline-1 data-[focus]:outline-white rounded-lg text-base`,
                   `${
@@ -200,24 +248,25 @@ const Navbar = () => {
                   }`
                 )}
               >
-                {user?.userWalletAddress!=null ? 
-               (<MenuItem>
-                
-                  <button
-                  onClick={handleDisconnect}
-                    className={clsx(
-                      `group flex w-full items-center gap-2 py-4 px-4 data-[focus]:bg-white/10 justify-between border-t border-l border-r border-solid border-[#B1B3B8] text-base text-white font-semibold`
-                    )}
-                  >
-                    Disconnect wallet
-                    <XMarkIcon className="size-6 fill-white/30" />
-                  </button>
-                </MenuItem>) :<div></div>}
+                {user?.userWalletAddress != null ? (
+                  <MenuItem>
+                    <button
+                      onClick={handleDisconnect}
+                      className={clsx(
+                        `group flex w-full items-center gap-2 py-4 px-4 data-[focus]:bg-white/10 justify-between border-t border-l border-r border-solid border-[#B1B3B8] text-base text-white font-semibold`
+                      )}
+                    >
+                      Disconnect wallet
+                      <XMarkIcon className="size-6 fill-white/30" />
+                    </button>
+                  </MenuItem>
+                ) : (
+                  <div></div>
+                )}
 
                 <div className="p-4 border border-solid border-[#B1B3B8]">
-              
                   <div className="my-2">
-                  <MenuItem>
+                    <MenuItem>
                       <button
                         className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
                         onClick={() =>
@@ -239,15 +288,15 @@ const Navbar = () => {
                     </MenuItem>
 
                     <MenuItem>
-                    <button
-                      className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
-                      onClick={() =>
-                        handleWalletConnections(walletTypes.FREIGHTER)
-                      }
-                    >
-                      Freighter wallet
-                    </button>
-                  </MenuItem>
+                      <button
+                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
+                        onClick={() =>
+                          handleWalletConnections(walletTypes.FREIGHTER)
+                        }
+                      >
+                        Freighter wallet
+                      </button>
+                    </MenuItem>
                   </div>
                   <div className="text-xs  font-normal text-[#B1B3B8]">
                     By connecting a wallet, you agree to WhaleHub Terms of

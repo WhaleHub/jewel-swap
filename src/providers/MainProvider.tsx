@@ -32,6 +32,8 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { aquaAssetCode, aquaAssetIssuer } from "../utils/constants";
+import { toast } from "react-toastify";
+import { WALLET_NETWORK, STELLAR_NETWORK } from "../config";
 
 interface MainProviderProps {
   children: ReactNode;
@@ -42,33 +44,273 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
   const user = useSelector((state: RootState) => state.user);
 
   const getWalletInfo = async () => {
-    if (!user?.walletName) return;
+    console.log(
+      "🏁 [MainProvider] Starting getWalletInfo - Current user state:",
+      {
+        walletName: user?.walletName,
+        userWalletAddress: user?.userWalletAddress,
+        walletConnected: user?.walletConnected,
+        fetchingWalletInfo: user?.fetchingWalletInfo,
+      }
+    );
+
+    if (!user?.walletName) {
+      console.warn(
+        "⚠️ [MainProvider] No wallet name found, skipping wallet info fetch"
+      );
+      return;
+    }
+
+    // Add retry counter to prevent infinite loops
+    const maxRetries = 3;
+    const currentRetries = (getWalletInfo as any).retryCount || 0;
+
+    console.log(
+      `🔄 [MainProvider] Wallet info fetch attempt ${
+        currentRetries + 1
+      }/${maxRetries}`
+    );
+
     const stellarService = new StellarService();
 
-    if (user?.walletName === walletTypes.FREIGHTER) {
-      const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: FREIGHTER_ID,
-        modules: [new FreighterModule()],
+    try {
+      if (user?.walletName === walletTypes.FREIGHTER) {
+        console.log("🌌 [MainProvider] Processing FREIGHTER wallet");
+
+        const kit: StellarWalletsKit = new StellarWalletsKit({
+          network: WALLET_NETWORK,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const { address } = await kit.getAddress();
+
+        console.log("📍 [MainProvider] Freighter address retrieved:", {
+          address: address,
+          addressLength: address?.length,
+          isValidFormat: address ? /^G[A-Z0-9]{55}$/.test(address) : false,
+        });
+
+        // Validate address before making API call
+        if (
+          !address ||
+          typeof address !== "string" ||
+          address === "null" ||
+          address === "undefined" ||
+          address.trim().length !== 56 ||
+          !address.startsWith("G")
+        ) {
+          console.warn(
+            "❌ [MainProvider] Invalid address from Freighter wallet:",
+            {
+              address: address,
+              type: typeof address,
+              length: address?.length,
+              startsWithG: address ? /^G[A-Z0-9]{55}$/.test(address) : false,
+            }
+          );
+          dispatch(fetchingWalletInfo(false));
+          toast.error(
+            "Invalid wallet address received. Please reconnect your wallet."
+          );
+          return;
+        }
+
+        const wrappedAccount = await stellarService.loadAccount(address);
+
+        console.log("💰 [MainProvider] Freighter account balances loaded:", {
+          totalBalances: wrappedAccount.balances?.length || 0,
+          balanceDetails: wrappedAccount.balances?.map((b: any) => ({
+            asset_type: b.asset_type,
+            asset_code: b.asset_code || "XLM",
+            balance: b.balance,
+            limit: b.limit,
+          })),
+        });
+
+        dispatch(getAppData());
+        dispatch(setUserbalances(wrappedAccount.balances));
+        dispatch(getAccountInfo(address));
+        dispatch(fetchingWalletInfo(false));
+
+        // Reset retry counter on success
+        (getWalletInfo as any).retryCount = 0;
+      } else if (user?.walletName === walletTypes.LOBSTR) {
+        console.log("🦞 [MainProvider] Processing LOBSTR wallet");
+
+        // Validate user wallet address before proceeding
+        if (
+          !user.userWalletAddress ||
+          typeof user.userWalletAddress !== "string" ||
+          user.userWalletAddress === "null" ||
+          user.userWalletAddress === "undefined" ||
+          user.userWalletAddress.trim().length !== 56 ||
+          !user.userWalletAddress.startsWith("G")
+        ) {
+          console.warn(
+            "❌ [MainProvider] Invalid user wallet address for LOBSTR:",
+            {
+              userWalletAddress: user.userWalletAddress,
+              type: typeof user.userWalletAddress,
+              addressLength: user.userWalletAddress?.length,
+              startsWithG: user.userWalletAddress?.startsWith("G"),
+              isValidFormat: user.userWalletAddress
+                ? /^G[A-Z0-9]{55}$/.test(user.userWalletAddress)
+                : false,
+            }
+          );
+          dispatch(fetchingWalletInfo(false));
+          toast.error(
+            "Invalid wallet address. Please reconnect your LOBSTR wallet."
+          );
+          return;
+        }
+
+        const address = user.userWalletAddress;
+        console.log("📍 [MainProvider] Using LOBSTR address:", {
+          address: address,
+          addressLength: address?.length,
+          isValidFormat: /^G[A-Z0-9]{55}$/.test(address),
+        });
+
+        const wrappedAccount = await stellarService.loadAccount(address);
+
+        console.log("💰 [MainProvider] LOBSTR account balances loaded:", {
+          totalBalances: wrappedAccount.balances?.length || 0,
+          balanceDetails: wrappedAccount.balances?.map((b: any) => ({
+            asset_type: b.asset_type,
+            asset_code: b.asset_code || "XLM",
+            balance: b.balance,
+            limit: b.limit,
+          })),
+        });
+
+        dispatch(getAppData());
+        dispatch(setUserbalances(wrappedAccount.balances));
+        dispatch(getAccountInfo(address));
+        dispatch(fetchingWalletInfo(false));
+        dispatch(getLockedAquaRewardsForAccount(address));
+
+        // Reset retry counter on success
+        (getWalletInfo as any).retryCount = 0;
+      } else if (user?.walletName === walletTypes.WALLETCONNECT) {
+        console.log("🔗 [MainProvider] Processing WALLETCONNECT wallet");
+
+        if (
+          !user.userWalletAddress ||
+          user.userWalletAddress === "null" ||
+          user.userWalletAddress === "undefined"
+        ) {
+          console.warn(
+            "❌ [MainProvider] Invalid user wallet address for WALLETCONNECT:",
+            {
+              userWalletAddress: user.userWalletAddress,
+              addressLength: user.userWalletAddress?.length,
+              isValidFormat: user.userWalletAddress
+                ? /^G[A-Z0-9]{55}$/.test(user.userWalletAddress)
+                : false,
+            }
+          );
+          dispatch(fetchingWalletInfo(false));
+          return;
+        }
+
+        const address = user.userWalletAddress;
+        console.log("📍 [MainProvider] Using WALLETCONNECT address:", {
+          address: address,
+          addressLength: address?.length,
+          isValidFormat: /^G[A-Z0-9]{55}$/.test(address),
+        });
+
+        const wrappedAccount = await stellarService.loadAccount(address);
+
+        console.log(
+          "💰 [MainProvider] WALLETCONNECT account balances loaded:",
+          {
+            totalBalances: wrappedAccount.balances?.length || 0,
+            balanceDetails: wrappedAccount.balances?.map((b: any) => ({
+              asset_type: b.asset_type,
+              asset_code: b.asset_code || "XLM",
+              balance: b.balance,
+              limit: b.limit,
+            })),
+          }
+        );
+
+        dispatch(getAppData());
+        dispatch(setUserbalances(wrappedAccount.balances));
+        dispatch(getAccountInfo(address));
+        dispatch(fetchingWalletInfo(false));
+        dispatch(getLockedAquaRewardsForAccount(address));
+
+        // Reset retry counter on success
+        (getWalletInfo as any).retryCount = 0;
+      }
+
+      console.log("✅ [MainProvider] Wallet info fetched successfully");
+    } catch (error) {
+      console.error("❌ [MainProvider] Error fetching wallet info:", {
+        error: error,
+        errorMessage: (error as Error)?.message,
+        walletName: user?.walletName,
+        userWalletAddress: user?.userWalletAddress,
+        attempt: currentRetries + 1,
       });
-      const { address } = await kit.getAddress();
-      const wrappedAccount = await stellarService.loadAccount(address);
-      console.log(wrappedAccount.balances);
-
-      dispatch(getAppData());
-      dispatch(setUserbalances(wrappedAccount.balances));
-      dispatch(getAccountInfo(address));
       dispatch(fetchingWalletInfo(false));
-      // dispatch(getLockedAquaRewardsForAccount(address));
-    } else if (user?.walletName === walletTypes.LOBSTR) {
-      const address = `${user.userWalletAddress}`;
-      const wrappedAccount = await stellarService.loadAccount(address);
 
-      dispatch(getAppData());
+      // Only retry if we haven't exceeded max retries and have valid wallet info
+      if (
+        currentRetries < maxRetries &&
+        user?.walletName &&
+        (user?.walletName === walletTypes.FREIGHTER ||
+          (user?.walletName === walletTypes.LOBSTR &&
+            user?.userWalletAddress &&
+            user.userWalletAddress !== "null") ||
+          (user?.walletName === walletTypes.WALLETCONNECT &&
+            user?.userWalletAddress &&
+            user.userWalletAddress !== "null"))
+      ) {
+        (getWalletInfo as any).retryCount = currentRetries + 1;
+        console.log(
+          `🔄 [MainProvider] Retrying wallet info fetch... (${
+            currentRetries + 1
+          }/${maxRetries})`
+        );
+
+        setTimeout(() => {
+          getWalletInfo();
+        }, 2000);
+      } else {
+        console.warn(
+          "⛔ [MainProvider] Max retries reached or invalid wallet info, stopping retry attempts"
+        );
+        (getWalletInfo as any).retryCount = 0;
+
+        // Show error to user if wallet connection is expected but failed
+        if (user?.walletConnected || user?.userWalletAddress) {
+          toast.error(
+            "Failed to load wallet information. Please try reconnecting your wallet."
+          );
+        }
+      }
+    }
+  };
+
+  // Enhanced wallet refresh function for manual refresh
+  const refreshWalletInfo = async () => {
+    if (!user?.walletName || !user?.userWalletAddress) return;
+
+    try {
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(
+        user.userWalletAddress
+      );
+
       dispatch(setUserbalances(wrappedAccount.balances));
-      dispatch(getAccountInfo(address));
-      dispatch(fetchingWalletInfo(false));
-      dispatch(getLockedAquaRewardsForAccount(address));
+      dispatch(getAccountInfo(user.userWalletAddress));
+
+      console.log("Wallet info refreshed successfully");
+    } catch (error) {
+      console.error("Error refreshing wallet info:", error);
     }
   };
 
@@ -80,20 +322,45 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
   const getAddress = async () => {
     try {
       if (walletTypes.FREIGHTER === user?.walletName) {
-        if (user?.walletName) return;
+        if (user?.userWalletAddress) return; // Already have address
         const kit: StellarWalletsKit = new StellarWalletsKit({
-          network: WalletNetwork.PUBLIC,
+          network: WALLET_NETWORK,
           selectedWalletId: FREIGHTER_ID,
           modules: [new FreighterModule()],
         });
         const { address } = await kit.getAddress();
-        dispatch(setUserWalletAddress(address));
+
+        // Validate address before setting it
+        if (
+          address &&
+          address !== "null" &&
+          address !== "undefined" &&
+          address.trim() !== ""
+        ) {
+          dispatch(setUserWalletAddress(address));
+          console.log("Freighter address set:", address);
+        } else {
+          console.warn("Invalid address received from Freighter:", address);
+        }
       } else if (walletTypes.LOBSTR === user?.walletName) {
-        if (user?.walletName) return;
+        if (user?.userWalletAddress) return; // Already have address
         const publicKey = await getPublicKey();
-        dispatch(setUserWalletAddress(publicKey));
+
+        // Validate public key before setting it
+        if (
+          publicKey &&
+          publicKey !== "null" &&
+          publicKey !== "undefined" &&
+          publicKey.trim() !== ""
+        ) {
+          dispatch(setUserWalletAddress(publicKey));
+          console.log("LOBSTR address set:", publicKey);
+        } else {
+          console.warn("Invalid public key received from LOBSTR:", publicKey);
+        }
       }
     } catch (err) {
+      console.error("Error getting wallet address:", err);
       dispatch(setWalletConnectName(null));
     }
   };
@@ -111,7 +378,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
     // Build transaction
     const transactionBuilder = new TransactionBuilder(senderAccount, {
       fee: BASE_FEE,
-      networkPassphrase: Networks.PUBLIC,
+      networkPassphrase: STELLAR_NETWORK,
     });
 
     // Add trustline operation
@@ -141,7 +408,7 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
         transaction.toXDR(),
         {
           address: user?.userWalletAddress || "",
-          networkPassphrase: WalletNetwork.PUBLIC,
+          networkPassphrase: WALLET_NETWORK,
         }
       );
 
@@ -158,9 +425,9 @@ function MainProvider({ children }: MainProviderProps): JSX.Element {
   };
 
   useEffect(() => {
-    if (user?.walletConnected || user?.userWalletAddress) {
+    if (user?.walletConnected && user?.userWalletAddress) {
+      console.log("🔄 [MainProvider] Wallet connected, fetching wallet info");
       getAddress();
-      dispatch(setWalletConnected(false));
       getWalletInfo();
       // handleAddTrustline();
     }

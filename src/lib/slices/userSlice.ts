@@ -16,7 +16,11 @@ export interface User {
   walletSelectionOpen: boolean;
   userWalletAddress: string | null;
   connectingWallet: boolean;
-  walletName: typeof LOBSTR_ID | typeof FREIGHTER_ID | typeof WALLET_CONNECT_ID | null;
+  walletName:
+    | typeof LOBSTR_ID
+    | typeof FREIGHTER_ID
+    | typeof WALLET_CONNECT_ID
+    | null;
   fetchingWalletInfo: boolean;
   lockingAqua: boolean;
   unStakingAqua: boolean;
@@ -29,7 +33,27 @@ export interface User {
   userLockedRewardsAmount: number;
 }
 
-const initialState = {} as User;
+const initialState: User = {
+  userRecords: {
+    balances: null,
+    account: null,
+  },
+  walletConnected: false,
+  walletSelectionOpen: false,
+  userWalletAddress: null,
+  connectingWallet: false,
+  walletName: null,
+  fetchingWalletInfo: false,
+  lockingAqua: false,
+  unStakingAqua: false,
+  restaking: false,
+  restaked: false,
+  providingLp: false,
+  providedLp: false,
+  lockedAqua: false,
+  unStakedAqua: false,
+  userLockedRewardsAmount: 0,
+};
 
 export const mint = createAsyncThunk(
   "lock/stake",
@@ -44,16 +68,89 @@ export const mint = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const { data } = await axios.post(`${BACKEND_API}/token/lock`, values);
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+      // Convert amount to number and validate
+      const numericAmount = parseFloat(values.amount);
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      // Validate amount is a valid number and meets minimum requirement
+      if (isNaN(numericAmount) || numericAmount < 0.0000001) {
+        console.error("❌ [userSlice] Invalid amount:", values.amount);
+        return rejectWithValue(
+          "Amount must be a valid number and at least 0.0000001"
+        );
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      // Validate required fields
+      if (
+        !values.assetCode ||
+        !values.assetIssuer ||
+        !values.signedTxXdr ||
+        !values.senderPublicKey
+      ) {
+        console.error("❌ [userSlice] Missing required fields:", values);
+        return rejectWithValue("All fields are required");
+      }
+
+      const requestData = {
+        assetCode: values.assetCode.trim(),
+        assetIssuer: values.assetIssuer.trim(),
+        amount: numericAmount, // Send as number, not string
+        signedTxXdr: values.signedTxXdr.trim(),
+        senderPublicKey: values.senderPublicKey.trim(),
+        // Do not send treasuryAmount - let backend calculate it
+      };
+
+      console.log(
+        "ℹ️ [userSlice] Backend disabled - skipping mint API call:",
+        requestData
+      );
+
+      // Return success without backend call
+      return {
+        success: true,
+        message: "Transaction submitted (backend disabled)",
+        data: requestData,
+      };
+    } catch (error: any) {
+      console.error("❌ [userSlice] Mint request failed:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        requestData: values,
+      });
+
+      // Handle axios errors which have a different structure than CustomError
+      if (error.response) {
+        const { status, data } = error.response;
+
+        // Handle validation errors (400)
+        if (status === 400) {
+          const errorMessage =
+            data?.message || data?.error?.message || "Validation failed";
+          console.error("❌ [userSlice] Validation error:", errorMessage);
+          return rejectWithValue(errorMessage);
+        }
+
+        // Handle service unavailable (503)
+        if (status === 503) {
+          const errorMessage =
+            data?.message ||
+            "Service temporarily unavailable. Please try again later.";
+          console.error("❌ [userSlice] Service error:", errorMessage);
+          return rejectWithValue(errorMessage);
+        }
+
+        // Handle other HTTP errors
+        const errorMessage =
+          data?.message ||
+          data?.error?.message ||
+          `Request failed with status ${status}`;
+        return rejectWithValue(errorMessage);
+      }
+
+      // Handle network/other errors
+      const errorMessage =
+        error.message ||
+        "Network error occurred. Please check your connection and try again.";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -61,23 +158,97 @@ export const mint = createAsyncThunk(
 export const unStakeAqua = createAsyncThunk(
   "lock/unlock-aqua",
   async (
-    values: { senderPublicKey: string; amountToUnstake: number },
+    values: {
+      senderPublicKey: string;
+      amountToUnstake: number;
+      signedTxXdr: string;
+    },
     { rejectWithValue }
   ) => {
     try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/unlock-aqua`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      // Validate amount
+      if (isNaN(values.amountToUnstake) || values.amountToUnstake <= 0) {
+        console.error(
+          "❌ [userSlice] Invalid unstake amount:",
+          values.amountToUnstake
+        );
+        return rejectWithValue(
+          "Amount to unstake must be a valid positive number"
+        );
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      // Validate required fields
+      if (!values.senderPublicKey || !values.signedTxXdr) {
+        console.error(
+          "❌ [userSlice] Missing required fields for unStakeAqua:",
+          values
+        );
+        return rejectWithValue(
+          "Sender public key and signed transaction are required"
+        );
+      }
+
+      // Validate signed transaction XDR length (basic validation)
+      if (values.signedTxXdr.trim().length < 10) {
+        console.error(
+          "❌ [userSlice] Invalid signed transaction XDR:",
+          values.signedTxXdr
+        );
+        return rejectWithValue("Signed transaction XDR appears to be invalid");
+      }
+
+      const requestData = {
+        senderPublicKey: values.senderPublicKey.trim(),
+        amountToUnstake: values.amountToUnstake, // Already a number
+        signedTxXdr: values.signedTxXdr.trim(),
+      };
+
+      console.log(
+        "ℹ️ [userSlice] Backend disabled - skipping unStakeAqua API call:",
+        requestData
+      );
+
+      // Return success without backend call
+      return {
+        success: true,
+        message: "Transaction submitted (backend disabled)",
+        data: requestData,
+      };
+    } catch (error: any) {
+      console.error("❌ [userSlice] UnStakeAqua request failed:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        requestData: values,
+      });
+
+      // Handle axios errors properly
+      if (error.response) {
+        const { status, data } = error.response;
+
+        // Handle validation errors (400)
+        if (status === 400) {
+          const errorMessage =
+            data?.message || data?.error?.message || "Validation failed";
+          console.error(
+            "❌ [userSlice] UnStakeAqua validation error:",
+            errorMessage
+          );
+          return rejectWithValue(errorMessage);
+        }
+
+        // Handle other HTTP errors
+        const errorMessage =
+          data?.message ||
+          data?.error?.message ||
+          `Request failed with status ${status}`;
+        return rejectWithValue(errorMessage);
+      }
+
+      // Handle network/other errors
+      const errorMessage =
+        error.message ||
+        "Network error occurred. Please check your connection and try again.";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -95,19 +266,82 @@ export const restakeBlub = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/restake-blub`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+      // Validate and convert amount to number
+      const numericAmount = parseFloat(values.amount);
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      if (isNaN(numericAmount) || numericAmount <= 0) {
+        console.error("❌ [userSlice] Invalid restake amount:", values.amount);
+        return rejectWithValue("Amount must be a valid positive number");
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      // Validate required fields
+      if (!values.signedTxXdr || !values.senderPublicKey) {
+        console.error(
+          "❌ [userSlice] Missing required fields for restakeBlub:",
+          values
+        );
+        return rejectWithValue(
+          "Sender public key and signed transaction are required"
+        );
+      }
+
+      // Backend only expects: senderPublicKey, amount (number), signedTxXdr
+      // assetCode and assetIssuer are optional per the DTO
+      const requestData = {
+        senderPublicKey: values.senderPublicKey.trim(),
+        amount: numericAmount, // Send as number
+        signedTxXdr: values.signedTxXdr.trim(),
+        // Include optional fields if provided (for compatibility)
+        ...(values.assetCode && { assetCode: values.assetCode.trim() }),
+        ...(values.assetIssuer && { assetIssuer: values.assetIssuer.trim() }),
+      };
+
+      console.log(
+        "ℹ️ [userSlice] Backend disabled - skipping restakeBlub API call:",
+        requestData
+      );
+
+      // Return success without backend call
+      return {
+        success: true,
+        message: "Transaction submitted (backend disabled)",
+        data: requestData,
+      };
+    } catch (error: any) {
+      console.error("❌ [userSlice] RestakeBlub request failed:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        requestData: values,
+      });
+
+      // Handle axios errors properly
+      if (error.response) {
+        const { status, data } = error.response;
+
+        // Handle validation errors (400)
+        if (status === 400) {
+          const errorMessage =
+            data?.message || data?.error?.message || "Validation failed";
+          console.error(
+            "❌ [userSlice] RestakeBlub validation error:",
+            errorMessage
+          );
+          return rejectWithValue(errorMessage);
+        }
+
+        // Handle other HTTP errors
+        const errorMessage =
+          data?.message ||
+          data?.error?.message ||
+          `Request failed with status ${status}`;
+        return rejectWithValue(errorMessage);
+      }
+
+      // Handle network/other errors
+      const errorMessage =
+        error.message ||
+        "Network error occurred. Please check your connection and try again.";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -116,18 +350,59 @@ export const getAccountInfo = createAsyncThunk(
   "user/info",
   async (account: string, { rejectWithValue }) => {
     try {
-      const { data } = await axios.get(
-        `${BACKEND_API}/token/user?userPublicKey=${account}`
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
-
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      // Validate account address format
+      if (!account || typeof account !== "string") {
+        console.error("❌ [userSlice] Invalid account parameter:", account);
+        return rejectWithValue("Invalid account address provided");
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      const trimmedAccount = account.trim();
+      if (trimmedAccount.length !== 56 || !trimmedAccount.startsWith("G")) {
+        console.error("❌ [userSlice] Invalid account format:", {
+          account: trimmedAccount,
+          length: trimmedAccount.length,
+          startsWithG: trimmedAccount.startsWith("G"),
+        });
+        return rejectWithValue("Invalid Stellar account address format");
+      }
+
+      console.log(
+        "ℹ️ [userSlice] Backend disabled - returning empty account data for:",
+        trimmedAccount
+      );
+
+      const emptyData = {
+        id: "",
+        account: trimmedAccount,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        claimableRecords: [],
+        pools: [],
+        stakes: [],
+        treasuryDeposits: [],
+        lpBalances: [],
+      };
+
+      return emptyData;
+    } catch (error: any) {
+      console.error("❌ [userSlice] Error in getAccountInfo:", {
+        account: account,
+        error: error,
+        errorMessage: error?.message,
+      });
+
+      // Return empty data instead of throwing
+      return {
+        id: "",
+        account: account,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        claimableRecords: [],
+        pools: [],
+        stakes: [],
+        treasuryDeposits: [],
+        lpBalances: [],
+      };
     }
   }
 );
@@ -136,8 +411,23 @@ export const storeAccountBalance = createAsyncThunk(
   "user/record",
   async (values: any[], { rejectWithValue }) => {
     try {
+      console.log("💾 [userSlice] Storing account balances:", {
+        balanceCount: values?.length || 0,
+        balances: values?.map((balance: any) => ({
+          asset_type: balance.asset_type,
+          asset_code: balance.asset_code || "XLM",
+          balance: balance.balance,
+          limit: balance.limit,
+          buying_liabilities: balance.buying_liabilities,
+          selling_liabilities: balance.selling_liabilities,
+          asset_issuer: balance.asset_issuer,
+        })),
+        timestamp: new Date().toISOString(),
+      });
+
       return values;
     } catch (error: any) {
+      console.error("❌ [userSlice] Error storing account balances:", error);
       const customError: CustomError = error;
 
       if (customError.response && customError.response.data.error.message) {
@@ -152,21 +442,17 @@ export const storeAccountBalance = createAsyncThunk(
 export const addLP = createAsyncThunk(
   "lock/mint",
   async (values: TransactionData, { rejectWithValue }) => {
-    try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/add-liquidity`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+    console.log(
+      "ℹ️ [userSlice] Backend disabled - skipping addLP API call:",
+      values
+    );
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Return success without backend call
+    return {
+      success: true,
+      message: "Transaction submitted (backend disabled)",
+      data: values,
+    };
   }
 );
 
@@ -190,19 +476,99 @@ export const provideLiquidity = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/add-liquidity`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+      // Validate and convert amounts to numbers
+      const amount1 = parseFloat(values.asset1.amount);
+      const amount2 = parseFloat(values.asset2.amount);
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
+      if (isNaN(amount1) || amount1 < 1) {
+        console.error(
+          "❌ [userSlice] Invalid asset1 amount:",
+          values.asset1.amount
+        );
+        return rejectWithValue("Asset 1 amount must be at least 1");
       }
 
-      throw new Error(customError.message || "An unknown error occurred");
+      if (isNaN(amount2) || amount2 < 1) {
+        console.error(
+          "❌ [userSlice] Invalid asset2 amount:",
+          values.asset2.amount
+        );
+        return rejectWithValue("Asset 2 amount must be at least 1");
+      }
+
+      // Validate required fields
+      if (!values.signedTxXdr || !values.senderPublicKey) {
+        console.error(
+          "❌ [userSlice] Missing required fields for provideLiquidity:",
+          values
+        );
+        return rejectWithValue(
+          "Sender public key and signed transaction are required"
+        );
+      }
+
+      // Format data to match CreateAddLiquidityDto structure
+      const requestData = {
+        asset1: {
+          code: values.asset1.code.trim(),
+          issuer: values.asset1.issuer?.trim() || undefined, // Handle native assets with empty string
+          amount: amount1, // Send as number
+        },
+        asset2: {
+          code: values.asset2.code.trim(),
+          issuer: values.asset2.issuer?.trim() || undefined, // Handle native assets with empty string
+          amount: amount2, // Send as number
+        },
+        signedTxXdr: values.signedTxXdr.trim(),
+        senderPublicKey: values.senderPublicKey.trim(),
+      };
+
+      console.log(
+        "ℹ️ [userSlice] Backend disabled - skipping provideLiquidity API call:",
+        requestData
+      );
+
+      // Return success without backend call
+      return {
+        success: true,
+        message: "Transaction submitted (backend disabled)",
+        data: requestData,
+      };
+    } catch (error: any) {
+      console.error("❌ [userSlice] ProvideLiquidity request failed:", {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        requestData: values,
+      });
+
+      // Handle axios errors properly
+      if (error.response) {
+        const { status, data } = error.response;
+
+        // Handle validation errors (400)
+        if (status === 400) {
+          const errorMessage =
+            data?.message || data?.error?.message || "Validation failed";
+          console.error(
+            "❌ [userSlice] ProvideLiquidity validation error:",
+            errorMessage
+          );
+          return rejectWithValue(errorMessage);
+        }
+
+        // Handle other HTTP errors
+        const errorMessage =
+          data?.message ||
+          data?.error?.message ||
+          `Request failed with status ${status}`;
+        return rejectWithValue(errorMessage);
+      }
+
+      // Handle network/other errors
+      const errorMessage =
+        error.message ||
+        "Network error occurred. Please check your connection and try again.";
+      return rejectWithValue(errorMessage);
     }
   }
 );
@@ -217,21 +583,17 @@ export const withdrawLP = createAsyncThunk(
     },
     { rejectWithValue }
   ) => {
-    try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/remove-liquidity`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+    console.log(
+      "ℹ️ [userSlice] Backend disabled - skipping removeLiquidity API call:",
+      values
+    );
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Return success without backend call
+    return {
+      success: true,
+      message: "Transaction submitted (backend disabled)",
+      data: values,
+    };
   }
 );
 
@@ -245,41 +607,34 @@ export const redeemLPReward = createAsyncThunk(
     },
     { rejectWithValue }
   ) => {
-    try {
-      const { data } = await axios.post(
-        `${BACKEND_API}/token/redeem-reward`,
-        values
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+    console.log(
+      "ℹ️ [userSlice] Backend disabled - skipping redeemLPReward API call:",
+      values
+    );
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Return success without backend call
+    return {
+      success: true,
+      message: "Transaction submitted (backend disabled)",
+      data: values,
+    };
   }
 );
 
 export const getLockedAquaRewardsForAccount = createAsyncThunk(
   "user/lockedAquaRewards",
   async (account: string | undefined, { rejectWithValue }) => {
-    try {
-      const { data } = await axios.get(
-        `${BACKEND_API}/token/getLockedReward?userPublicKey=${account}`
-      );
-      return data;
-    } catch (error: any) {
-      const customError: CustomError = error;
+    console.log(
+      "ℹ️ [userSlice] Backend disabled - skipping getLockedAquaRewards API call for:",
+      account
+    );
 
-      if (customError.response && customError.response.data.error.message) {
-        return rejectWithValue(customError.response.data.error.message);
-      }
-
-      throw new Error(customError.message || "An unknown error occurred");
-    }
+    // Return empty data without backend call
+    return {
+      lockedRewards: 0,
+      lockedAquaRewardEstimation: 0,
+      data: [],
+    };
   }
 );
 
@@ -336,13 +691,27 @@ export const userSlice = createSlice({
       ...state,
       walletConnected: payload,
     }),
-    setUserbalances: (state, { payload }) => ({
-      ...state,
-      userRecords: {
-        ...state.userRecords,
-        balances: payload,
-      },
-    }),
+    setUserbalances: (state, { payload }) => {
+      console.log("💾 [userSlice] setUserbalances reducer called:", {
+        payloadCount: payload?.length || 0,
+        payload: payload?.map((balance: any) => ({
+          asset_type: balance.asset_type,
+          asset_code: balance.asset_code || "XLM",
+          balance: balance.balance,
+          limit: balance.limit,
+        })),
+        existingBalances: state.userRecords?.balances?.length || 0,
+        timestamp: new Date().toISOString(),
+      });
+
+      return {
+        ...state,
+        userRecords: {
+          ...state.userRecords,
+          balances: payload,
+        },
+      };
+    },
     logOut: (state) => ({
       ...state,
       userRecords: { balances: null, account: null },
@@ -353,6 +722,14 @@ export const userSlice = createSlice({
       walletName: null,
       fetchingWalletInfo: false,
       lockingAqua: false,
+      unStakingAqua: false,
+      restaking: false,
+      restaked: false,
+      providingLp: false,
+      providedLp: false,
+      lockedAqua: false,
+      unStakedAqua: false,
+      userLockedRewardsAmount: 0,
     }),
   },
   extraReducers(builder) {
@@ -366,8 +743,9 @@ export const userSlice = createSlice({
       state.lockingAqua = false;
     });
 
-    builder.addCase(mint.rejected, (state) => {
+    builder.addCase(mint.rejected, (state, action) => {
       state.lockingAqua = false;
+      console.error("❌ [userSlice] Mint operation rejected:", action.payload);
     });
 
     //unlock
@@ -381,8 +759,12 @@ export const userSlice = createSlice({
       state.userLockedRewardsAmount = 0;
     });
 
-    builder.addCase(unStakeAqua.rejected, (state) => {
+    builder.addCase(unStakeAqua.rejected, (state, action) => {
       state.unStakingAqua = false;
+      console.error(
+        "❌ [userSlice] UnStake operation rejected:",
+        action.payload
+      );
     });
 
     //restake
@@ -395,8 +777,12 @@ export const userSlice = createSlice({
       state.restaking = false;
     });
 
-    builder.addCase(restakeBlub.rejected, (state) => {
+    builder.addCase(restakeBlub.rejected, (state, action) => {
       state.restaking = false;
+      console.error(
+        "❌ [userSlice] Restake operation rejected:",
+        action.payload
+      );
     });
 
     //provide lp
