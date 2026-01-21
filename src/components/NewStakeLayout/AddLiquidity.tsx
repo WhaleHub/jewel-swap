@@ -54,6 +54,11 @@ function AddLiquidity() {
   const [balanceB, setBalanceB] = useState<string>("0");
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
 
+  // Pool reserves for withdrawal estimates
+  const [reserveA, setReserveA] = useState<string>("0");
+  const [reserveB, setReserveB] = useState<string>("0");
+  const [totalLpSupply, setTotalLpSupply] = useState<string>("0");
+
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
 
   const [dialogMsg, setDialogMsg] = useState<string>("");
@@ -70,11 +75,14 @@ function AddLiquidity() {
     loadPools();
   }, []);
 
-  // Load user positions and balances when pool selected or user changes
+  // Load user positions, balances, and reserves when pool selected or user changes
   useEffect(() => {
-    if (selectedPool && user?.userWalletAddress) {
-      loadUserPosition(selectedPool.pool_id);
-      loadBalances(selectedPool);
+    if (selectedPool) {
+      loadPoolReserves(selectedPool);
+      if (user?.userWalletAddress) {
+        loadUserPosition(selectedPool.pool_id);
+        loadBalances(selectedPool);
+      }
     }
   }, [selectedPool, user?.userWalletAddress]);
 
@@ -145,6 +153,46 @@ function AddLiquidity() {
     } finally {
       setIsLoadingBalances(false);
     }
+  };
+
+  const loadPoolReserves = async (pool: PoolInfo) => {
+    try {
+      const data = await vaultService.getPoolReserves(pool.pool_address, pool.share_token);
+      setReserveA(data.reserveA);
+      setReserveB(data.reserveB);
+      setTotalLpSupply(data.totalLpSupply);
+    } catch (error) {
+      console.error("Failed to load pool reserves:", error);
+      setReserveA("0");
+      setReserveB("0");
+      setTotalLpSupply("0");
+    }
+  };
+
+  // Calculate estimated withdrawal amounts
+  const getEstimatedWithdrawAmounts = () => {
+    if (!userPosition || !selectedPool) {
+      return { estimatedA: "0.00", estimatedB: "0.00" };
+    }
+
+    const userLp = parseFloat(userPosition.user_lp_amount || "0");
+    const poolTotalLp = parseFloat(totalLpSupply);
+    const resA = parseFloat(reserveA);
+    const resB = parseFloat(reserveB);
+
+    if (poolTotalLp <= 0 || userLp <= 0) {
+      return { estimatedA: "0.00", estimatedB: "0.00" };
+    }
+
+    // User's share of the entire Aquarius pool
+    const userShareOfPool = userLp / poolTotalLp;
+    // Apply withdrawal percentage
+    const withdrawShare = (withdrawPercent / 100) * userShareOfPool;
+
+    const estimatedA = (withdrawShare * resA).toFixed(4);
+    const estimatedB = (withdrawShare * resB).toFixed(4);
+
+    return { estimatedA, estimatedB };
   };
 
   const handleDeposit = async () => {
@@ -528,11 +576,11 @@ function AddLiquidity() {
                   <div className="space-y-1">
                     <div className="flex justify-between text-white">
                       <span>{selectedPool.token_a_code}:</span>
-                      <span>~0.00</span>
+                      <span>~{getEstimatedWithdrawAmounts().estimatedA}</span>
                     </div>
                     <div className="flex justify-between text-white">
                       <span>{selectedPool.token_b_code}:</span>
-                      <span>~0.00</span>
+                      <span>~{getEstimatedWithdrawAmounts().estimatedB}</span>
                     </div>
                   </div>
                 </div>
