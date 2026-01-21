@@ -49,6 +49,11 @@ function AddLiquidity() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [isLoadingPools, setIsLoadingPools] = useState(true);
 
+  // Token balances
+  const [balanceA, setBalanceA] = useState<string>("0");
+  const [balanceB, setBalanceB] = useState<string>("0");
+  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
+
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
 
   const [dialogMsg, setDialogMsg] = useState<string>("");
@@ -65,10 +70,11 @@ function AddLiquidity() {
     loadPools();
   }, []);
 
-  // Load user positions when pool selected or user changes
+  // Load user positions and balances when pool selected or user changes
   useEffect(() => {
     if (selectedPool && user?.userWalletAddress) {
       loadUserPosition(selectedPool.pool_id);
+      loadBalances(selectedPool);
     }
   }, [selectedPool, user?.userWalletAddress]);
 
@@ -117,6 +123,30 @@ function AddLiquidity() {
     }
   };
 
+  const loadBalances = async (pool: PoolInfo) => {
+    if (!user?.userWalletAddress) {
+      setBalanceA("0");
+      setBalanceB("0");
+      return;
+    }
+
+    setIsLoadingBalances(true);
+    try {
+      const [balA, balB] = await Promise.all([
+        vaultService.getTokenBalance(pool.token_a, user.userWalletAddress),
+        vaultService.getTokenBalance(pool.token_b, user.userWalletAddress),
+      ]);
+      setBalanceA(balA);
+      setBalanceB(balB);
+    } catch (error) {
+      console.error("Failed to load balances:", error);
+      setBalanceA("0");
+      setBalanceB("0");
+    } finally {
+      setIsLoadingBalances(false);
+    }
+  };
+
   const handleDeposit = async () => {
     if (!selectedPool) {
       return toast.warn("Please select a pool");
@@ -145,6 +175,22 @@ function AddLiquidity() {
       );
     }
 
+    // Balance validation
+    const balA = parseFloat(balanceA);
+    const balB = parseFloat(balanceB);
+
+    if (amount1 > balA) {
+      return toast.warn(
+        `Insufficient ${selectedPool.token_a_code} balance. You have ${balA.toFixed(4)}`
+      );
+    }
+
+    if (amount2 > balB) {
+      return toast.warn(
+        `Insufficient ${selectedPool.token_b_code} balance. You have ${balB.toFixed(4)}`
+      );
+    }
+
     setIsDepositing(true);
 
     try {
@@ -162,6 +208,7 @@ function AddLiquidity() {
         setDepositAmount1("");
         setDepositAmount2("");
         await loadUserPosition(selectedPool.pool_id);
+        await loadBalances(selectedPool);
       } else {
         toast.error(result.error || "Deposit failed");
       }
@@ -210,6 +257,7 @@ function AddLiquidity() {
         toast.success("Withdrawal successful!");
         setWithdrawPercent(100);
         await loadUserPosition(selectedPool.pool_id);
+        await loadBalances(selectedPool);
       } else {
         toast.error(result.error || "Withdrawal failed");
       }
@@ -290,24 +338,10 @@ function AddLiquidity() {
 
         {/* Pool Info Display */}
         {selectedPool && (
-          <div className="mt-4 flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <img
-                src={selectedPool.token_a_logo}
-                alt={selectedPool.token_a_code}
-                className="w-8 h-8 rounded-full"
-              />
-              <span className="text-lg">{selectedPool.token_a_code}</span>
-            </div>
+          <div className="mt-4 flex items-center space-x-2">
+            <span className="text-lg">{selectedPool.token_a_code}</span>
             <span className="text-[#B1B3B8]">/</span>
-            <div className="flex items-center space-x-2">
-              <img
-                src={selectedPool.token_b_logo}
-                alt={selectedPool.token_b_code}
-                className="w-8 h-8 rounded-full"
-              />
-              <span className="text-lg">{selectedPool.token_b_code}</span>
-            </div>
+            <span className="text-lg">{selectedPool.token_b_code}</span>
           </div>
         )}
 
@@ -376,13 +410,18 @@ function AddLiquidity() {
                   )}
                   onChange={(e) => setDepositAmount1(e.target.value)}
                 />
-                <button className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]">
+                <button
+                  className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]"
+                  onClick={() => setDepositAmount1(balanceA)}
+                >
                   Max
                 </button>
               </div>
               <div className="flex items-center text-sm mt-1 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">Balance:</div>
-                <div className="font-medium">0 {selectedPool.token_a_code}</div>
+                <div className="font-medium">
+                  {isLoadingBalances ? "..." : parseFloat(balanceA).toFixed(4)} {selectedPool.token_a_code}
+                </div>
               </div>
             </div>
 
@@ -402,13 +441,18 @@ function AddLiquidity() {
                   )}
                   onChange={(e) => setDepositAmount2(e.target.value)}
                 />
-                <button className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]">
+                <button
+                  className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]"
+                  onClick={() => setDepositAmount2(balanceB)}
+                >
                   Max
                 </button>
               </div>
               <div className="flex items-center text-sm mt-1 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">Balance:</div>
-                <div className="font-medium">0 {selectedPool.token_b_code}</div>
+                <div className="font-medium">
+                  {isLoadingBalances ? "..." : parseFloat(balanceB).toFixed(4)} {selectedPool.token_b_code}
+                </div>
               </div>
             </div>
 

@@ -398,7 +398,9 @@ export class SorobanVaultService {
 
       if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
         const result = simulated.result?.retval;
-        return result ? scValToNative(result) : "UNKNOWN";
+        const symbol = result ? scValToNative(result) : "UNKNOWN";
+        // Convert "native" to "XLM" for display
+        return symbol === "native" ? "XLM" : symbol;
       }
 
       return "UNKNOWN";
@@ -418,5 +420,39 @@ export class SorobanVaultService {
     };
 
     return tokenLogos[tokenCode] || "/assets/images/default-token.png";
+  }
+
+  /**
+   * Get token balance for a user
+   */
+  async getTokenBalance(tokenAddress: string, userAddress: string): Promise<string> {
+    try {
+      const contract = new Contract(tokenAddress);
+      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+
+      const userScVal = nativeToScVal(userAddress, { type: "address" });
+
+      const tx = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(contract.call("balance", userScVal))
+        .setTimeout(30)
+        .build();
+
+      const simulated = await this.server.simulateTransaction(tx);
+
+      if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
+        const result = simulated.result?.retval;
+        const balance = result ? scValToNative(result) : 0;
+        // Convert from stroops (7 decimals) to human readable
+        return (Number(balance) / 1e7).toFixed(7);
+      }
+
+      return "0";
+    } catch (error) {
+      console.error(`Failed to get token balance for ${tokenAddress}:`, error);
+      return "0";
+    }
   }
 }
