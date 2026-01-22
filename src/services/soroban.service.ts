@@ -15,8 +15,6 @@ import {
 // Contract configuration
 interface ContractConfig {
   stakingContract: string;
-  sharedContract?: string;
-  governanceContract: string;
   rewardsContract: string;
   liquidityContract: string;
   network: string;
@@ -57,8 +55,6 @@ export class SorobanService {
 
     this.contractConfig = {
       stakingContract: getRequiredEnv("REACT_APP_STAKING_CONTRACT_ID"),
-      sharedContract: getRequiredEnv("REACT_APP_SHARED_CONTRACT_ID"),
-      governanceContract: getRequiredEnv("REACT_APP_GOVERNANCE_CONTRACT_ID"),
       rewardsContract: getRequiredEnv("REACT_APP_REWARDS_CONTRACT_ID"),
       liquidityContract: getRequiredEnv("REACT_APP_LIQUIDITY_CONTRACT_ID"),
       network: getRequiredEnv("REACT_APP_STELLAR_NETWORK"),
@@ -76,7 +72,7 @@ export class SorobanService {
    * Get contract instance for a specific contract type
    */
   getContract(
-    contractType: "staking" | "shared" | "governance" | "rewards" | "liquidity"
+    contractType: "staking" | "rewards" | "liquidity"
   ): Contract {
     const contractId = this.getContractId(contractType);
     return new Contract(contractId);
@@ -86,18 +82,11 @@ export class SorobanService {
    * Get contract ID for a specific contract type
    */
   getContractId(
-    contractType: "staking" | "shared" | "governance" | "rewards" | "liquidity"
+    contractType: "staking" | "rewards" | "liquidity"
   ): string {
     switch (contractType) {
       case "staking":
         return this.contractConfig.stakingContract;
-      case "shared":
-        return (
-          this.contractConfig.sharedContract ||
-          this.contractConfig.stakingContract
-        ); // Fallback to staking if not defined
-      case "governance":
-        return this.contractConfig.governanceContract;
       case "rewards":
         return this.contractConfig.rewardsContract;
       case "liquidity":
@@ -111,7 +100,7 @@ export class SorobanService {
    * Simulate a contract method call
    */
   async simulateContract<T = any>(
-    contractType: "staking" | "shared" | "governance" | "rewards" | "liquidity",
+    contractType: "staking" | "rewards" | "liquidity",
     method: string,
     args: any[] = [],
     userKeypair?: Keypair
@@ -168,7 +157,7 @@ export class SorobanService {
    * Execute a contract method call
    */
   async callContract<T = any>(
-    contractType: "staking" | "shared" | "governance" | "rewards" | "liquidity",
+    contractType: "staking" | "rewards" | "liquidity",
     method: string,
     args: any[] = [],
     userKeypair: Keypair,
@@ -290,7 +279,7 @@ export class SorobanService {
    * Loads account and simulates DIRECTLY from Soroban RPC (no backend)
    */
   async buildContractTransaction(
-    contractType: "staking" | "shared" | "governance" | "rewards" | "liquidity",
+    contractType: "staking" | "rewards" | "liquidity",
     method: string,
     args: any[],
     userPublicKey: string,
@@ -1574,63 +1563,115 @@ export class SorobanService {
     }
   }
 
-  /**
-   * Get user governance info (ICE tokens and voting power)
-   */
-  async getUserGovernance(userAddress: string): Promise<ContractCallResult> {
-    try {
-      console.log("🗳️ [SorobanService] Getting user governance:", userAddress);
-
-      const result = await this.simulateContract(
-        "governance",
-        "get_user_governance",
-        [userAddress]
-      );
-
-      return result;
-    } catch (error: any) {
-      console.error("❌ [SorobanService] Get user governance failed:", error);
-      return { success: false, error: error.message };
-    }
-  }
+  // ============================================================================
+  // ICE Token Balance Queries
+  // ============================================================================
 
   /**
-   * Get user's voting power
+   * Get all ICE token balances from staking contract
+   * Returns balances for all 4 ICE token types:
+   * - ICE: Base ICE token (tracks locked AQUA)
+   * - governICE: For governance voting
+   * - upvoteICE: For liquidity voting (upvotes)
+   * - downvoteICE: For liquidity voting (downvotes)
+   *
+   * @see https://docs.aqua.network/ice/ice-tokens-locking-aqua-and-getting-benefits
    */
-  async getVotingPower(userAddress: string): Promise<ContractCallResult> {
+  async getAllIceBalances(): Promise<ContractCallResult<{
+    ice: string;
+    governIce: string;
+    upvoteIce: string;
+    downvoteIce: string;
+  }>> {
     try {
-      console.log("⚡ [SorobanService] Getting voting power:", userAddress);
+      console.log("🧊 [SorobanService] Getting all ICE balances from contract");
 
       const result = await this.simulateContract(
-        "governance",
-        "get_voting_power",
-        [userAddress]
-      );
-
-      return result;
-    } catch (error: any) {
-      console.error("❌ [SorobanService] Get voting power failed:", error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  /**
-   * Get global governance stats
-   */
-  async getGlobalGovernanceStats(): Promise<ContractCallResult> {
-    try {
-      console.log("📊 [SorobanService] Getting global governance stats");
-
-      const result = await this.simulateContract(
-        "governance",
-        "get_global_stats",
+        "staking",
+        "get_all_ice_balances",
         []
       );
+
+      if (result.success && result.data) {
+        // Contract returns tuple: (i128, i128, i128, i128)
+        // Order: ice, govern_ice, upvote_ice, downvote_ice
+        const data = result.data;
+        const formatBalance = (val: any) =>
+          (Number(val || 0) / 10000000).toFixed(7);
+
+        return {
+          success: true,
+          data: {
+            ice: formatBalance(Array.isArray(data) ? data[0] : data.ice),
+            governIce: formatBalance(
+              Array.isArray(data) ? data[1] : data.govern_ice
+            ),
+            upvoteIce: formatBalance(
+              Array.isArray(data) ? data[2] : data.upvote_ice
+            ),
+            downvoteIce: formatBalance(
+              Array.isArray(data) ? data[3] : data.downvote_ice
+            ),
+          },
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error("❌ [SorobanService] Get all ICE balances failed:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get upvoteICE balance from staking contract
+   * Used for checking available voting power for liquidity voting
+   */
+  async getUpvoteIceBalance(): Promise<ContractCallResult<string>> {
+    try {
+      console.log("🗳️ [SorobanService] Getting upvoteICE balance");
+
+      const result = await this.simulateContract(
+        "staking",
+        "get_upvote_ice_balance",
+        []
+      );
+
+      if (result.success && result.data !== undefined) {
+        const balance = (Number(result.data) / 10000000).toFixed(7);
+        return { success: true, data: balance };
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error("❌ [SorobanService] Get upvoteICE balance failed:", error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get pending AQUA amount available for ICE locking
+   * This is AQUA accumulated from staking that can be locked to generate ICE
+   */
+  async getPendingAquaForIce(): Promise<ContractCallResult<string>> {
+    try {
+      console.log("💧 [SorobanService] Getting pending AQUA for ICE");
+
+      const result = await this.simulateContract(
+        "staking",
+        "get_pending_aqua_for_ice",
+        []
+      );
+
+      if (result.success && result.data !== undefined) {
+        const amount = (Number(result.data) / 10000000).toFixed(7);
+        return { success: true, data: amount };
+      }
 
       return result;
     } catch (error: any) {
       console.error(
-        "❌ [SorobanService] Get global governance stats failed:",
+        "❌ [SorobanService] Get pending AQUA for ICE failed:",
         error
       );
       return { success: false, error: error.message };

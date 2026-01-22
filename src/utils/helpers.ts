@@ -28,20 +28,25 @@ export const isMobileDevice = (): boolean => {
  */
 export const isFreighterAvailable = async (): Promise<boolean> => {
   try {
-    // Check if freighter global object exists
-    if (typeof window !== 'undefined' && (window as any).freighter) {
-      return true;
+    // Check if freighter global object exists (injected by extension)
+    if (typeof window !== 'undefined') {
+      // Freighter injects window.freighterApi or window.freighter
+      if ((window as any).freighterApi || (window as any).freighter) {
+        return true;
+      }
     }
 
-    // Also check via the API method with a timeout
-    const { isConnected } = await import('@stellar/freighter-api');
+    // Fallback: try the API - if it doesn't throw, extension is likely available
+    const { isAllowed } = await import('@stellar/freighter-api');
 
     const timeoutPromise = new Promise<boolean>((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout')), 1000);
+      setTimeout(() => reject(new Error('Timeout')), 2000);
     });
 
-    const result = await Promise.race([isConnected(), timeoutPromise]);
-    return result === true;
+    // isAllowed() will work if extension is installed (returns true/false)
+    // It throws or hangs if extension is not installed
+    await Promise.race([isAllowed(), timeoutPromise]);
+    return true;
   } catch {
     return false;
   }
@@ -53,19 +58,24 @@ export const isFreighterAvailable = async (): Promise<boolean> => {
  */
 export const isLobstrAvailable = async (): Promise<boolean> => {
   try {
-    // Check if lobstr global object exists
-    if (typeof window !== 'undefined' && (window as any).lobstrSignerExtension) {
-      return true;
+    // Check if LOBSTR signer extension global object exists
+    if (typeof window !== 'undefined') {
+      // LOBSTR Signer extension injects window.lobstrSignerExtension
+      if ((window as any).lobstrSignerExtension) {
+        return true;
+      }
     }
 
+    // Fallback: try the API
     const { isConnected } = await import('@lobstrco/signer-extension-api');
 
     const timeoutPromise = new Promise<boolean>((_, reject) => {
-      setTimeout(() => reject(new Error('Timeout')), 1000);
+      setTimeout(() => reject(new Error('Timeout')), 2000);
     });
 
-    const result = await Promise.race([isConnected(), timeoutPromise]);
-    return result === true;
+    // If isConnected doesn't throw/timeout, extension is available
+    await Promise.race([isConnected(), timeoutPromise]);
+    return true;
   } catch {
     return false;
   }
