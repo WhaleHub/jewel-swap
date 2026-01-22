@@ -1,6 +1,7 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, Vec, Symbol, IntoVal,
+    auth::{ContractContext, InvokerContractAuthEntry, SubContractInvocation},
 };
 
 // ============================================================================
@@ -3544,7 +3545,38 @@ impl StakingRegistry {
         token_a_client.transfer(&user, &contract_address, &desired_a);
         token_b_client.transfer(&user, &contract_address, &desired_b);
 
-        // STEP 2: Deposit tokens to Aquarius pool
+        // STEP 2: Authorize Aquarius pool to transfer tokens from this contract
+        // The pool will call token.transfer(this_contract, pool, amount)
+        let auth_entries = soroban_sdk::vec![
+            &env,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: pool_info.token_a.clone(),
+                    fn_name: Symbol::new(&env, "transfer"),
+                    args: (
+                        contract_address.clone(),
+                        pool_info.pool_address.clone(),
+                        desired_a,
+                    ).into_val(&env),
+                },
+                sub_invocations: soroban_sdk::vec![&env],
+            }),
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: pool_info.token_b.clone(),
+                    fn_name: Symbol::new(&env, "transfer"),
+                    args: (
+                        contract_address.clone(),
+                        pool_info.pool_address.clone(),
+                        desired_b,
+                    ).into_val(&env),
+                },
+                sub_invocations: soroban_sdk::vec![&env],
+            }),
+        ];
+        env.authorize_as_current_contract(auth_entries);
+
+        // STEP 3: Deposit tokens to Aquarius pool
         let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
 
         let mut desired_amounts = Vec::new(&env);
@@ -3679,8 +3711,27 @@ impl StakingRegistry {
             return Err(Error::InvalidInput);
         }
 
-        // STEP 2: Withdraw from Aquarius pool
+        // STEP 2: Authorize Aquarius pool to burn LP tokens from this contract
         let contract_address = env.current_contract_address();
+
+        // Note: Aquarius pool calls burn(from, amount), not transfer
+        let auth_entries = soroban_sdk::vec![
+            &env,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: pool_info.share_token.clone(),
+                    fn_name: Symbol::new(&env, "burn"),
+                    args: (
+                        contract_address.clone(),
+                        lp_to_withdraw,
+                    ).into_val(&env),
+                },
+                sub_invocations: soroban_sdk::vec![&env],
+            }),
+        ];
+        env.authorize_as_current_contract(auth_entries);
+
+        // STEP 3: Withdraw from Aquarius pool
         let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
 
         let mut min_amounts = Vec::new(&env);
@@ -3840,6 +3891,36 @@ impl StakingRegistry {
             // STEP 5: Deposit tokens back to Aquarius pool (if we have both tokens)
             // Note: For non-AQUA pairs, backend must complete swaps first, then call this again
             if token_a_amount > 0 && token_b_amount > 0 {
+                // Authorize Aquarius pool to transfer tokens from this contract
+                let auth_entries = soroban_sdk::vec![
+                    &env,
+                    InvokerContractAuthEntry::Contract(SubContractInvocation {
+                        context: ContractContext {
+                            contract: pool_info.token_a.clone(),
+                            fn_name: Symbol::new(&env, "transfer"),
+                            args: (
+                                contract_address.clone(),
+                                pool_info.pool_address.clone(),
+                                token_a_amount as i128,
+                            ).into_val(&env),
+                        },
+                        sub_invocations: soroban_sdk::vec![&env],
+                    }),
+                    InvokerContractAuthEntry::Contract(SubContractInvocation {
+                        context: ContractContext {
+                            contract: pool_info.token_b.clone(),
+                            fn_name: Symbol::new(&env, "transfer"),
+                            args: (
+                                contract_address.clone(),
+                                pool_info.pool_address.clone(),
+                                token_b_amount as i128,
+                            ).into_val(&env),
+                        },
+                        sub_invocations: soroban_sdk::vec![&env],
+                    }),
+                ];
+                env.authorize_as_current_contract(auth_entries);
+
                 let mut desired_amounts = Vec::new(&env);
                 desired_amounts.push_back(token_a_amount);
                 desired_amounts.push_back(token_b_amount);

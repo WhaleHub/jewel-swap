@@ -2,6 +2,76 @@ import { StellarService } from '../services/stellar.service';
 import { storeAccountBalance, getAccountInfo } from '../lib/slices/userSlice';
 
 /**
+ * Detect if the user is on a mobile device
+ * @returns boolean - true if on mobile device
+ */
+export const isMobileDevice = (): boolean => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return false;
+  }
+
+  const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera || '';
+
+  // Check for mobile user agents
+  const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile|CriOS/i;
+
+  // Also check for touch capability combined with small screen
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  const isSmallScreen = window.innerWidth <= 768;
+
+  return mobileRegex.test(userAgent) || (isTouchDevice && isSmallScreen);
+};
+
+/**
+ * Check if Freighter wallet extension is available
+ * @returns Promise<boolean> - true if Freighter is installed and accessible
+ */
+export const isFreighterAvailable = async (): Promise<boolean> => {
+  try {
+    // Check if freighter global object exists
+    if (typeof window !== 'undefined' && (window as any).freighter) {
+      return true;
+    }
+
+    // Also check via the API method with a timeout
+    const { isConnected } = await import('@stellar/freighter-api');
+
+    const timeoutPromise = new Promise<boolean>((_, reject) => {
+      setTimeout(() => reject(new Error('Timeout')), 1000);
+    });
+
+    const result = await Promise.race([isConnected(), timeoutPromise]);
+    return result === true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Check if LOBSTR wallet extension is available
+ * @returns Promise<boolean> - true if LOBSTR extension is installed and accessible
+ */
+export const isLobstrAvailable = async (): Promise<boolean> => {
+  try {
+    // Check if lobstr global object exists
+    if (typeof window !== 'undefined' && (window as any).lobstrSignerExtension) {
+      return true;
+    }
+
+    const { isConnected } = await import('@lobstrco/signer-extension-api');
+
+    const timeoutPromise = new Promise<boolean>((_, reject) => {
+      setTimeout(() => reject(new Error('Timeout')), 1000);
+    });
+
+    const result = await Promise.race([isConnected(), timeoutPromise]);
+    return result === true;
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Utility function to refresh wallet balances with retry logic
  * @param userWalletAddress - The user's wallet address
  * @param dispatch - Redux dispatch function

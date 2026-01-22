@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
@@ -49,6 +49,16 @@ function AddLiquidity() {
   const [isWithdrawing, setIsWithdrawing] = useState(false);
   const [isLoadingPools, setIsLoadingPools] = useState(true);
 
+  // Token balances
+  const [balanceA, setBalanceA] = useState<string>("0");
+  const [balanceB, setBalanceB] = useState<string>("0");
+  const [isLoadingBalances, setIsLoadingBalances] = useState(false);
+
+  // Pool reserves for withdrawal estimates
+  const [reserveA, setReserveA] = useState<string>("0");
+  const [reserveB, setReserveB] = useState<string>("0");
+  const [totalLpSupply, setTotalLpSupply] = useState<string>("0");
+
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
 
   const [dialogMsg, setDialogMsg] = useState<string>("");
@@ -57,20 +67,35 @@ function AddLiquidity() {
 
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
+  const userWalletAddress = user?.userWalletAddress;
 
-  const vaultService = new SorobanVaultService();
+  // Create vaultService only once
+  const vaultService = useMemo(() => new SorobanVaultService(), []);
 
-  // Load pools from contract
+  // Load pools from contract on mount
   useEffect(() => {
     loadPools();
   }, []);
 
-  // Load user positions when pool selected or user changes
+  // Load pool reserves when pool is selected
   useEffect(() => {
-    if (selectedPool && user?.userWalletAddress) {
-      loadUserPosition(selectedPool.pool_id);
+    if (selectedPool) {
+      loadPoolReserves(selectedPool);
     }
-  }, [selectedPool, user?.userWalletAddress]);
+  }, [selectedPool?.pool_id]);
+
+  // Load user position and balances when pool or wallet changes
+  useEffect(() => {
+    if (selectedPool && userWalletAddress) {
+      loadUserPosition(selectedPool.pool_id);
+      loadBalances(selectedPool);
+    } else {
+      // Reset balances if no wallet connected
+      setBalanceA("0");
+      setBalanceB("0");
+      setUserPositions([]);
+    }
+  }, [selectedPool?.pool_id, userWalletAddress]);
 
   const loadPools = async () => {
     try {
@@ -97,12 +122,12 @@ function AddLiquidity() {
     }
   };
 
-  const loadUserPosition = async (poolId: number) => {
-    if (!user?.userWalletAddress) return;
+  const loadUserPosition = useCallback(async (poolId: number) => {
+    if (!userWalletAddress) return;
 
     try {
       const position = await vaultService.getUserVaultPosition(
-        user.userWalletAddress,
+        userWalletAddress,
         poolId
       );
 
@@ -115,6 +140,70 @@ function AddLiquidity() {
       console.error("Failed to load user position:", error);
       setUserPositions([]);
     }
+  }, [vaultService, userWalletAddress]);
+
+  const loadBalances = useCallback(async (pool: PoolInfo) => {
+    if (!userWalletAddress) {
+      setBalanceA("0");
+      setBalanceB("0");
+      return;
+    }
+
+    setIsLoadingBalances(true);
+    try {
+      const [balA, balB] = await Promise.all([
+        vaultService.getTokenBalance(pool.token_a, userWalletAddress),
+        vaultService.getTokenBalance(pool.token_b, userWalletAddress),
+      ]);
+      setBalanceA(balA);
+      setBalanceB(balB);
+    } catch (error) {
+      console.error("Failed to load balances:", error);
+      setBalanceA("0");
+      setBalanceB("0");
+    } finally {
+      setIsLoadingBalances(false);
+    }
+  }, [vaultService, userWalletAddress]);
+
+  const loadPoolReserves = useCallback(async (pool: PoolInfo) => {
+    try {
+      const data = await vaultService.getPoolReserves(pool.pool_address, pool.share_token);
+      setReserveA(data.reserveA);
+      setReserveB(data.reserveB);
+      setTotalLpSupply(data.totalLpSupply);
+    } catch (error) {
+      console.error("Failed to load pool reserves:", error);
+      setReserveA("0");
+      setReserveB("0");
+      setTotalLpSupply("0");
+    }
+  }, [vaultService]);
+
+  // Calculate estimated withdrawal amounts
+  const getEstimatedWithdrawAmounts = () => {
+    if (!userPosition || !selectedPool) {
+      return { estimatedA: "0.00", estimatedB: "0.00" };
+    }
+
+    const userLp = parseFloat(userPosition.user_lp_amount || "0");
+    const poolTotalLp = parseFloat(totalLpSupply);
+    const resA = parseFloat(reserveA);
+    const resB = parseFloat(reserveB);
+
+    if (poolTotalLp <= 0 || userLp <= 0) {
+      return { estimatedA: "0.00", estimatedB: "0.00" };
+    }
+
+    // User's share of the entire Aquarius pool
+    const userShareOfPool = userLp / poolTotalLp;
+    // Apply withdrawal percentage
+    const withdrawShare = (withdrawPercent / 100) * userShareOfPool;
+
+    const estimatedA = (withdrawShare * resA).toFixed(4);
+    const estimatedB = (withdrawShare * resB).toFixed(4);
+
+    return { estimatedA, estimatedB };
   };
 
   const handleDeposit = async () => {
@@ -145,6 +234,22 @@ function AddLiquidity() {
       );
     }
 
+    // Balance validation
+    const balA = parseFloat(balanceA);
+    const balB = parseFloat(balanceB);
+
+    if (amount1 > balA) {
+      return toast.warn(
+        `Insufficient ${selectedPool.token_a_code} balance. You have ${balA.toFixed(4)}`
+      );
+    }
+
+    if (amount2 > balB) {
+      return toast.warn(
+        `Insufficient ${selectedPool.token_b_code} balance. You have ${balB.toFixed(4)}`
+      );
+    }
+
     setIsDepositing(true);
 
     try {
@@ -162,6 +267,7 @@ function AddLiquidity() {
         setDepositAmount1("");
         setDepositAmount2("");
         await loadUserPosition(selectedPool.pool_id);
+        await loadBalances(selectedPool);
       } else {
         toast.error(result.error || "Deposit failed");
       }
@@ -210,6 +316,7 @@ function AddLiquidity() {
         toast.success("Withdrawal successful!");
         setWithdrawPercent(100);
         await loadUserPosition(selectedPool.pool_id);
+        await loadBalances(selectedPool);
       } else {
         toast.error(result.error || "Withdrawal failed");
       }
@@ -290,24 +397,10 @@ function AddLiquidity() {
 
         {/* Pool Info Display */}
         {selectedPool && (
-          <div className="mt-4 flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <img
-                src={selectedPool.token_a_logo}
-                alt={selectedPool.token_a_code}
-                className="w-8 h-8 rounded-full"
-              />
-              <span className="text-lg">{selectedPool.token_a_code}</span>
-            </div>
+          <div className="mt-4 flex items-center space-x-2">
+            <span className="text-lg">{selectedPool.token_a_code}</span>
             <span className="text-[#B1B3B8]">/</span>
-            <div className="flex items-center space-x-2">
-              <img
-                src={selectedPool.token_b_logo}
-                alt={selectedPool.token_b_code}
-                className="w-8 h-8 rounded-full"
-              />
-              <span className="text-lg">{selectedPool.token_b_code}</span>
-            </div>
+            <span className="text-lg">{selectedPool.token_b_code}</span>
           </div>
         )}
 
@@ -376,13 +469,18 @@ function AddLiquidity() {
                   )}
                   onChange={(e) => setDepositAmount1(e.target.value)}
                 />
-                <button className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]">
+                <button
+                  className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]"
+                  onClick={() => setDepositAmount1(balanceA)}
+                >
                   Max
                 </button>
               </div>
               <div className="flex items-center text-sm mt-1 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">Balance:</div>
-                <div className="font-medium">0 {selectedPool.token_a_code}</div>
+                <div className="font-medium">
+                  {isLoadingBalances ? "..." : parseFloat(balanceA).toFixed(4)} {selectedPool.token_a_code}
+                </div>
               </div>
             </div>
 
@@ -402,13 +500,18 @@ function AddLiquidity() {
                   )}
                   onChange={(e) => setDepositAmount2(e.target.value)}
                 />
-                <button className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]">
+                <button
+                  className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]"
+                  onClick={() => setDepositAmount2(balanceB)}
+                >
                   Max
                 </button>
               </div>
               <div className="flex items-center text-sm mt-1 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">Balance:</div>
-                <div className="font-medium">0 {selectedPool.token_b_code}</div>
+                <div className="font-medium">
+                  {isLoadingBalances ? "..." : parseFloat(balanceB).toFixed(4)} {selectedPool.token_b_code}
+                </div>
               </div>
             </div>
 
@@ -484,11 +587,11 @@ function AddLiquidity() {
                   <div className="space-y-1">
                     <div className="flex justify-between text-white">
                       <span>{selectedPool.token_a_code}:</span>
-                      <span>~0.00</span>
+                      <span>~{getEstimatedWithdrawAmounts().estimatedA}</span>
                     </div>
                     <div className="flex justify-between text-white">
                       <span>{selectedPool.token_b_code}:</span>
-                      <span>~0.00</span>
+                      <span>~{getEstimatedWithdrawAmounts().estimatedB}</span>
                     </div>
                   </div>
                 </div>

@@ -28,7 +28,12 @@ import {
   XBULL_ID,
   allowAllModules,
   xBullModule,
+  StellarWalletsModal,
 } from "@creit.tech/stellar-wallets-kit";
+
+// Register the StellarWalletsModal web component (side-effect import)
+// This is required for kit.openModal() to work
+void StellarWalletsModal;
 import {
   WALLET_CONNECT_ID,
   WalletConnectAllowedMethods,
@@ -38,6 +43,11 @@ import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
 import { persistor } from "../../lib/store";
 import { WALLET_NETWORK } from "../../config";
+import {
+  isMobileDevice,
+  isFreighterAvailable,
+  isLobstrAvailable,
+} from "../../utils/helpers";
 
 export const kit = new StellarWalletsKit({
   selectedWalletId: WALLET_CONNECT_ID,
@@ -58,6 +68,7 @@ export const kit = new StellarWalletsKit({
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
+  const isMobile = isMobileDevice();
 
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
@@ -66,16 +77,38 @@ const Navbar = () => {
 
         dispatch(setConnectingWallet(true));
 
+        const isMobile = isMobileDevice();
+
         if (walletType === walletTypes.FREIGHTER) {
           console.log("🌌 [Navbar] Connecting to Freighter wallet");
 
-          const kit: StellarWalletsKit = new StellarWalletsKit({
+          // Check if on mobile - Freighter doesn't have mobile WalletConnect support yet
+          if (isMobile) {
+            dispatch(setConnectingWallet(false));
+            toast.info(
+              "Freighter mobile app doesn't support WalletConnect yet. Please use WalletConnect to connect with LOBSTR or another compatible wallet.",
+              { autoClose: 5000 }
+            );
+            return;
+          }
+
+          // Check if Freighter extension is available
+          const freighterAvailable = await isFreighterAvailable();
+          if (!freighterAvailable) {
+            dispatch(setConnectingWallet(false));
+            toast.error(
+              "Freighter extension not detected. Please install it from freighter.app"
+            );
+            return;
+          }
+
+          const freighterKit: StellarWalletsKit = new StellarWalletsKit({
             network: WALLET_NETWORK,
             selectedWalletId: FREIGHTER_ID,
             modules: [new FreighterModule()],
           });
 
-          const { address } = await kit.getAddress();
+          const { address } = await freighterKit.getAddress();
 
           console.log("📍 [Navbar] Freighter address received:", {
             address: address,
@@ -123,6 +156,59 @@ const Navbar = () => {
           });
         } else {
           console.log("🦞 [Navbar] Connecting LOBSTR wallet");
+
+          // On mobile, use WalletConnect which supports LOBSTR via deep linking
+          if (isMobile) {
+            console.log(
+              "📱 [Navbar] Mobile detected, using WalletConnect for LOBSTR"
+            );
+
+            toast.info("Opening WalletConnect to connect with LOBSTR...", {
+              autoClose: 2000,
+            });
+
+            // Use WalletConnect - LOBSTR supports it via deep link (lobstr://wc)
+            await kit.openModal({
+              onWalletSelected: async (option: ISupportedWallet) => {
+                console.log(
+                  "🔗 [Navbar] WalletConnect wallet selected for LOBSTR:",
+                  option.id
+                );
+
+                kit.setWallet(option.id);
+                const { address } = await kit.getAddress();
+
+                console.log(
+                  "📍 [Navbar] LOBSTR (via WalletConnect) address received:",
+                  {
+                    address: address,
+                    addressLength: address?.length,
+                    isValidFormat: address
+                      ? /^G[A-Z0-9]{55}$/.test(address)
+                      : false,
+                    timestamp: new Date().toISOString(),
+                  }
+                );
+
+                dispatch(setConnectingWallet(false));
+                dispatch(setWalletConnectName(LOBSTR_ID));
+                dispatch(walletSelectionAction(false));
+                dispatch(setWalletConnected(true));
+                dispatch(setUserWalletAddress(address));
+              },
+            });
+            return;
+          }
+
+          // On desktop, check if LOBSTR extension is available
+          const lobstrAvailable = await isLobstrAvailable();
+          if (!lobstrAvailable) {
+            dispatch(setConnectingWallet(false));
+            toast.error(
+              "LOBSTR Signer extension not detected. Please install it from lobstr.co"
+            );
+            return;
+          }
 
           const publicKey = await getPublicKey();
 
@@ -276,27 +362,31 @@ const Navbar = () => {
                         WalletConnect
                       </button>
                     </MenuItem>
-                    <MenuItem>
-                      <button
-                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
-                        onClick={() =>
-                          handleWalletConnections(walletTypes.LOBSTR)
-                        }
-                      >
-                        LOBSTR wallet
-                      </button>
-                    </MenuItem>
+                    {!isMobile && (
+                      <MenuItem>
+                        <button
+                          className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between  text-base text-white font-semibold"
+                          onClick={() =>
+                            handleWalletConnections(walletTypes.LOBSTR)
+                          }
+                        >
+                          LOBSTR wallet
+                        </button>
+                      </MenuItem>
+                    )}
 
-                    <MenuItem>
-                      <button
-                        className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
-                        onClick={() =>
-                          handleWalletConnections(walletTypes.FREIGHTER)
-                        }
-                      >
-                        Freighter wallet
-                      </button>
-                    </MenuItem>
+                    {!isMobile && (
+                      <MenuItem>
+                        <button
+                          className="group flex w-full items-center gap-2 rounded-lg py-4 px-4 data-[focus]:bg-white/10 justify-between text-base text-white font-semibold"
+                          onClick={() =>
+                            handleWalletConnections(walletTypes.FREIGHTER)
+                          }
+                        >
+                          Freighter wallet
+                        </button>
+                      </MenuItem>
+                    )}
                   </div>
                   <div className="text-xs  font-normal text-[#B1B3B8]">
                     By connecting a wallet, you agree to WhaleHub Terms of
