@@ -30,10 +30,6 @@ import {
   xBullModule,
   StellarWalletsModal,
 } from "@creit.tech/stellar-wallets-kit";
-
-// Register the StellarWalletsModal web component (side-effect import)
-// This is required for kit.openModal() to work
-void StellarWalletsModal;
 import {
   WALLET_CONNECT_ID,
   WalletConnectAllowedMethods,
@@ -43,27 +39,36 @@ import clsx from "clsx";
 import { ToastContainer, toast } from "react-toastify";
 import { persistor } from "../../lib/store";
 import { WALLET_NETWORK } from "../../config";
-import {
-  isMobileDevice,
-  isFreighterAvailable,
-  isLobstrAvailable,
-} from "../../utils/helpers";
+import { isMobileDevice } from "../../utils/helpers";
 
-export const kit = new StellarWalletsKit({
-  selectedWalletId: WALLET_CONNECT_ID,
-  network: WALLET_NETWORK,
-  modules: [
-    new WalletConnectModule({
-      url: "app.whalehub.io",
-      projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
-      method: WalletConnectAllowedMethods.SIGN,
-      description: `A DESCRIPTION TO SHOW USERS`,
-      name: "Whalehub",
-      icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
-      network: WALLET_NETWORK,
-    }),
-  ],
-});
+// Register the StellarWalletsModal web component (side-effect import)
+// This is required for kit.openModal() to work
+void StellarWalletsModal;
+
+// Factory function to create a fresh WalletConnect kit instance
+// This is needed because WalletConnect has a known bug where the modal
+// won't reopen after being closed without completing a connection
+// See: https://github.com/WalletConnect/walletconnect-monorepo/issues/747
+const createWalletConnectKit = () => {
+  return new StellarWalletsKit({
+    selectedWalletId: WALLET_CONNECT_ID,
+    network: WALLET_NETWORK,
+    modules: [
+      new WalletConnectModule({
+        url: "app.whalehub.io",
+        projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
+        method: WalletConnectAllowedMethods.SIGN,
+        description: `A DESCRIPTION TO SHOW USERS`,
+        name: "Whalehub",
+        icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+        network: WALLET_NETWORK,
+      }),
+    ],
+  });
+};
+
+// Global kit instance - will be recreated when needed
+export let kit = createWalletConnectKit();
 
 const Navbar = () => {
   const dispatch = useAppDispatch();
@@ -73,8 +78,8 @@ const Navbar = () => {
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
       try {
-        if (user?.connectingWallet) return;
-
+        // Reset connecting state first to ensure clean state
+        dispatch(setConnectingWallet(false));
         dispatch(setConnectingWallet(true));
 
         const isMobile = isMobileDevice();
@@ -88,16 +93,6 @@ const Navbar = () => {
             toast.info(
               "Freighter mobile app doesn't support WalletConnect yet. Please use WalletConnect to connect with LOBSTR or another compatible wallet.",
               { autoClose: 5000 }
-            );
-            return;
-          }
-
-          // Check if Freighter extension is available
-          const freighterAvailable = await isFreighterAvailable();
-          if (!freighterAvailable) {
-            dispatch(setConnectingWallet(false));
-            toast.error(
-              "Freighter extension not detected. Please install it from freighter.app"
             );
             return;
           }
@@ -128,6 +123,10 @@ const Navbar = () => {
         } else if (walletType === walletTypes.WALLETCONNECT) {
           console.log("🔗 [Navbar] Connecting to WalletConnect");
 
+          // Create fresh kit instance to fix WalletConnect bug where modal won't reopen
+          // See: https://github.com/WalletConnect/walletconnect-monorepo/issues/747
+          kit = createWalletConnectKit();
+
           await kit.openModal({
             onWalletSelected: async (option: ISupportedWallet) => {
               console.log(
@@ -153,6 +152,10 @@ const Navbar = () => {
               dispatch(setWalletConnected(true));
               dispatch(setUserWalletAddress(address));
             },
+            onClosed: () => {
+              console.log("🔗 [Navbar] WalletConnect modal closed");
+              dispatch(setConnectingWallet(false));
+            },
           });
         } else {
           console.log("🦞 [Navbar] Connecting LOBSTR wallet");
@@ -166,6 +169,10 @@ const Navbar = () => {
             toast.info("Opening WalletConnect to connect with LOBSTR...", {
               autoClose: 2000,
             });
+
+            // Create fresh kit instance to fix WalletConnect bug where modal won't reopen
+            // See: https://github.com/WalletConnect/walletconnect-monorepo/issues/747
+            kit = createWalletConnectKit();
 
             // Use WalletConnect - LOBSTR supports it via deep link (lobstr://wc)
             await kit.openModal({
@@ -196,17 +203,11 @@ const Navbar = () => {
                 dispatch(setWalletConnected(true));
                 dispatch(setUserWalletAddress(address));
               },
+              onClosed: () => {
+                console.log("🔗 [Navbar] LOBSTR WalletConnect modal closed");
+                dispatch(setConnectingWallet(false));
+              },
             });
-            return;
-          }
-
-          // On desktop, check if LOBSTR extension is available
-          const lobstrAvailable = await isLobstrAvailable();
-          if (!lobstrAvailable) {
-            dispatch(setConnectingWallet(false));
-            toast.error(
-              "LOBSTR Signer extension not detected. Please install it from lobstr.co"
-            );
             return;
           }
 

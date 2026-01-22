@@ -12,17 +12,15 @@ const getRequiredEnv = (key: string): string => {
   return value;
 };
 
-// Helper function to get optional environment variable with type checking
-const getOptionalEnv = (key: string, defaultValue?: string): string => {
-  return process.env[key] || defaultValue || "";
+// Helper function to get optional environment variable
+const getOptionalEnv = (key: string, defaultValue: string = ""): string => {
+  return process.env[key] || defaultValue;
 };
 
 export const SOROBAN_CONFIG = {
   // Contract IDs
   contracts: {
     staking: getRequiredEnv("REACT_APP_STAKING_CONTRACT_ID"),
-    shared: getRequiredEnv("REACT_APP_SHARED_CONTRACT_ID"),
-    governance: getRequiredEnv("REACT_APP_GOVERNANCE_CONTRACT_ID"),
     liquidity: getRequiredEnv("REACT_APP_LIQUIDITY_CONTRACT_ID"),
     rewards: getRequiredEnv("REACT_APP_REWARDS_CONTRACT_ID"),
   },
@@ -77,9 +75,32 @@ export const SOROBAN_CONFIG = {
       issuer: "", // Minted by staking contract
       sorobanContract: getRequiredEnv("REACT_APP_BLUB_TOKEN_CONTRACT"),
     },
+    // ICE tokens - minted by Aquarius when AQUA is locked
+    // All 4 types are non-transferable and used within Aquarius ecosystem
+    // @see https://docs.aqua.network/ice/ice-tokens-locking-aqua-and-getting-benefits
     ice: {
       code: "ICE",
-      issuer: "", // Issued by governance contract
+      issuer: getOptionalEnv("REACT_APP_ICE_ISSUER"),
+      // SAC wrapped ICE token contract
+      sorobanContract: getOptionalEnv("REACT_APP_ICE_TOKEN_CONTRACT"),
+    },
+    governIce: {
+      code: "governICE",
+      issuer: getOptionalEnv("REACT_APP_GOVERN_ICE_ISSUER"),
+      // SAC wrapped governICE token contract (for governance voting)
+      sorobanContract: getOptionalEnv("REACT_APP_GOVERN_ICE_TOKEN_CONTRACT"),
+    },
+    upvoteIce: {
+      code: "upvoteICE",
+      issuer: getOptionalEnv("REACT_APP_UPVOTE_ICE_ISSUER"),
+      // SAC wrapped upvoteICE token contract (for liquidity voting)
+      sorobanContract: getOptionalEnv("REACT_APP_UPVOTE_ICE_TOKEN_CONTRACT"),
+    },
+    downvoteIce: {
+      code: "downvoteICE",
+      issuer: getOptionalEnv("REACT_APP_DOWNVOTE_ICE_ISSUER"),
+      // SAC wrapped downvoteICE token contract (for downvoting markets)
+      sorobanContract: getOptionalEnv("REACT_APP_DOWNVOTE_ICE_TOKEN_CONTRACT"),
     },
   },
 
@@ -142,10 +163,6 @@ export const validateEnvironment = (): {
   // Check required contract IDs
   if (!SOROBAN_CONFIG.contracts.staking) {
     errors.push("Staking contract ID is required");
-  }
-
-  if (!SOROBAN_CONFIG.contracts.governance) {
-    errors.push("Governance contract ID is required");
   }
 
   // Check network configuration

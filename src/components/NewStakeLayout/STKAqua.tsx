@@ -27,11 +27,6 @@ import {
   clearTransaction,
   fetchComprehensiveStakingData,
 } from "../../lib/slices/stakingSlice";
-import {
-  issueIceTokens,
-  fetchUserGovernance,
-  syncGovernanceData,
-} from "../../lib/slices/governanceSlice";
 import { sorobanService } from "../../services/soroban.service";
 import { apiService } from "../../services/api.service";
 import { SOROBAN_CONFIG, isFeatureEnabled } from "../../config/soroban.config";
@@ -69,7 +64,6 @@ function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const staking = useSelector((state: RootState) => state.staking);
-  const governance = useSelector((state: RootState) => state.governance);
 
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
   const [dialogMsg, setDialogMsg] = useState<string>("");
@@ -222,7 +216,6 @@ function STKAqua() {
       const fetchAllData = async () => {
         if (!user.userWalletAddress) return;
         await dispatch(fetchComprehensiveStakingData(user.userWalletAddress));
-        await dispatch(fetchUserGovernance(user.userWalletAddress));
         await fetchContractBalance();
         await fetchBlubBalance();
       };
@@ -917,23 +910,6 @@ function STKAqua() {
                     </div>
                     <div className="text-white font-medium">
                       {staking.isLoading ? "..." : "0.00"} BLUB
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[#B1B3B8]">ICE Balance</div>
-                    <div className="text-white font-medium">
-                      {governance.iceBalance
-                        ? parseFloat(governance.iceBalance).toFixed(2)
-                        : "0.00"}{" "}
-                      ICE
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-[#B1B3B8]">Voting Power</div>
-                    <div className="text-white font-medium">
-                      {governance.votingPower
-                        ? parseFloat(governance.votingPower).toFixed(2)
-                        : "0.00"}
                     </div>
                   </div>
                   <div>
