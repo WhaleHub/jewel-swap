@@ -8,7 +8,7 @@ import { toast } from "react-toastify";
 import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import DialogC from "./Dialog";
-import { SorobanVaultService } from "../../services/soroban-vault.service";
+import { SorobanVaultService, TokenPriceService } from "../../services/soroban-vault.service";
 import { StellarService } from "../../services/stellar.service";
 import { getAccountInfo, storeAccountBalance } from "../../lib/slices/userSlice";
 
@@ -285,7 +285,27 @@ function AddLiquidity() {
       );
     }
 
+    // Minimum $1 deposit validation
     setIsDepositing(true);
+
+    try {
+      const totalUsdValue = await TokenPriceService.calculateTotalUsdValue(
+        selectedPool.token_a_code,
+        amount1,
+        selectedPool.token_b_code,
+        amount2
+      );
+
+      if (totalUsdValue < 1) {
+        setIsDepositing(false);
+        return toast.error(
+          `Minimum deposit amount is $1. Your deposit is worth $${totalUsdValue.toFixed(2)}`
+        );
+      }
+    } catch (priceError) {
+      console.warn("Could not verify USD value, proceeding with deposit:", priceError);
+      // Continue with deposit if price check fails (graceful degradation)
+    }
 
     try {
       const result = await vaultService.vaultDeposit({
