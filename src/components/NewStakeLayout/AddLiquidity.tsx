@@ -9,6 +9,8 @@ import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import DialogC from "./Dialog";
 import { SorobanVaultService } from "../../services/soroban-vault.service";
+import { StellarService } from "../../services/stellar.service";
+import { getAccountInfo, storeAccountBalance } from "../../lib/slices/userSlice";
 
 interface PoolInfo {
   pool_id: number;
@@ -71,31 +73,6 @@ function AddLiquidity() {
 
   // Create vaultService only once
   const vaultService = useMemo(() => new SorobanVaultService(), []);
-
-  // Load pools from contract on mount
-  useEffect(() => {
-    loadPools();
-  }, []);
-
-  // Load pool reserves when pool is selected
-  useEffect(() => {
-    if (selectedPool) {
-      loadPoolReserves(selectedPool);
-    }
-  }, [selectedPool?.pool_id]);
-
-  // Load user position and balances when pool or wallet changes
-  useEffect(() => {
-    if (selectedPool && userWalletAddress) {
-      loadUserPosition(selectedPool.pool_id);
-      loadBalances(selectedPool);
-    } else {
-      // Reset balances if no wallet connected
-      setBalanceA("0");
-      setBalanceB("0");
-      setUserPositions([]);
-    }
-  }, [selectedPool?.pool_id, userWalletAddress]);
 
   const loadPools = async () => {
     try {
@@ -179,6 +156,64 @@ function AddLiquidity() {
       setTotalLpSupply("0");
     }
   }, [vaultService]);
+
+  // Refresh wallet balances and update Redux state (like other sections do)
+  const refreshWalletAndBalances = useCallback(async () => {
+    if (!userWalletAddress || !selectedPool) return;
+
+    try {
+      // Update Redux state with fresh Horizon data
+      const stellarService = new StellarService();
+      const wrappedAccount = await stellarService.loadAccount(userWalletAddress);
+      dispatch(getAccountInfo(userWalletAddress));
+      dispatch(storeAccountBalance(wrappedAccount.balances));
+
+      // Also refresh local token balances
+      await loadBalances(selectedPool);
+      await loadUserPosition(selectedPool.pool_id);
+      await loadPoolReserves(selectedPool);
+    } catch (error) {
+      console.error("Failed to refresh wallet balances:", error);
+    }
+  }, [userWalletAddress, selectedPool, dispatch, loadBalances, loadUserPosition, loadPoolReserves]);
+
+  // Load pools from contract on mount
+  useEffect(() => {
+    loadPools();
+  }, []);
+
+  // Load pool reserves when pool is selected
+  useEffect(() => {
+    if (selectedPool) {
+      loadPoolReserves(selectedPool);
+    }
+  }, [selectedPool?.pool_id, loadPoolReserves]);
+
+  // Load user position and balances when pool or wallet changes
+  useEffect(() => {
+    if (selectedPool && userWalletAddress) {
+      loadUserPosition(selectedPool.pool_id);
+      loadBalances(selectedPool);
+    } else {
+      // Reset balances if no wallet connected
+      setBalanceA("0");
+      setBalanceB("0");
+      setUserPositions([]);
+    }
+  }, [selectedPool?.pool_id, userWalletAddress, loadUserPosition, loadBalances]);
+
+  // Auto-refresh balances every 30 seconds (like Yield.tsx does)
+  useEffect(() => {
+    if (userWalletAddress && selectedPool) {
+      // Set up auto-refresh every 30 seconds for real-time updates
+      const refreshInterval = setInterval(() => {
+        refreshWalletAndBalances();
+      }, 30000);
+
+      // Cleanup interval on unmount
+      return () => clearInterval(refreshInterval);
+    }
+  }, [userWalletAddress, selectedPool, refreshWalletAndBalances]);
 
   // Calculate estimated withdrawal amounts
   const getEstimatedWithdrawAmounts = () => {
@@ -266,8 +301,8 @@ function AddLiquidity() {
         toast.success("Deposit successful!");
         setDepositAmount1("");
         setDepositAmount2("");
-        await loadUserPosition(selectedPool.pool_id);
-        await loadBalances(selectedPool);
+        // Refresh all balances including Redux state
+        await refreshWalletAndBalances();
       } else {
         toast.error(result.error || "Deposit failed");
       }
@@ -315,8 +350,8 @@ function AddLiquidity() {
       if (result.success) {
         toast.success("Withdrawal successful!");
         setWithdrawPercent(100);
-        await loadUserPosition(selectedPool.pool_id);
-        await loadBalances(selectedPool);
+        // Refresh all balances including Redux state
+        await refreshWalletAndBalances();
       } else {
         toast.error(result.error || "Withdrawal failed");
       }
