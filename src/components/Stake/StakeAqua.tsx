@@ -46,6 +46,10 @@ import {
 } from "../../utils/constants";
 import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
+import { walletTypes } from "../../enums";
+import { signTransaction } from "@lobstrco/signer-extension-api";
+import { kit as walletConnectKit } from "../Navbar";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 
 const aquaAssetCode = "AQUA";
 const aquaAssetIssuer =
@@ -90,21 +94,12 @@ function StakeAqua() {
   };
 
   const handleAddTrustline = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
+    if (!user?.userWalletAddress) {
+      return toast.warn("Please connect wallet.");
+    }
 
     const stellarService = new StellarService();
-    const { address } = await kit.getAddress();
-    const senderAccount = await stellarService.loadAccount(address);
+    const senderAccount = await stellarService.loadAccount(user.userWalletAddress);
 
     const transactionBuilder = new TransactionBuilder(senderAccount, {
       fee: BASE_FEE,
@@ -122,10 +117,37 @@ function StakeAqua() {
       .build()
       .toXDR();
 
-    const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-      address,
-      networkPassphrase: WalletNetwork.PUBLIC,
-    });
+    // Sign transaction with user's wallet
+    let signedTxXdr: string = "";
+    if (user?.walletName === walletTypes.LOBSTR) {
+      signedTxXdr = await signTransaction(transactionXDR);
+    } else if (user?.walletName === walletTypes.WALLETCONNECT || user?.walletName === ("wallet_connect" as any)) {
+      // Use shared WalletConnect kit from Navbar
+      await walletConnectKit.setWallet(WALLET_CONNECT_ID);
+      const { signedTxXdr: signed } = await walletConnectKit.signTransaction(
+        transactionXDR,
+        {
+          address: user.userWalletAddress,
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
+      );
+      signedTxXdr = signed;
+    } else {
+      // Freighter or default
+      const freighterKit = new StellarWalletsKit({
+        network: WalletNetwork.PUBLIC,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [new FreighterModule()],
+      });
+      const { signedTxXdr: signed } = await freighterKit.signTransaction(
+        transactionXDR,
+        {
+          address: user.userWalletAddress,
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
+      );
+      signedTxXdr = signed;
+    }
 
     const HORIZON_SERVER = "https://horizon.stellar.org";
 
@@ -138,24 +160,9 @@ function StakeAqua() {
   };
 
   const handleLockAqua = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId:
-        user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
     dispatch(lockingAqua(true));
 
-    const stellarService = new StellarService();
-    const { address } = await kit.getAddress();
-
-    if (!address) {
+    if (!user?.userWalletAddress) {
       dispatch(lockingAqua(false));
       return toast.warn("Please connect wallet.");
     }
@@ -177,7 +184,8 @@ function StakeAqua() {
       );
     }
 
-    const senderAccount = await stellarService.loadAccount(address);
+    const stellarService = new StellarService();
+    const senderAccount = await stellarService.loadAccount(user.userWalletAddress);
     const existingTrustlines = senderAccount.balances.map(
       (balance: Balance) => balance.asset_code
     );
@@ -213,10 +221,36 @@ function StakeAqua() {
 
       const transactionXDR = transaction.toXDR();
 
-      const { signedTxXdr } = await kit.signTransaction(transactionXDR, {
-        address,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
+      // Sign transaction with user's wallet
+      let signedTxXdr: string = "";
+      if (user?.walletName === walletTypes.LOBSTR) {
+        signedTxXdr = await signTransaction(transactionXDR);
+      } else if (user?.walletName === walletTypes.WALLETCONNECT || user?.walletName === ("wallet_connect" as any)) {
+        // Use shared WalletConnect kit from Navbar
+        const { signedTxXdr: signed } = await walletConnectKit.signTransaction(
+          transactionXDR,
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      } else {
+        // Freighter or default
+        const freighterKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const { signedTxXdr: signed } = await freighterKit.signTransaction(
+          transactionXDR,
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      }
 
       dispatch(
         mint({
@@ -224,7 +258,7 @@ function StakeAqua() {
           assetIssuer: aquaAssetIssuer,
           amount: stakeAmount,
           signedTxXdr,
-          senderPublicKey: address,
+          senderPublicKey: user.userWalletAddress,
         })
       );
 

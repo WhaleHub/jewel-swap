@@ -57,6 +57,8 @@ import { Balance } from "../../utils/interfaces";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import { ensureTrustline } from "../../utils/trustline.helper";
+import { kit as walletConnectKit } from "../Navbar";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 
 function Restake() {
   const [isBlubStakeExpanded, setIsBlubStakeExpanded] =
@@ -201,22 +203,28 @@ function Restake() {
         .build();
 
       // Sign transaction
-      const selectedModule =
-        user?.walletName === LOBSTR_ID
-          ? new LobstrModule()
-          : new FreighterModule();
-      const kit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId:
-          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-        modules: [selectedModule],
-      });
-
       let signedTxXdr: string = "";
       if (user?.walletName === walletTypes.LOBSTR) {
         signedTxXdr = await signTransaction(transaction.toXDR());
+      } else if (user?.walletName === walletTypes.WALLETCONNECT || user?.walletName === ("wallet_connect" as any)) {
+        // Use shared WalletConnect kit from Navbar
+        await walletConnectKit.setWallet(WALLET_CONNECT_ID);
+        const { signedTxXdr: signed } = await walletConnectKit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
       } else {
-        const { signedTxXdr: signed } = await kit.signTransaction(
+        // Freighter or default
+        const freighterKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const { signedTxXdr: signed } = await freighterKit.signTransaction(
           transaction.toXDR(),
           {
             address: user.userWalletAddress,
@@ -367,21 +375,36 @@ function Restake() {
         .build();
 
       // Sign transaction
-      const selectedModule =
-        user?.walletName === LOBSTR_ID
-          ? new LobstrModule()
-          : new FreighterModule();
-      const kit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId:
-          user?.walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-        modules: [selectedModule],
-      });
-
-      const { signedTxXdr } = await kit.signTransaction(transaction.toXDR(), {
-        address: user.userWalletAddress,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
+      let signedTxXdr: string = "";
+      if (user?.walletName === walletTypes.LOBSTR) {
+        signedTxXdr = await signTransaction(transaction.toXDR());
+      } else if (user?.walletName === walletTypes.WALLETCONNECT || user?.walletName === ("wallet_connect" as any)) {
+        // Use shared WalletConnect kit from Navbar
+        await walletConnectKit.setWallet(WALLET_CONNECT_ID);
+        const { signedTxXdr: signed } = await walletConnectKit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      } else {
+        // Freighter or default
+        const freighterKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const { signedTxXdr: signed } = await freighterKit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      }
 
       console.log("[Restake] Transaction signed, submitting...");
 

@@ -5,6 +5,7 @@ import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
 import { useEffect, useState } from "react";
+import { TailSpin } from "react-loader-spinner";
 import {
   FREIGHTER_ID,
   FreighterModule,
@@ -50,8 +51,8 @@ import { Balance } from "../../utils/interfaces";
 import { MIN_DEPOSIT_AMOUNT } from "../../config";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
-import { signTransaction } from "@lobstrco/signer-extension-api";
 import DialogC from "./Dialog";
+import { signTransaction } from "@lobstrco/signer-extension-api";
 import {
   WALLET_CONNECT_ID,
   WalletConnectAllowedMethods,
@@ -76,6 +77,9 @@ function STKAqua() {
   // BLUB token balance state
   const [blubBalance, setBlubBalance] = useState<string>("0.00");
   const [blubBalanceLoading, setBlubBalanceLoading] = useState<boolean>(false);
+
+  // Local loading state for Soroban staking
+  const [isSorobanStaking, setIsSorobanStaking] = useState<boolean>(false);
 
   // Contract balance state
   const [contractBalance, setContractBalance] = useState<string>("0.00");
@@ -122,6 +126,8 @@ function STKAqua() {
       return;
     }
 
+    setIsSorobanStaking(true);
+
     try {
       // Use the soroban service
       const { sorobanService } = await import("../../services/soroban.service");
@@ -149,20 +155,37 @@ function STKAqua() {
       );
 
       // Sign transaction with user's wallet
-      const selectedModule =
-        user.walletName === LOBSTR_ID
-          ? new LobstrModule()
-          : new FreighterModule();
-      const kit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: user.walletName || FREIGHTER_ID,
-        modules: [selectedModule],
-      });
-
-      const { signedTxXdr } = await kit.signTransaction(transaction.toXDR(), {
-        address: user.userWalletAddress,
-        networkPassphrase: WalletNetwork.PUBLIC,
-      });
+      let signedTxXdr: string = "";
+      if (user?.walletName === (LOBSTR_ID as any) || user?.walletName === (walletTypes.LOBSTR as any)) {
+        // LOBSTR - use direct extension API
+        signedTxXdr = await signTransaction(transaction.toXDR());
+      } else if (user?.walletName === walletTypes.WALLETCONNECT || user?.walletName === (WALLET_CONNECT_ID as any) || user?.walletName === ("wallet_connect" as any)) {
+        // Use shared WalletConnect kit from Navbar
+        await kit.setWallet(WALLET_CONNECT_ID);
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      } else {
+        // Freighter or default
+        const freighterKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const { signedTxXdr: signed } = await freighterKit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      }
 
       // Submit the signed Soroban contract transaction
       const result = await soroban.submitSignedTransaction(signedTxXdr);
@@ -198,6 +221,7 @@ function STKAqua() {
         `Transaction Hash: ${result.transactionHash}\n\nYour AQUA has been staked. Rewards increase the longer you keep it staked. You can unstake at any time.`
       );
       setOptDialog(true);
+      setIsSorobanStaking(false);
     } catch (error: any) {
       console.error("❌ [STKAqua] Soroban staking failed:", error);
       toast.error(`Staking failed: ${error.message}`);
@@ -206,6 +230,7 @@ function STKAqua() {
         `Error: ${error.message}\n\nPlease try again or contact support.`
       );
       setOptDialog(true);
+      setIsSorobanStaking(false);
     }
   };
 
@@ -447,33 +472,34 @@ function STKAqua() {
     // Sign transaction based on wallet type
     let signedTxXdr: string = "";
 
-    if (user?.walletName === walletTypes.LOBSTR) {
+    if (user?.walletName === (LOBSTR_ID as any) || user?.walletName === (walletTypes.LOBSTR as any)) {
+      // LOBSTR - use direct extension API
       signedTxXdr = await signTransaction(transaction.toXDR());
-    } else if (user?.walletName === walletTypes.FREIGHTER) {
-      const kit = new StellarWalletsKit({
+    } else if (user?.walletName === walletTypes.WALLETCONNECT || user?.walletName === (WALLET_CONNECT_ID as any) || user?.walletName === ("wallet_connect" as any)) {
+      // Use shared WalletConnect kit from Navbar
+      await kit.setWallet(WALLET_CONNECT_ID);
+      const { signedTxXdr: signed } = await kit.signTransaction(
+        transaction.toXDR(),
+        {
+          address: user?.userWalletAddress || "",
+          networkPassphrase: WalletNetwork.PUBLIC,
+        }
+      );
+      signedTxXdr = signed;
+    } else {
+      // Freighter or default
+      const freighterKit = new StellarWalletsKit({
         network: WalletNetwork.PUBLIC,
         selectedWalletId: FREIGHTER_ID,
         modules: [new FreighterModule()],
       });
-
-      const { signedTxXdr: signed } = await kit.signTransaction(
+      const { signedTxXdr: signed } = await freighterKit.signTransaction(
         transaction.toXDR(),
         {
           address: user?.userWalletAddress || "",
           networkPassphrase: WalletNetwork.PUBLIC,
         }
       );
-
-      signedTxXdr = signed;
-    } else if (user?.walletName === walletTypes.WALLETCONNECT) {
-      const { signedTxXdr: signed } = await kit.signTransaction(
-        transaction.toXDR(),
-        {
-          address: user?.userWalletAddress || "",
-          networkPassphrase: WalletNetwork.PUBLIC,
-        }
-      );
-
       signedTxXdr = signed;
     }
 
@@ -556,33 +582,34 @@ function STKAqua() {
 
       let signedTxXdr: string = "";
 
-      if (user?.walletName === walletTypes.LOBSTR) {
+      if (user?.walletName === (LOBSTR_ID as any) || user?.walletName === (walletTypes.LOBSTR as any)) {
+        // LOBSTR - use direct extension API
         signedTxXdr = await signTransaction(transactionXDR);
-      } else if (user?.walletName === walletTypes.WALLETCONNECT) {
+      } else if (user?.walletName === walletTypes.WALLETCONNECT || user?.walletName === (WALLET_CONNECT_ID as any) || user?.walletName === ("wallet_connect" as any)) {
+        // Use shared WalletConnect kit from Navbar
+        await kit.setWallet(WALLET_CONNECT_ID);
         const { signedTxXdr: signed } = await kit.signTransaction(
-          transaction.toXDR(),
+          transactionXDR,
           {
             address: user?.userWalletAddress || "",
             networkPassphrase: WalletNetwork.PUBLIC,
           }
         );
-
         signedTxXdr = signed;
       } else {
-        const kit: StellarWalletsKit = new StellarWalletsKit({
+        // Freighter or default
+        const freighterKit = new StellarWalletsKit({
           network: WalletNetwork.PUBLIC,
           selectedWalletId: FREIGHTER_ID,
           modules: [new FreighterModule()],
         });
-
-        const { signedTxXdr: signed } = await kit.signTransaction(
+        const { signedTxXdr: signed } = await freighterKit.signTransaction(
           transactionXDR,
           {
-            address: user?.userWalletAddress,
+            address: user?.userWalletAddress || "",
             networkPassphrase: WalletNetwork.PUBLIC,
           }
         );
-
         signedTxXdr = signed;
       }
 
@@ -789,26 +816,45 @@ function STKAqua() {
             <Button
               className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={useSoroban ? handleSorobanStake : handleLockAqua}
-              disabled={useSoroban ? staking.isStaking : user?.lockingAqua}
+              disabled={useSoroban ? isSorobanStaking : user?.lockingAqua}
             >
-              {useSoroban
-                ? staking.isStaking
-                  ? "Staking..."
-                  : "Stake AQUA"
-                : user?.lockingAqua
-                ? "Converting..."
-                : "Convert & Stake"}
+              {useSoroban ? (
+                isSorobanStaking ? (
+                  <div className="flex justify-center items-center gap-[10px]">
+                    <span className="text-white">Staking...</span>
+                    <TailSpin
+                      height="18"
+                      width="18"
+                      color="#ffffff"
+                      ariaLabel="tail-spin-loading"
+                      radius="1"
+                      wrapperStyle={{}}
+                      wrapperClass=""
+                      visible={true}
+                    />
+                  </div>
+                ) : (
+                  "Stake AQUA"
+                )
+              ) : user?.lockingAqua ? (
+                <div className="flex justify-center items-center gap-[10px]">
+                  <span className="text-white">Converting...</span>
+                  <TailSpin
+                    height="18"
+                    width="18"
+                    color="#ffffff"
+                    ariaLabel="tail-spin-loading"
+                    radius="1"
+                    wrapperStyle={{}}
+                    wrapperClass=""
+                    visible={true}
+                  />
+                </div>
+              ) : (
+                "Convert & Stake"
+              )}
             </Button>
 
-            {/* Loading indicator for Soroban operations */}
-            {useSoroban && staking.isStaking && (
-              <div className="flex items-center justify-center mt-3">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#00CC99]"></div>
-                <span className="ml-2 text-sm text-[#B1B3B8]">
-                  Processing transaction...
-                </span>
-              </div>
-            )}
 
             {/* Display current staking stats for Soroban */}
             {useSoroban && user.userWalletAddress && (
