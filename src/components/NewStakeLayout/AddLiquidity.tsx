@@ -9,7 +9,6 @@ import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import DialogC from "./Dialog";
 import { SorobanVaultService, TokenPriceService } from "../../services/soroban-vault.service";
-import { SorobanVaultService } from "../../services/soroban-vault.service";
 import { StellarService } from "../../services/stellar.service";
 import { getAccountInfo, storeAccountBalance } from "../../lib/slices/userSlice";
 
