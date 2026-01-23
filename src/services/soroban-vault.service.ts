@@ -600,3 +600,98 @@ export class SorobanVaultService {
     }
   }
 }
+
+/**
+ * Token price fetching service for USD value calculations
+ */
+export class TokenPriceService {
+  private static priceCache: Map<string, { price: number; timestamp: number }> = new Map();
+  private static CACHE_TTL = 60000; // 1 minute cache
+
+  /**
+   * Get token price in USD
+   */
+  static async getTokenPrice(tokenCode: string): Promise<number> {
+    const now = Date.now();
+    const cached = this.priceCache.get(tokenCode);
+
+    if (cached && now - cached.timestamp < this.CACHE_TTL) {
+      return cached.price;
+    }
+
+    try {
+      // USDC is always $1
+      if (tokenCode === "USDC") {
+        this.priceCache.set(tokenCode, { price: 1, timestamp: now });
+        return 1;
+      }
+
+      // For XLM, use CoinGecko
+      if (tokenCode === "XLM") {
+        const response = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd"
+        );
+        const data = await response.json();
+        const price = data?.stellar?.usd || 0;
+        this.priceCache.set(tokenCode, { price, timestamp: now });
+        return price;
+      }
+
+      // For AQUA, use Stellar Expert
+      if (tokenCode === "AQUA") {
+        const response = await fetch(
+          "https://api.stellar.expert/explorer/public/asset/AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA/price"
+        );
+        const data = await response.json();
+        const price = data?.price || 0;
+        this.priceCache.set(tokenCode, { price, timestamp: now });
+        return price;
+      }
+
+      // For BLUB, try Stellar Expert
+      if (tokenCode === "BLUB") {
+        try {
+          const blubIssuer = process.env.REACT_APP_BLUB_ISSUER;
+          if (blubIssuer) {
+            const response = await fetch(
+              `https://api.stellar.expert/explorer/public/asset/BLUB-${blubIssuer}/price`
+            );
+            const data = await response.json();
+            const price = data?.price || 0;
+            this.priceCache.set(tokenCode, { price, timestamp: now });
+            return price;
+          }
+        } catch {
+          // Fallback: return 0 for unknown price
+        }
+        return 0;
+      }
+
+      // Default: return 0 for unknown tokens
+      return 0;
+    } catch (error) {
+      console.error(`Failed to fetch price for ${tokenCode}:`, error);
+      return 0;
+    }
+  }
+
+  /**
+   * Calculate total USD value of token amounts
+   */
+  static async calculateTotalUsdValue(
+    tokenACode: string,
+    tokenAAmount: number,
+    tokenBCode: string,
+    tokenBAmount: number
+  ): Promise<number> {
+    const [priceA, priceB] = await Promise.all([
+      this.getTokenPrice(tokenACode),
+      this.getTokenPrice(tokenBCode),
+    ]);
+
+    const valueA = tokenAAmount * priceA;
+    const valueB = tokenBAmount * priceB;
+
+    return valueA + valueB;
+  }
+}
