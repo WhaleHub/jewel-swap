@@ -16,6 +16,8 @@ import {
   FreighterModule,
   LobstrModule,
 } from "@creit.tech/stellar-wallets-kit";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
+import { kit as walletConnectKit } from "../components/Navbar";
 
 export interface VaultPoolInfo {
   pool_id: number;
@@ -205,15 +207,23 @@ export class SorobanVaultService {
       const { userAddress, poolId, desiredA, desiredB, minShares, walletName } = params;
       console.log("[VaultDeposit] Starting deposit...", { userAddress, poolId, desiredA, desiredB, walletName });
 
-      // Setup wallet
-      const selectedModule = walletName === LOBSTR_ID ? new LobstrModule() : new FreighterModule();
-      const walletId = walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID;
-      const kit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: walletId,
-        modules: [selectedModule],
-      });
-      await kit.setWallet(walletId);
+      // Setup wallet - use existing WalletConnect kit for WalletConnect, create new kit for others
+      let signKit: StellarWalletsKit;
+
+      if (walletName === WALLET_CONNECT_ID || walletName === ("wallet_connect" as any)) {
+        // Use the shared WalletConnect kit from Navbar
+        signKit = walletConnectKit;
+        await signKit.setWallet(WALLET_CONNECT_ID);
+      } else {
+        const selectedModule = walletName === LOBSTR_ID ? new LobstrModule() : new FreighterModule();
+        const walletId = walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID;
+        signKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: walletId,
+          modules: [selectedModule],
+        });
+        await signKit.setWallet(walletId);
+      }
 
       // Build transaction
       const contract = new Contract(this.stakingContractId);
@@ -254,32 +264,47 @@ export class SorobanVaultService {
 
       // Sign transaction
       const txXdr = tx.toXDR();
-      const { signedTxXdr } = await kit.signTransaction(txXdr, {
+      const { signedTxXdr } = await signKit.signTransaction(txXdr, {
         address: userAddress,
         networkPassphrase: this.networkPassphrase,
       });
 
       // Submit transaction
       const signedTx = TransactionBuilder.fromXDR(signedTxXdr, this.networkPassphrase);
+      console.log("[Vault] Submitting signed transaction...");
       const sendResponse = await this.server.sendTransaction(signedTx as any);
+      console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash);
 
       if (sendResponse.status === "PENDING") {
         // Wait for confirmation
         let getResponse = await this.server.getTransaction(sendResponse.hash);
-        while (getResponse.status === "NOT_FOUND") {
+        let attempts = 0;
+        const maxAttempts = 30;
+
+        while (getResponse.status === "NOT_FOUND" && attempts < maxAttempts) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           getResponse = await this.server.getTransaction(sendResponse.hash);
+          attempts++;
         }
+
+        console.log("[Vault] Final status:", getResponse.status);
 
         if (getResponse.status === "SUCCESS") {
           return {
             success: true,
             transactionHash: sendResponse.hash,
           };
+        } else if (getResponse.status === "FAILED") {
+          const errorResult = (getResponse as any).resultXdr;
+          console.error("[Vault] Transaction failed:", errorResult);
+          throw new Error("Transaction failed on-chain");
         }
+      } else if (sendResponse.status === "ERROR") {
+        console.error("[Vault] Send error:", (sendResponse as any).errorResult);
+        throw new Error("Transaction send error");
       }
 
-      throw new Error("Transaction failed");
+      throw new Error(`Transaction failed with status: ${sendResponse.status}`);
     } catch (error: any) {
       // "Bad union switch" means tx actually succeeded but response parsing failed
       if (error.message?.toLowerCase().includes("bad union switch")) {
@@ -311,15 +336,23 @@ export class SorobanVaultService {
     try {
       const { userAddress, poolId, sharePercent, minA, minB, walletName } = params;
 
-      // Setup wallet
-      const selectedModule = walletName === LOBSTR_ID ? new LobstrModule() : new FreighterModule();
-      const walletId = walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID;
-      const kit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: walletId,
-        modules: [selectedModule],
-      });
-      await kit.setWallet(walletId);
+      // Setup wallet - use existing WalletConnect kit for WalletConnect, create new kit for others
+      let signKit: StellarWalletsKit;
+
+      if (walletName === WALLET_CONNECT_ID || walletName === ("wallet_connect" as any)) {
+        // Use the shared WalletConnect kit from Navbar
+        signKit = walletConnectKit;
+        await signKit.setWallet(WALLET_CONNECT_ID);
+      } else {
+        const selectedModule = walletName === LOBSTR_ID ? new LobstrModule() : new FreighterModule();
+        const walletId = walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID;
+        signKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: walletId,
+          modules: [selectedModule],
+        });
+        await signKit.setWallet(walletId);
+      }
 
       // Build transaction
       const contract = new Contract(this.stakingContractId);
@@ -360,32 +393,47 @@ export class SorobanVaultService {
 
       // Sign transaction
       const txXdr = tx.toXDR();
-      const { signedTxXdr } = await kit.signTransaction(txXdr, {
+      const { signedTxXdr } = await signKit.signTransaction(txXdr, {
         address: userAddress,
         networkPassphrase: this.networkPassphrase,
       });
 
       // Submit transaction
       const signedTx = TransactionBuilder.fromXDR(signedTxXdr, this.networkPassphrase);
+      console.log("[Vault] Submitting signed transaction...");
       const sendResponse = await this.server.sendTransaction(signedTx as any);
+      console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash);
 
       if (sendResponse.status === "PENDING") {
         // Wait for confirmation
         let getResponse = await this.server.getTransaction(sendResponse.hash);
-        while (getResponse.status === "NOT_FOUND") {
+        let attempts = 0;
+        const maxAttempts = 30;
+
+        while (getResponse.status === "NOT_FOUND" && attempts < maxAttempts) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
           getResponse = await this.server.getTransaction(sendResponse.hash);
+          attempts++;
         }
+
+        console.log("[Vault] Final status:", getResponse.status);
 
         if (getResponse.status === "SUCCESS") {
           return {
             success: true,
             transactionHash: sendResponse.hash,
           };
+        } else if (getResponse.status === "FAILED") {
+          const errorResult = (getResponse as any).resultXdr;
+          console.error("[Vault] Transaction failed:", errorResult);
+          throw new Error("Transaction failed on-chain");
         }
+      } else if (sendResponse.status === "ERROR") {
+        console.error("[Vault] Send error:", (sendResponse as any).errorResult);
+        throw new Error("Transaction send error");
       }
 
-      throw new Error("Transaction failed");
+      throw new Error(`Transaction failed with status: ${sendResponse.status}`);
     } catch (error: any) {
       // "Bad union switch" means tx actually succeeded but response parsing failed
       if (error.message?.toLowerCase().includes("bad union switch")) {

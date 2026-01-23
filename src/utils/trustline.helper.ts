@@ -14,9 +14,11 @@ import {
   StellarWalletsKit,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
+import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { signTransaction } from "@lobstrco/signer-extension-api";
 import { walletTypes } from "../enums";
 import { StellarService } from "../services/stellar.service";
+import { kit as walletConnectKit } from "../components/Navbar";
 
 export interface TrustlineSetupResult {
   hasTrustline: boolean;
@@ -98,19 +100,29 @@ export async function ensureTrustline(
       .build();
 
     // Sign the transaction
-    const selectedModule =
-      walletName === LOBSTR_ID ? new LobstrModule() : new FreighterModule();
-    const kit = new StellarWalletsKit({
-      network: networkType,
-      selectedWalletId: walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
     let signedTxXdr: string = "";
 
     if (walletName === walletTypes.LOBSTR) {
       signedTxXdr = await signTransaction(transaction.toXDR());
+    } else if (walletName === walletTypes.WALLETCONNECT || walletName === WALLET_CONNECT_ID || walletName === ("wallet_connect" as any)) {
+      // Use shared WalletConnect kit from Navbar
+      await walletConnectKit.setWallet(WALLET_CONNECT_ID);
+      const { signedTxXdr: signed } = await walletConnectKit.signTransaction(
+        transaction.toXDR(),
+        {
+          address: userAddress,
+          networkPassphrase: networkType,
+        }
+      );
+      signedTxXdr = signed;
     } else {
+      // Freighter or default
+      const selectedModule = new FreighterModule();
+      const kit = new StellarWalletsKit({
+        network: networkType,
+        selectedWalletId: FREIGHTER_ID,
+        modules: [selectedModule],
+      });
       const { signedTxXdr: signed } = await kit.signTransaction(
         transaction.toXDR(),
         {
