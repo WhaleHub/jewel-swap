@@ -63,6 +63,11 @@ function AddLiquidity() {
 
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
 
+  // Slippage tolerance in percentage (e.g., 0.5 = 0.5%)
+  const [slippageTolerance, setSlippageTolerance] = useState<number>(0.5);
+  const [showSlippageSettings, setShowSlippageSettings] = useState<boolean>(false);
+  const [customSlippage, setCustomSlippage] = useState<string>("");
+
   const [dialogMsg, setDialogMsg] = useState<string>("");
   const [dialogTitle, setDialogTitle] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
@@ -77,13 +82,28 @@ function AddLiquidity() {
   const loadPools = async () => {
     try {
       setIsLoadingPools(true);
+      console.log("[AddLiquidity] Loading pools from contract...");
+
       const poolCount = await vaultService.getPoolCount();
+      console.log("[AddLiquidity] Pool count:", poolCount);
+
+      if (poolCount === 0) {
+        console.log("[AddLiquidity] No pools configured in contract");
+        setPools([]);
+        setSelectedPool(null);
+        return;
+      }
 
       const loadedPools: PoolInfo[] = [];
       for (let i = 0; i < poolCount; i++) {
-        const poolInfo = await vaultService.getPoolInfo(i);
-        if (poolInfo.active) {
-          loadedPools.push(poolInfo);
+        try {
+          const poolInfo = await vaultService.getPoolInfo(i);
+          console.log(`[AddLiquidity] Pool ${i}:`, poolInfo);
+          if (poolInfo.active) {
+            loadedPools.push(poolInfo);
+          }
+        } catch (poolError) {
+          console.error(`[AddLiquidity] Failed to load pool ${i}:`, poolError);
         }
       }
 
@@ -92,8 +112,8 @@ function AddLiquidity() {
         setSelectedPool(loadedPools[0]);
       }
     } catch (error) {
-      console.error("Failed to load pools:", error);
-      toast.error("Failed to load pools");
+      console.error("[AddLiquidity] Failed to load pools:", error);
+      toast.error("Failed to load pools. Please check your connection.");
     } finally {
       setIsLoadingPools(false);
     }
@@ -215,6 +235,50 @@ function AddLiquidity() {
     }
   }, [userWalletAddress, selectedPool, refreshWalletAndBalances]);
 
+  // Calculate estimated LP shares for deposit based on pool reserves
+  const calculateExpectedShares = (amountA: number, amountB: number): string => {
+    const resA = parseFloat(reserveA);
+    const resB = parseFloat(reserveB);
+    const totalLp = parseFloat(totalLpSupply);
+
+    if (totalLp <= 0 || resA <= 0 || resB <= 0) {
+      // First deposit - shares equal to sqrt(amountA * amountB)
+      return Math.sqrt(amountA * amountB).toString();
+    }
+
+    // Calculate shares based on the smaller ratio to prevent manipulation
+    const sharesFromA = (amountA / resA) * totalLp;
+    const sharesFromB = (amountB / resB) * totalLp;
+
+    // Use the minimum to be conservative
+    return Math.min(sharesFromA, sharesFromB).toString();
+  };
+
+  // Apply slippage tolerance to get minimum acceptable amount
+  const applySlippage = (amount: string | number): string => {
+    const value = typeof amount === "string" ? parseFloat(amount) : amount;
+    if (isNaN(value) || value <= 0) return "0";
+
+    const minAmount = value * (1 - slippageTolerance / 100);
+    // Convert to token units (7 decimals for Stellar)
+    return Math.floor(minAmount * 1e7).toString();
+  };
+
+  // Handle slippage preset selection
+  const handleSlippagePreset = (value: number) => {
+    setSlippageTolerance(value);
+    setCustomSlippage("");
+  };
+
+  // Handle custom slippage input
+  const handleCustomSlippageChange = (value: string) => {
+    setCustomSlippage(value);
+    const parsed = parseFloat(value);
+    if (!isNaN(parsed) && parsed > 0 && parsed <= 50) {
+      setSlippageTolerance(parsed);
+    }
+  };
+
   // Calculate estimated withdrawal amounts
   const getEstimatedWithdrawAmounts = () => {
     if (!userPosition || !selectedPool) {
@@ -308,12 +372,22 @@ function AddLiquidity() {
     }
 
     try {
+      // Calculate expected LP shares and apply slippage tolerance
+      const expectedShares = calculateExpectedShares(amount1, amount2);
+      const minSharesWithSlippage = applySlippage(expectedShares);
+
+      console.log("[Deposit] Slippage protection:", {
+        expectedShares,
+        slippageTolerance: `${slippageTolerance}%`,
+        minSharesWithSlippage,
+      });
+
       const result = await vaultService.vaultDeposit({
         userAddress: user.userWalletAddress,
         poolId: selectedPool.pool_id,
         desiredA: amount1.toString(),
         desiredB: amount2.toString(),
-        minShares: "0", // TODO: Calculate based on slippage tolerance
+        minShares: minSharesWithSlippage,
         walletName: user.walletName,
       });
 
@@ -358,12 +432,25 @@ function AddLiquidity() {
     setIsWithdrawing(true);
 
     try {
+      // Calculate minimum amounts with slippage protection
+      const { estimatedA, estimatedB } = getEstimatedWithdrawAmounts();
+      const minAWithSlippage = applySlippage(estimatedA);
+      const minBWithSlippage = applySlippage(estimatedB);
+
+      console.log("[Withdraw] Slippage protection:", {
+        estimatedA,
+        estimatedB,
+        slippageTolerance: `${slippageTolerance}%`,
+        minAWithSlippage,
+        minBWithSlippage,
+      });
+
       const result = await vaultService.vaultWithdraw({
         userAddress: user.userWalletAddress,
         poolId: selectedPool.pool_id,
         sharePercent: withdrawPercent * 100, // Convert to basis points
-        minA: "0", // TODO: Calculate based on slippage tolerance
-        minB: "0",
+        minA: minAWithSlippage,
+        minB: minBWithSlippage,
         walletName: user.walletName,
       });
 
@@ -427,27 +514,178 @@ function AddLiquidity() {
           />
         </div>
 
+        {/* Slippage Settings */}
+        <div className="mt-4">
+          <button
+            className="flex items-center space-x-2 text-sm text-[#B1B3B8] hover:text-white transition-colors"
+            onClick={() => setShowSlippageSettings(!showSlippageSettings)}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+            <span>Slippage Tolerance: {slippageTolerance}%</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className={clsx("h-4 w-4 transition-transform", showSlippageSettings && "rotate-180")}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showSlippageSettings && (
+            <div className="mt-3 p-4 bg-[#0E111B] rounded-[8px]">
+              <div className="flex items-center space-x-2 mb-3">
+                <InformationCircleIcon
+                  className="h-4 w-4 text-[#B1B3B8] cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      `Slippage tolerance is the maximum price difference you're willing to accept between the expected and actual transaction price. A higher tolerance increases the chance of transaction success but may result in a less favorable rate. Recommended: 0.5% for stable pairs, 1-2% for volatile pairs.`,
+                      "Slippage Tolerance"
+                    )
+                  }
+                />
+                <span className="text-sm text-[#B1B3B8]">
+                  Maximum price impact you're willing to accept
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                {[0.5, 1, 2, 3].map((preset) => (
+                  <button
+                    key={preset}
+                    className={clsx(
+                      "px-3 py-1.5 rounded-[6px] text-sm font-medium transition-colors",
+                      slippageTolerance === preset && !customSlippage
+                        ? "bg-[#00CC99] text-white"
+                        : "bg-[#3C404D] text-[#B1B3B8] hover:bg-[#4C505D]"
+                    )}
+                    onClick={() => handleSlippagePreset(preset)}
+                  >
+                    {preset}%
+                  </button>
+                ))}
+                <div className="flex items-center bg-[#3C404D] rounded-[6px] px-2">
+                  <input
+                    type="number"
+                    placeholder="Custom"
+                    value={customSlippage}
+                    onChange={(e) => handleCustomSlippageChange(e.target.value)}
+                    className="w-16 bg-transparent text-white text-sm py-1.5 focus:outline-none"
+                    min="0.1"
+                    max="50"
+                    step="0.1"
+                  />
+                  <span className="text-[#B1B3B8] text-sm">%</span>
+                </div>
+              </div>
+
+              {slippageTolerance > 5 && (
+                <div className="mt-3 flex items-center space-x-2 text-[#FF9900] text-sm">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <span>High slippage may result in an unfavorable rate</span>
+                </div>
+              )}
+
+              {slippageTolerance < 0.1 && (
+                <div className="mt-3 flex items-center space-x-2 text-[#FF9900] text-sm">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <span>Low slippage may cause transaction to fail</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Pool Selection */}
         <div className="mt-5">
           <label className="text-sm text-[#B1B3B8] mb-2 block">
             Select Pool
           </label>
-          <select
-            className="w-full bg-[#0E111B] text-white p-3 rounded-[8px] border-none focus:outline-none focus:ring-2 focus:ring-[#00CC99]"
-            value={selectedPool?.pool_id || ""}
-            onChange={(e) => {
-              const pool = pools.find(
-                (p) => p.pool_id === parseInt(e.target.value)
-              );
-              setSelectedPool(pool || null);
-            }}
-          >
-            {pools.map((pool) => (
-              <option key={pool.pool_id} value={pool.pool_id}>
-                {pool.token_a_code}/{pool.token_b_code}
-              </option>
-            ))}
-          </select>
+          {pools.length === 0 ? (
+            <div className="w-full bg-[#0E111B] text-[#B1B3B8] p-4 rounded-[8px] text-center">
+              <div className="flex flex-col items-center space-y-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-8 w-8 text-[#3C404D]"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                  />
+                </svg>
+                <span className="text-sm">No liquidity pools available</span>
+                <span className="text-xs text-[#6B7280]">Pools will appear here once configured</span>
+              </div>
+            </div>
+          ) : (
+            <select
+              className="w-full bg-[#0E111B] text-white p-3 rounded-[8px] border-none focus:outline-none focus:ring-2 focus:ring-[#00CC99]"
+              value={selectedPool?.pool_id || ""}
+              onChange={(e) => {
+                const pool = pools.find(
+                  (p) => p.pool_id === parseInt(e.target.value)
+                );
+                setSelectedPool(pool || null);
+              }}
+            >
+              {pools.map((pool) => (
+                <option key={pool.pool_id} value={pool.pool_id}>
+                  {pool.token_a_code}/{pool.token_b_code}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Pool Info Display */}
@@ -570,6 +808,27 @@ function AddLiquidity() {
               </div>
             </div>
 
+            {/* Transaction Summary with Slippage Protection */}
+            {depositAmount1 && depositAmount2 && parseFloat(depositAmount1) > 0 && parseFloat(depositAmount2) > 0 && (
+              <div className="mt-4 bg-[#0E111B] p-4 rounded-[8px]">
+                <div className="text-sm text-[#B1B3B8] mb-2">Transaction Summary</div>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-[#B1B3B8]">Expected LP Tokens:</span>
+                    <span className="text-white">
+                      ~{parseFloat(calculateExpectedShares(parseFloat(depositAmount1), parseFloat(depositAmount2))).toFixed(4)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#B1B3B8]">Minimum LP Tokens ({slippageTolerance}% slippage):</span>
+                    <span className="text-[#00CC99]">
+                      ~{(parseFloat(calculateExpectedShares(parseFloat(depositAmount1), parseFloat(depositAmount2))) * (1 - slippageTolerance / 100)).toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <Button
               className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleDeposit}
@@ -647,6 +906,27 @@ function AddLiquidity() {
                     <div className="flex justify-between text-white">
                       <span>{selectedPool.token_b_code}:</span>
                       <span>~{getEstimatedWithdrawAmounts().estimatedB}</span>
+                    </div>
+                  </div>
+
+                  {/* Slippage Protection Info */}
+                  <div className="mt-3 pt-3 border-t border-[#3C404D]">
+                    <div className="text-sm text-[#B1B3B8] mb-2">
+                      Minimum received ({slippageTolerance}% slippage protection):
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[#00CC99]">
+                        <span>{selectedPool.token_a_code}:</span>
+                        <span>
+                          {(parseFloat(getEstimatedWithdrawAmounts().estimatedA) * (1 - slippageTolerance / 100)).toFixed(4)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-[#00CC99]">
+                        <span>{selectedPool.token_b_code}:</span>
+                        <span>
+                          {(parseFloat(getEstimatedWithdrawAmounts().estimatedB) * (1 - slippageTolerance / 100)).toFixed(4)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
