@@ -1497,34 +1497,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "whalehub-governance"
-version = "0.1.0"
-dependencies = [
- "soroban-sdk",
- "whalehub-shared",
-]
-
-[[package]]
-name = "whalehub-rewards"
-version = "0.1.0"
-dependencies = [
- "soroban-sdk",
- "whalehub-shared",
-]
-
-[[package]]
-name = "whalehub-shared"
-version = "0.1.0"
-dependencies = [
- "soroban-sdk",
-]
-
-[[package]]
 name = "whalehub-staking"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
- "whalehub-shared",
 ]
 
 [[package]]

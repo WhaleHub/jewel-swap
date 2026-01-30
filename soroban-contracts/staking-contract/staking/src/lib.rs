@@ -72,14 +72,14 @@ pub struct OldConfig {
     pub version: u32,
 }
 
-/// New Config struct (v1.1.0)
+/// New Config struct (v1.2.0)
 /// Version encoding: major * 10000 + minor * 100 + patch
-/// 1.1.0 = 10100
+/// 1.2.0 = 10200
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
     pub admin: Address,
-    pub version: u32, // 10100 = v1.1.0
+    pub version: u32, // 10200 = v1.2.0
     pub total_supply: i128,
     pub treasury_address: Address,
     pub reward_rate: i128, // basis points per period
@@ -95,6 +95,9 @@ pub struct Config {
     // Vault settings
     pub vault_treasury: Address, // Treasury for vault fees (30%)
     pub vault_fee_bps: u32, // Vault fee in basis points (3000 = 30%)
+    // Cooldown settings (v1.2.0)
+    pub unstake_cooldown_seconds: u64,      // Default: 864000 (10 days)
+    pub claim_reward_cooldown_seconds: u64, // Default: 604800 (7 days)
 }
 
 #[contracttype]
@@ -163,6 +166,77 @@ pub struct LpPosition {
     pub last_update_ts: u64,
     pub lp_shares: i128,
     pub reward_debt: i128, // for reward calculation
+}
+
+// ============================================================================
+// SYNTHETIX-STYLE REWARD SYSTEM (v1.2.0)
+// ============================================================================
+
+/// Precision constant for reward calculations (1e12)
+/// Used to maintain precision in reward_per_token calculations
+pub const REWARD_PRECISION: i128 = 1_000_000_000_000;
+
+/// Global reward state - tracks accumulated rewards for the entire pool
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardState {
+    pub reward_per_token_stored: i128,
+    pub last_update_time: u64,
+    pub total_staked: i128,
+    pub total_rewards_added: i128,
+    pub total_rewards_claimed: i128,
+}
+
+/// Per-user reward state - tracks each user's reward accounting
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserRewardState {
+    pub staked_balance: i128,
+    pub reward_per_token_paid: i128,
+    pub rewards_earned: i128,
+    pub last_claim_time: u64,
+    pub total_claimed: i128,
+}
+
+/// Event emitted when backend adds rewards
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardsAddedEvent {
+    pub amount: i128,
+    pub total_staked: i128,
+    pub reward_per_token: i128,
+    pub timestamp: u64,
+}
+
+/// Event emitted when user claims rewards
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RewardsClaimedEvent {
+    pub user: Address,
+    pub amount: i128,
+    pub total_claimed: i128,
+    pub timestamp: u64,
+}
+
+/// User reward info for view function
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UserRewardInfo {
+    pub pending_rewards: i128,
+    pub total_claimed: i128,
+    pub staked_balance: i128,
+    pub last_claim_time: u64,
+    pub can_claim: bool,
+    pub claim_available_at: u64,
+}
+
+/// Unstake status for a specific lock entry
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnstakeStatus {
+    pub can_unstake: bool,
+    pub unstake_available_at: u64,
+    pub blub_amount: i128,
 }
 
 #[contracttype]
@@ -318,6 +392,9 @@ pub enum DataKey {
     // Vault (Request 2)
     PoolInfo(u32), // Pool info by pool_id
     UserVaultPosition(Address, u32), // User vault position by (user, pool_id)
+    // Synthetix-style Reward System (v1.2.0)
+    RewardStateV2,                    // Global reward state
+    UserRewardStateV2(Address),       // Per-user reward state
 }
 
 #[contracttype]
@@ -345,6 +422,9 @@ pub enum Error {
     PoolNotFound = 26,
     MaxPoolsReached = 27,
     PositionNotFound = 28,
+    ClaimCooldownActive = 29,
+    UnstakeCooldownActive = 30,
+    NoRewardsToClaim = 31,
 }
 
 impl From<Error> for soroban_sdk::Error {
@@ -443,6 +523,18 @@ pub struct PolContributionEvent {
     pub tx_hash: Bytes,
 }
 
+/// Event emitted when tokens are sent to admin for LP deposit
+/// Backend should listen for this event and deposit to AQUA/BLUB pool
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PolDepositTriggerEvent {
+    pub user: Address,       
+    pub aqua_amount: i128,     
+    pub blub_amount: i128,    
+    pub timestamp: u64,
+    pub tx_hash: Bytes,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PolRewardsClaimedEvent {
@@ -504,7 +596,7 @@ impl StakingRegistry {
 
         let cfg = Config {
             admin: admin.clone(),
-            version: 5,
+            version: 10200, // v1.2.0
             total_supply: 0,
             treasury_address,
             reward_rate: 100, // 1% per period default
@@ -518,6 +610,9 @@ impl StakingRegistry {
             period_unit_minutes: 1,
             vault_treasury,
             vault_fee_bps,
+            // Default cooldowns: 10 days unstake, 7 days claim
+            unstake_cooldown_seconds: 864000,      // 10 days
+            claim_reward_cooldown_seconds: 604800, // 7 days
         };
         env.storage().instance().set(&DataKey::Config, &cfg);
 
@@ -553,6 +648,16 @@ impl StakingRegistry {
             ice_voting_power_used: 0,
         };
         env.storage().instance().set(&DataKey::ProtocolOwnedLiquidity, &pol);
+
+        // Initialize Synthetix-style reward state (v1.2.0)
+        let reward_state = RewardState {
+            reward_per_token_stored: 0,
+            last_update_time: env.ledger().timestamp(),
+            total_staked: 0,
+            total_rewards_added: 0,
+            total_rewards_claimed: 0,
+        };
+        env.storage().instance().set(&DataKey::RewardStateV2, &reward_state);
 
         Ok(())
     }
@@ -909,46 +1014,58 @@ impl StakingRegistry {
         // CHANGED: Keep 90% AQUA in contract for ICE locking (Request 1)
         // Track as pending instead of sending to ICE contract
         global_state.pending_aqua_for_ice = global_state.pending_aqua_for_ice.saturating_add(ice_aqua);
-        
-        // EXTERNAL CALL #3: Auto-deposit POL (always enabled)
+
+        // ===== SEND 10% AQUA + 0.1x BLUB TO ADMIN WALLET =====
+        // Backend will deposit these to AQUA/BLUB pool to get ICE boost
         if pol_aqua > 0 && blub_to_lp > 0 {
-            // Verify contract has enough AQUA for POL
-            let contract_aqua_balance = aqua_client.balance(&contract_address);
-            if contract_aqua_balance < pol_aqua {
-                // Release lock before returning error
+            // Transfer AQUA to admin wallet
+            let transfer_aqua_result = aqua_client.try_transfer(&contract_address, &config.admin, &pol_aqua);
+            if transfer_aqua_result.is_err() {
                 global_state.locked = false;
                 env.storage().instance().set(&DataKey::GlobalState, &global_state);
                 env.events().publish(
                     (symbol_short!("pol_err"),),
-                    symbol_short!("no_aqua"),
+                    symbol_short!("aqua_xfr"),
                 );
                 return Err(Error::InsufficientBalance);
             }
-            
-            let pol_result = Self::deposit_pol_to_lp(&env, &config, pol_aqua, blub_to_lp);
-            if pol_result.is_err() {
+
+            // Transfer BLUB to admin wallet
+            let blub_client = token::Client::new(&env, &config.blub_token);
+            let transfer_blub_result = blub_client.try_transfer(&contract_address, &config.admin, &blub_to_lp);
+            if transfer_blub_result.is_err() {
                 global_state.locked = false;
                 env.storage().instance().set(&DataKey::GlobalState, &global_state);
                 env.events().publish(
                     (symbol_short!("pol_err"),),
-                    symbol_short!("auto_fail"),
+                    symbol_short!("blub_xfr"),
                 );
-                return Err(Error::InvalidInput);
+                return Err(Error::InsufficientBalance);
             }
+
+            // Emit event for backend to deposit to AQUA/BLUB pool
+            let pol_trigger_event = PolDepositTriggerEvent {
+                user: user.clone(),
+                aqua_amount: pol_aqua,
+                blub_amount: blub_to_lp,
+                timestamp: now,
+                tx_hash: tx_hash_bytes.clone(),
+            };
+            env.events().publish((symbol_short!("pol_dep"),), pol_trigger_event);
         }
-        
+
         // ===== RELEASE RE-ENTRANCY LOCK =====
         global_state.locked = false;
         env.storage().instance().set(&DataKey::GlobalState, &global_state);
-        
+
         // ===== EMIT EVENTS (safe, after all operations) =====
-        
+
         // Emit ICE transfer event (90% AQUA to governance)
         env.events().publish(
             (symbol_short!("ice_xfer"), user.clone()),
             ice_aqua,
         );
-        
+
         // Emit lock event
         let event = LockRecordedEvent {
             user: user.clone(),
@@ -960,13 +1077,16 @@ impl StakingRegistry {
             unlock_timestamp,
         };
         env.events().publish((symbol_short!("lock"),), event);
-        
+
         // Emit BLUB staking event
         env.events().publish(
             (symbol_short!("blub_stk"), user.clone()),
             (blub_minted, blub_staked, blub_to_lp),
         );
-        
+        // Checkpoint and update user's staked balance for reward tracking
+        let new_total_staked = Self::get_user_total_staked_blub(&env, &user);
+        Self::sync_user_reward_balance(&env, &user, new_total_staked);
+
         Ok(())
     }
 
@@ -1367,6 +1487,10 @@ impl StakingRegistry {
             (symbol_short!("blub_stk"), user.clone()),
             amount,
         );
+
+        // ===== SYNC REWARD BALANCE (v1.2.0) =====
+        let new_total_staked = Self::get_user_total_staked_blub(&env, &user);
+        Self::sync_user_reward_balance(&env, &user, new_total_staked);
 
         Ok(())
     }
@@ -3095,7 +3219,8 @@ impl StakingRegistry {
 
         let now = env.ledger().timestamp();
         let contract_address = env.current_contract_address();
-        
+        let config = Self::get_config(env.clone())?;
+
         let user_locks: Vec<Bytes> = env
             .storage()
             .persistent()
@@ -3112,7 +3237,7 @@ impl StakingRegistry {
         let mut total_blub_unstaked = 0i128;
         let mut total_aqua_unlocked = 0i128;
 
-        // Find and mark unlocked entries for unstaking
+        // Find and mark entries for unstaking (with cooldown check)
         for i in 0..user_locks.len() {
             if remaining_amount <= 0 {
                 break;
@@ -3120,18 +3245,21 @@ impl StakingRegistry {
 
             if let Some(tx_hash) = user_locks.get(i) {
                 if let Some(mut entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash.clone())) {
-                    // Allow immediate unstaking - no time-based restrictions
-                    if entry.blub_locked > 0 && !entry.unlocked {
+                    // Check cooldown: lock_timestamp + unstake_cooldown_seconds <= now
+                    let cooldown_end = entry.lock_timestamp.saturating_add(config.unstake_cooldown_seconds);
+                    let cooldown_passed = now >= cooldown_end;
+
+                    if entry.blub_locked > 0 && !entry.unlocked && cooldown_passed {
                         let unstake_from_entry = remaining_amount.min(entry.blub_locked);
-                        
+
                         total_blub_unstaked = total_blub_unstaked.saturating_add(unstake_from_entry);
                         total_aqua_unlocked = total_aqua_unlocked.saturating_add(entry.amount);
-                        
+
                         entry.blub_locked = entry.blub_locked.saturating_sub(unstake_from_entry);
                         entry.unlocked = true;
-                        
+
                         env.storage().persistent().set(&DataKey::UserLockByTxHash(user.clone(), tx_hash), &entry);
-                        
+
                         remaining_amount = remaining_amount.saturating_sub(unstake_from_entry);
                     }
                 }
@@ -3193,7 +3321,481 @@ impl StakingRegistry {
             (total_blub_unstaked, pending_blub_rewards),
         );
 
+        // ===== SYNC REWARD BALANCE (v1.2.0) =====
+        // Checkpoint and update user's staked balance for reward tracking
+        let new_total_staked = Self::get_user_total_staked_blub(&env, &user);
+        Self::sync_user_reward_balance(&env, &user, new_total_staked);
+
         Ok(())
+    }
+
+    // ============================================================================
+    // SYNTHETIX-STYLE REWARD SYSTEM (v1.2.0)
+    // ============================================================================
+
+    /// Internal: Get the global reward state
+    fn get_reward_state(env: &Env) -> RewardState {
+        env.storage()
+            .instance()
+            .get(&DataKey::RewardStateV2)
+            .unwrap_or(RewardState {
+                reward_per_token_stored: 0,
+                last_update_time: env.ledger().timestamp(),
+                total_staked: 0,
+                total_rewards_added: 0,
+                total_rewards_claimed: 0,
+            })
+    }
+
+    /// Internal: Get a user's reward state
+    fn get_user_reward_state(env: &Env, user: &Address) -> UserRewardState {
+        env.storage()
+            .persistent()
+            .get(&DataKey::UserRewardStateV2(user.clone()))
+            .unwrap_or(UserRewardState {
+                staked_balance: 0,
+                reward_per_token_paid: 0,
+                rewards_earned: 0,
+                last_claim_time: 0,
+                total_claimed: 0,
+            })
+    }
+
+    /// Internal: Calculate pending rewards for a user
+    /// Formula: earned = balance * (reward_per_token - user_paid) / PRECISION + user_earned
+    fn calculate_user_pending_rewards(
+        reward_state: &RewardState,
+        user_state: &UserRewardState,
+    ) -> i128 {
+        if user_state.staked_balance == 0 {
+            return user_state.rewards_earned;
+        }
+
+        let reward_delta = reward_state
+            .reward_per_token_stored
+            .saturating_sub(user_state.reward_per_token_paid);
+
+        let new_rewards = user_state
+            .staked_balance
+            .saturating_mul(reward_delta)
+            / REWARD_PRECISION;
+
+        user_state.rewards_earned.saturating_add(new_rewards)
+    }
+
+    /// Internal: Checkpoint a user's rewards before any balance change
+    /// This MUST be called BEFORE changing a user's staked balance
+    /// It locks in all earned rewards up to this point
+    fn checkpoint_user_internal(
+        env: &Env,
+        user: &Address,
+        reward_state: &RewardState,
+    ) -> UserRewardState {
+        let mut user_state = Self::get_user_reward_state(env, user);
+
+        // Calculate and save earned rewards
+        user_state.rewards_earned =
+            Self::calculate_user_pending_rewards(reward_state, &user_state);
+
+        // Update the user's paid reward_per_token to current
+        user_state.reward_per_token_paid = reward_state.reward_per_token_stored;
+
+        // Save user state
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserRewardStateV2(user.clone()), &user_state);
+
+        user_state
+    }
+
+    /// Internal: Update user's staked balance after checkpoint
+    /// Called after checkpoint_user_internal
+    fn update_user_staked_balance(
+        env: &Env,
+        user: &Address,
+        new_balance: i128,
+        reward_state: &mut RewardState,
+        old_balance: i128,
+    ) {
+        let mut user_state = Self::get_user_reward_state(env, user);
+
+        // Update global total_staked
+        reward_state.total_staked = reward_state
+            .total_staked
+            .saturating_sub(old_balance)
+            .saturating_add(new_balance);
+
+        // Update user's staked balance
+        user_state.staked_balance = new_balance;
+
+        // Save both states
+        env.storage()
+            .instance()
+            .set(&DataKey::RewardStateV2, reward_state);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserRewardStateV2(user.clone()), &user_state);
+    }
+
+    /// Backend calls this to add BLUB rewards to the pool
+    /// The rewards are distributed proportionally to all stakers based on their share
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address for authorization
+    /// * `amount` - Amount of BLUB rewards to add
+    ///
+    /// # Authorization
+    /// Requires admin authorization
+    pub fn add_rewards(env: Env, admin: Address, amount: i128) -> Result<(), Error> {
+        admin.require_auth();
+
+        let config = Self::get_config(env.clone())?;
+        if config.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        if amount <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        let contract_address = env.current_contract_address();
+        let mut reward_state = Self::get_reward_state(&env);
+        let now = env.ledger().timestamp();
+
+        // Transfer BLUB from admin to contract
+        use soroban_sdk::token;
+        let blub_client = token::Client::new(&env, &config.blub_token);
+        let transfer_result = blub_client.try_transfer(&admin, &contract_address, &amount);
+        if transfer_result.is_err() {
+            return Err(Error::InsufficientBalance);
+        }
+
+        // Update reward_per_token: how much reward each token earns
+        // Only update if there are stakers
+        if reward_state.total_staked > 0 {
+            let reward_per_token_increase = amount
+                .saturating_mul(REWARD_PRECISION)
+                / reward_state.total_staked;
+
+            reward_state.reward_per_token_stored = reward_state
+                .reward_per_token_stored
+                .saturating_add(reward_per_token_increase);
+        }
+
+        reward_state.total_rewards_added = reward_state
+            .total_rewards_added
+            .saturating_add(amount);
+        reward_state.last_update_time = now;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::RewardStateV2, &reward_state);
+
+        // Emit event
+        let event = RewardsAddedEvent {
+            amount,
+            total_staked: reward_state.total_staked,
+            reward_per_token: reward_state.reward_per_token_stored,
+            timestamp: now,
+        };
+        env.events().publish((symbol_short!("rwd_add"),), event);
+
+        Ok(())
+    }
+
+    /// User claims their accumulated BLUB rewards
+    /// Subject to claim cooldown (default 7 days)
+    ///
+    /// # Arguments
+    /// * `user` - User address claiming rewards
+    ///
+    /// # Returns
+    /// * `Ok(i128)` - Amount of rewards claimed
+    /// * `Err(ClaimCooldownActive)` - If cooldown hasn't elapsed
+    /// * `Err(NoRewardsToClaim)` - If no rewards available
+    pub fn claim_rewards(env: Env, user: Address) -> Result<i128, Error> {
+        user.require_auth();
+
+        let config = Self::get_config(env.clone())?;
+        let now = env.ledger().timestamp();
+
+        // Get current states
+        let reward_state = Self::get_reward_state(&env);
+        let mut user_state = Self::get_user_reward_state(&env, &user);
+
+        // Check cooldown
+        let cooldown_end = user_state
+            .last_claim_time
+            .saturating_add(config.claim_reward_cooldown_seconds);
+        if now < cooldown_end && user_state.last_claim_time > 0 {
+            return Err(Error::ClaimCooldownActive);
+        }
+
+        // Calculate pending rewards
+        let pending = Self::calculate_user_pending_rewards(&reward_state, &user_state);
+
+        if pending <= 0 {
+            return Err(Error::NoRewardsToClaim);
+        }
+
+        // Update user state
+        user_state.rewards_earned = 0;
+        user_state.reward_per_token_paid = reward_state.reward_per_token_stored;
+        user_state.last_claim_time = now;
+        user_state.total_claimed = user_state.total_claimed.saturating_add(pending);
+
+        // Update global claimed amount
+        let mut reward_state_mut = reward_state.clone();
+        reward_state_mut.total_rewards_claimed = reward_state_mut
+            .total_rewards_claimed
+            .saturating_add(pending);
+
+        // Save states
+        env.storage()
+            .instance()
+            .set(&DataKey::RewardStateV2, &reward_state_mut);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserRewardStateV2(user.clone()), &user_state);
+
+        // Transfer rewards to user
+        use soroban_sdk::token;
+        let blub_client = token::Client::new(&env, &config.blub_token);
+        let contract_address = env.current_contract_address();
+        let transfer_result = blub_client.try_transfer(&contract_address, &user, &pending);
+        if transfer_result.is_err() {
+            return Err(Error::InsufficientBalance);
+        }
+
+        // Emit event
+        let event = RewardsClaimedEvent {
+            user: user.clone(),
+            amount: pending,
+            total_claimed: user_state.total_claimed,
+            timestamp: now,
+        };
+        env.events().publish((symbol_short!("rwd_clm"),), event);
+
+        Ok(pending)
+    }
+
+    /// View function: Get user's pending rewards (without claiming)
+    ///
+    /// # Arguments
+    /// * `user` - User address to check
+    ///
+    /// # Returns
+    /// Amount of pending BLUB rewards
+    pub fn get_pending_rewards(env: Env, user: Address) -> i128 {
+        let reward_state = Self::get_reward_state(&env);
+        let user_state = Self::get_user_reward_state(&env, &user);
+        Self::calculate_user_pending_rewards(&reward_state, &user_state)
+    }
+
+    /// View function: Get comprehensive reward info for a user
+    ///
+    /// # Arguments
+    /// * `user` - User address to check
+    ///
+    /// # Returns
+    /// UserRewardInfo with pending, claimed, balance, and cooldown status
+    pub fn get_user_reward_info(env: Env, user: Address) -> UserRewardInfo {
+        let config = Self::get_config(env.clone()).unwrap_or(Config {
+            admin: user.clone(),
+            version: 0,
+            total_supply: 0,
+            treasury_address: user.clone(),
+            reward_rate: 0,
+            aqua_token: user.clone(),
+            blub_token: user.clone(),
+            liquidity_contract: user.clone(),
+            ice_token: user.clone(),
+            govern_ice_token: user.clone(),
+            upvote_ice_token: user.clone(),
+            downvote_ice_token: user.clone(),
+            period_unit_minutes: 1,
+            vault_treasury: user.clone(),
+            vault_fee_bps: 0,
+            unstake_cooldown_seconds: 864000,
+            claim_reward_cooldown_seconds: 604800,
+        });
+
+        let now = env.ledger().timestamp();
+        let reward_state = Self::get_reward_state(&env);
+        let user_state = Self::get_user_reward_state(&env, &user);
+
+        let pending = Self::calculate_user_pending_rewards(&reward_state, &user_state);
+        let claim_available_at = user_state
+            .last_claim_time
+            .saturating_add(config.claim_reward_cooldown_seconds);
+        let can_claim = now >= claim_available_at || user_state.last_claim_time == 0;
+
+        UserRewardInfo {
+            pending_rewards: pending,
+            total_claimed: user_state.total_claimed,
+            staked_balance: user_state.staked_balance,
+            last_claim_time: user_state.last_claim_time,
+            can_claim: can_claim && pending > 0,
+            claim_available_at,
+        }
+    }
+
+    /// View function: Check if a specific lock entry can be unstaked
+    ///
+    /// # Arguments
+    /// * `user` - User address
+    /// * `lock_index` - Index of the lock entry
+    ///
+    /// # Returns
+    /// UnstakeStatus with availability info
+    pub fn get_unstake_status(env: Env, user: Address, lock_index: u32) -> UnstakeStatus {
+        let config = Self::get_config(env.clone()).unwrap_or(Config {
+            admin: user.clone(),
+            version: 0,
+            total_supply: 0,
+            treasury_address: user.clone(),
+            reward_rate: 0,
+            aqua_token: user.clone(),
+            blub_token: user.clone(),
+            liquidity_contract: user.clone(),
+            ice_token: user.clone(),
+            govern_ice_token: user.clone(),
+            upvote_ice_token: user.clone(),
+            downvote_ice_token: user.clone(),
+            period_unit_minutes: 1,
+            vault_treasury: user.clone(),
+            vault_fee_bps: 0,
+            unstake_cooldown_seconds: 864000,
+            claim_reward_cooldown_seconds: 604800,
+        });
+
+        let now = env.ledger().timestamp();
+
+        let user_locks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(&env));
+
+        if let Some(tx_hash) = user_locks.get(lock_index) {
+            if let Some(entry) = env
+                .storage()
+                .persistent()
+                .get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user, tx_hash))
+            {
+                let unstake_available_at = entry
+                    .lock_timestamp
+                    .saturating_add(config.unstake_cooldown_seconds);
+                let can_unstake = now >= unstake_available_at && !entry.unlocked && entry.blub_locked > 0;
+
+                return UnstakeStatus {
+                    can_unstake,
+                    unstake_available_at,
+                    blub_amount: entry.blub_locked,
+                };
+            }
+        }
+
+        UnstakeStatus {
+            can_unstake: false,
+            unstake_available_at: 0,
+            blub_amount: 0,
+        }
+    }
+
+    /// Get the global reward state (view function)
+    pub fn get_reward_state_view(env: Env) -> RewardState {
+        Self::get_reward_state(&env)
+    }
+
+    /// Admin: Update the unstake cooldown period
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address
+    /// * `cooldown_seconds` - New cooldown in seconds
+    pub fn update_unstake_cooldown(
+        env: Env,
+        admin: Address,
+        cooldown_seconds: u64,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        let mut config = Self::get_config(env.clone())?;
+        if config.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        config.unstake_cooldown_seconds = cooldown_seconds;
+        env.storage().instance().set(&DataKey::Config, &config);
+
+        env.events().publish(
+            (symbol_short!("cfg_upd"),),
+            (symbol_short!("unstk_cd"), cooldown_seconds),
+        );
+
+        Ok(())
+    }
+
+    /// Admin: Update the claim reward cooldown period
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address
+    /// * `cooldown_seconds` - New cooldown in seconds
+    pub fn update_claim_cooldown(
+        env: Env,
+        admin: Address,
+        cooldown_seconds: u64,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        let mut config = Self::get_config(env.clone())?;
+        if config.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        config.claim_reward_cooldown_seconds = cooldown_seconds;
+        env.storage().instance().set(&DataKey::Config, &config);
+
+        env.events().publish(
+            (symbol_short!("cfg_upd"),),
+            (symbol_short!("clm_cd"), cooldown_seconds),
+        );
+
+        Ok(())
+    }
+
+    /// Internal helper: Checkpoint and update staked balance for reward tracking
+    /// Call this after modifying a user's staked BLUB balance
+    fn sync_user_reward_balance(env: &Env, user: &Address, new_blub_balance: i128) {
+        let mut reward_state = Self::get_reward_state(env);
+        let user_state = Self::checkpoint_user_internal(env, user, &reward_state);
+        let old_balance = user_state.staked_balance;
+        Self::update_user_staked_balance(env, user, new_blub_balance, &mut reward_state, old_balance);
+    }
+
+    /// Get user's total staked BLUB from all lock entries
+    fn get_user_total_staked_blub(env: &Env, user: &Address) -> i128 {
+        let user_locks: Vec<Bytes> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLocks(user.clone()))
+            .unwrap_or(Vec::new(env));
+
+        let mut total = 0i128;
+        for i in 0..user_locks.len() {
+            if let Some(tx_hash) = user_locks.get(i) {
+                if let Some(entry) = env
+                    .storage()
+                    .persistent()
+                    .get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash))
+                {
+                    if !entry.unlocked && entry.blub_locked > 0 {
+                        total = total.saturating_add(entry.blub_locked);
+                    }
+                }
+            }
+        }
+        total
     }
 
     // ============================================================================
