@@ -23,3 +23,5 @@ target
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+docs/planning/prd.md
+/_bmad

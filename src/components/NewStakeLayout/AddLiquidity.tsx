@@ -555,6 +555,9 @@ function AddLiquidity() {
           {showSlippageSettings && (
             <div className="mt-3 p-4 bg-[#0E111B] rounded-[8px]">
               <div className="flex items-center space-x-2 mb-3">
+                <span className="text-sm text-[#B1B3B8]">
+                  Maximum price impact you're willing to accept
+                </span>
                 <InformationCircleIcon
                   className="h-4 w-4 text-[#B1B3B8] cursor-pointer"
                   onClick={() =>
@@ -564,9 +567,6 @@ function AddLiquidity() {
                     )
                   }
                 />
-                <span className="text-sm text-[#B1B3B8]">
-                  Maximum price impact you're willing to accept
-                </span>
               </div>
 
               <div className="flex items-center space-x-2">

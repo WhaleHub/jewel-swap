@@ -281,8 +281,7 @@ const Navbar = () => {
       <div className="flex md:flex-row justify-between items-center  w-full max-w-[1954px] h-full mx-auto">
         <div>
           <a
-            href="https://www.whalehub.io"
-            rel="noopener noreferrer"
+            href="/"
             className="flex justify-center items-center "
           >
             <img src={"/whalehub_logo.svg"} className="w-full" alt="Whalehub" />
