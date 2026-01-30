@@ -1,15 +1,11 @@
 [workspace]
 members = [
     "staking",
-    "governance",
-    "rewards",
-    "shared",
 ]
 resolver = "2"
 
 [workspace.dependencies]
 soroban-sdk = "21.7.0"
-whalehub-shared = { path = "shared" }
 
 [profile.release]
 opt-level = "z"

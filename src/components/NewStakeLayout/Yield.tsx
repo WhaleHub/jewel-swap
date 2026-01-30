@@ -63,6 +63,7 @@ function Yield() {
   const [polData, setPolData] = useState<any>(null);
   const [blubBalanceLoading, setBlubBalanceLoading] = useState<boolean>(false);
 
+
   const user = useSelector((state: RootState) => state.user);
   const staking = useSelector((state: RootState) => state.staking);
 

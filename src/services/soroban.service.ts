@@ -1752,6 +1752,130 @@ export class SorobanService {
       throw error;
     }
   }
+
+  // ============================================================================
+  // REWARD SYSTEM V2 (Synthetix-style)
+  // ============================================================================
+
+  /**
+   * Query pending BLUB rewards for a user
+   * Calls get_pending_rewards(user) on staking contract
+   */
+  async queryPendingRewards(userAddress: string): Promise<string> {
+    try {
+      console.log(
+        "🎁 [SorobanService] Querying pending rewards for:",
+        userAddress
+      );
+
+      const contract = this.getContract("staking");
+      const account = await this.server.getAccount(userAddress);
+
+      const transaction = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(
+          contract.call(
+            "get_pending_rewards",
+            Address.fromString(userAddress).toScVal()
+          )
+        )
+        .setTimeout(30)
+        .build();
+
+      const simulation: any = await this.server.simulateTransaction(transaction);
+
+      if (simulation.result?.retval) {
+        const pendingRewards = scValToNative(simulation.result.retval);
+        const formatted = (Number(pendingRewards) / 10000000).toFixed(7);
+        console.log("✅ [SorobanService] Pending rewards:", formatted);
+        return formatted;
+      }
+
+      return "0";
+    } catch (error: any) {
+      console.error(
+        "❌ [SorobanService] Failed to query pending rewards:",
+        error
+      );
+      return "0";
+    }
+  }
+
+  /**
+   * Query comprehensive reward info for a user
+   * Calls get_user_reward_info(user) on staking contract
+   * Returns: pending_rewards, total_claimed, staked_balance, last_claim_time, can_claim, claim_available_at
+   */
+  async queryUserRewardInfo(userAddress: string): Promise<any> {
+    try {
+      console.log(
+        "🎁 [SorobanService] Querying user reward info for:",
+        userAddress
+      );
+
+      const contract = this.getContract("staking");
+      const account = await this.server.getAccount(userAddress);
+
+      const transaction = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(
+          contract.call(
+            "get_user_reward_info",
+            Address.fromString(userAddress).toScVal()
+          )
+        )
+        .setTimeout(30)
+        .build();
+
+      const simulation: any = await this.server.simulateTransaction(transaction);
+
+      if (simulation.result?.retval) {
+        const info = scValToNative(simulation.result.retval);
+        console.log("✅ [SorobanService] User reward info:", info);
+
+        return {
+          pending_rewards: info.pending_rewards
+            ? (Number(info.pending_rewards) / 10000000).toFixed(7)
+            : "0",
+          total_claimed: info.total_claimed
+            ? (Number(info.total_claimed) / 10000000).toFixed(7)
+            : "0",
+          staked_balance: info.staked_balance
+            ? (Number(info.staked_balance) / 10000000).toFixed(7)
+            : "0",
+          last_claim_time: info.last_claim_time || 0,
+          can_claim: info.can_claim || false,
+          claim_available_at: info.claim_available_at || 0,
+        };
+      }
+
+      return {
+        pending_rewards: "0",
+        total_claimed: "0",
+        staked_balance: "0",
+        last_claim_time: 0,
+        can_claim: false,
+        claim_available_at: 0,
+      };
+    } catch (error: any) {
+      console.error(
+        "❌ [SorobanService] Failed to query user reward info:",
+        error
+      );
+      return {
+        pending_rewards: "0",
+        total_claimed: "0",
+        staked_balance: "0",
+        last_claim_time: 0,
+        can_claim: false,
+        claim_available_at: 0,
+      };
+    }
+  }
 }
 
 // Export singleton instance (class is already exported above)

@@ -85,6 +85,11 @@ function STKAqua() {
   const [contractBalance, setContractBalance] = useState<string>("0.00");
   const [balanceLoading, setBalanceLoading] = useState<boolean>(false);
 
+  // Reward claim state
+  const [pendingRewards, setPendingRewards] = useState<string>("0.00");
+  const [rewardInfo, setRewardInfo] = useState<any>(null);
+  const [claimingRewards, setClaimingRewards] = useState<boolean>(false);
+
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
     (balance) =>
@@ -243,6 +248,7 @@ function STKAqua() {
         await dispatch(fetchComprehensiveStakingData(user.userWalletAddress));
         await fetchContractBalance();
         await fetchBlubBalance();
+        await fetchPendingRewards();
       };
 
       fetchAllData();
@@ -380,6 +386,145 @@ function STKAqua() {
     }
   };
 
+
+  // Fetch pending rewards from contract
+  const fetchPendingRewards = async () => {
+    if (!user.userWalletAddress) return;
+
+    try {
+      const { sorobanService } = await import("../../services/soroban.service");
+
+      // Query user reward info (includes pending rewards and cooldown status)
+      const rewardInfoData = await sorobanService.queryUserRewardInfo(
+        user.userWalletAddress
+      );
+
+      if (rewardInfoData) {
+        setPendingRewards(rewardInfoData.pending_rewards || "0");
+        setRewardInfo(rewardInfoData);
+      }
+    } catch (error: any) {
+      console.error("❌ [STKAqua] Error fetching pending rewards:", error);
+      setPendingRewards("0");
+    }
+  };
+
+  // Handle claim rewards
+  const handleClaimRewards = async () => {
+    if (!user.userWalletAddress) {
+      return toast.error("Please connect your wallet");
+    }
+
+    const pendingAmount = parseFloat(pendingRewards);
+    if (pendingAmount <= 0) {
+      return toast.warn("No rewards to claim");
+    }
+
+    // Check cooldown
+    if (rewardInfo && !rewardInfo.can_claim && rewardInfo.last_claim_time > 0) {
+      const cooldownEnd = new Date(rewardInfo.claim_available_at * 1000);
+      return toast.warn(`Claim available at ${cooldownEnd.toLocaleString()}`);
+    }
+
+    setClaimingRewards(true);
+
+    try {
+      // Ensure BLUB trustline exists before claiming
+      const stellarService = new StellarService();
+      const senderAccount = await stellarService.loadAccount(user.userWalletAddress);
+      const existingTrustlines = senderAccount.balances.map(
+        (balance: Balance) => balance.asset_code
+      );
+
+      if (!existingTrustlines.includes(blubAssetCode)) {
+        try {
+          await handleAddTrustline();
+          toast.success("BLUB trustline added successfully.");
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        } catch (error) {
+          throw new Error("Failed to add BLUB trustline");
+        }
+      }
+
+      // Import Soroban service
+      const { sorobanService } = await import("../../services/soroban.service");
+      const soroban = sorobanService;
+
+      // Build Soroban contract invocation transaction
+      // claim_rewards(user: Address) -> i128
+      const { transaction } = await soroban.buildContractTransaction(
+        "staking",
+        "claim_rewards",
+        [user.userWalletAddress],
+        user.userWalletAddress
+      );
+
+      // Sign transaction with user's wallet
+      let signedTxXdr: string = "";
+      if (user?.walletName === (LOBSTR_ID as any) || user?.walletName === (walletTypes.LOBSTR as any)) {
+        signedTxXdr = await signTransaction(transaction.toXDR());
+      } else if (
+        user?.walletName === walletTypes.WALLETCONNECT ||
+        user?.walletName === (WALLET_CONNECT_ID as any) ||
+        user?.walletName === ("wallet_connect" as any)
+      ) {
+        await kit.setWallet(WALLET_CONNECT_ID);
+        const { signedTxXdr: signed } = await kit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      } else {
+        const freighterKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: FREIGHTER_ID,
+          modules: [new FreighterModule()],
+        });
+        const { signedTxXdr: signed } = await freighterKit.signTransaction(
+          transaction.toXDR(),
+          {
+            address: user.userWalletAddress,
+            networkPassphrase: WalletNetwork.PUBLIC,
+          }
+        );
+        signedTxXdr = signed;
+      }
+
+      // Submit the signed transaction
+      const result = await soroban.submitSignedTransaction(signedTxXdr);
+
+      if (!result.success) {
+        throw new Error(result.error || "Claim rewards transaction failed");
+      }
+
+      // Refresh balances
+      await updateWalletRecordsWithDelay(2000);
+      await Promise.all([
+        fetchBlubBalance(),
+        fetchPendingRewards(),
+      ]);
+
+      toast.success(`Successfully claimed ${pendingRewards} BLUB rewards!`);
+      setDialogTitle("Rewards Claimed!");
+      setDialogMsg(
+        `Transaction Hash: ${result.transactionHash}\n\n${pendingRewards} BLUB has been transferred to your wallet.`
+      );
+      setOptDialog(true);
+    } catch (err: any) {
+      console.error("[STKAqua] Claim rewards failed:", err);
+      toast.error(`Claim failed: ${err.message || "Please try again"}`);
+      setDialogTitle("Claim Failed");
+      setDialogMsg(
+        `Error: ${err.message}\n\nPlease try again or contact support.`
+      );
+      setOptDialog(true);
+    } finally {
+      setClaimingRewards(false);
+    }
+  };
 
   // Clear errors when component unmounts
   useEffect(() => {
@@ -876,6 +1021,7 @@ function STKAqua() {
                       );
                       await fetchBlubBalance();
                       await fetchContractBalance();
+                      await fetchPendingRewards();
                     }}
                     className="text-[#00CC99] hover:text-[#00AA77] text-lg"
                     title="Refresh on-chain data"
@@ -955,7 +1101,7 @@ function STKAqua() {
                       </span>
                     </div>
                     <div className="text-white font-medium">
-                      {staking.isLoading ? "..." : "0.00"} BLUB
+                      {staking.isLoading ? "..." : parseFloat(pendingRewards).toFixed(2)} BLUB
                     </div>
                   </div>
                   <div>
@@ -981,7 +1127,7 @@ function STKAqua() {
               <div className="flex items-center space-x-2">
                 <img
                   src={"/Blub_logo2.svg"}
-                  alt="Aqua"
+                  alt="BLUB"
                   className="w-8 h-8 rounded-full"
                 />
                 <span className="text-lg">BLUB</span>
@@ -995,7 +1141,7 @@ function STKAqua() {
                   className="h-[15px] w-[15px] text-white cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      "View your daily reward earnings in BLUB and track the total BLUB accumulated over time. Keep an eye on your growing rewards here.",
+                      "Your accumulated BLUB rewards from staking. Rewards are distributed proportionally based on your staked amount. There is a 7-day cooldown between claims.",
                       "Accumulated rewards"
                     )
                   }
@@ -1003,17 +1149,61 @@ function STKAqua() {
               </div>
             </div>
 
-            <div className="flex items-center bg-[#0E111B] px-5 py-2 mt-2 rounded-[8px] justify-between">
-              {/* <div className="text-sm font-normal text-white">Daily</div> */}
-              <div className="p-2 text-2xl font-normal"></div>
-            </div>
-
-            <div className="flex items-center bg-[#0E111B] px-5 py-2 mt-5 rounded-[8px] justify-between">
-              <div className="text-sm font-normal text-white">Total</div>
-              <div className="p-2 text-2xl font-normal">
-                {user?.userLockedRewardsAmount ?? 0} BLUB
+            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-4 rounded-[8px] justify-between">
+              <div className="text-sm font-normal text-white">Pending</div>
+              <div className="flex items-center space-x-2">
+                <img
+                  src={"/Blub_logo2.svg"}
+                  alt="BLUB"
+                  className="w-5 h-5 rounded-full"
+                />
+                <span className="text-xl font-normal">
+                  {parseFloat(pendingRewards).toFixed(2)} BLUB
+                </span>
               </div>
             </div>
+
+            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
+              <div className="text-sm font-normal text-white">Total Claimed</div>
+              <div className="text-xl font-normal">
+                {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toFixed(2) : "0.00"} BLUB
+              </div>
+            </div>
+
+            {rewardInfo && rewardInfo.last_claim_time > 0 && !rewardInfo.can_claim && (
+              <div className="flex items-center text-sm mt-4 space-x-1">
+                <div className="font-normal text-[#B1B3B8]">
+                  Next claim available:
+                </div>
+                <div className="font-medium text-yellow-400">
+                  {new Date(rewardInfo.claim_available_at * 1000).toLocaleString()}
+                </div>
+              </div>
+            )}
+
+            <Button
+              className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleClaimRewards}
+              disabled={claimingRewards || parseFloat(pendingRewards) <= 0 || (rewardInfo && !rewardInfo.can_claim && rewardInfo.last_claim_time > 0)}
+            >
+              {!claimingRewards ? (
+                <span>Claim Rewards</span>
+              ) : (
+                <div className="flex justify-center items-center gap-[10px]">
+                  <span className="text-white">Processing...</span>
+                  <TailSpin
+                    height="18"
+                    width="18"
+                    color="#ffffff"
+                    ariaLabel="tail-spin-loading"
+                    radius="1"
+                    wrapperStyle={{}}
+                    wrapperClass=""
+                    visible={true}
+                  />
+                </div>
+              )}
+            </Button>
           </div>
         </div>
       </div>
