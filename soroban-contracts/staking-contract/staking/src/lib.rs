@@ -72,6 +72,36 @@ pub struct OldConfig {
     pub version: u32,
 }
 
+/// Old GlobalState struct for migration (v1.0.0 - 10 fields)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OldGlobalState {
+    pub total_locked: i128,
+    pub total_blub_supply: i128,
+    pub total_lp_staked: i128,
+    pub locked: bool,
+    pub total_users: u32,
+    pub last_reward_update: u64,
+    pub reward_per_locked_token: i128,
+    pub reward_per_lp_token: i128,
+    pub total_blub_rewards_distributed: i128,
+    pub lock_counter: u64,
+}
+
+/// Old LockEntry struct for migration (v1.0.0 - 8 fields)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OldLockEntry {
+    pub user: Address,
+    pub amount: i128,
+    pub lock_timestamp: u64,
+    pub duration_minutes: u64,
+    pub unlock_timestamp: u64,
+    pub reward_multiplier: i128,
+    pub tx_hash: Bytes,
+    pub unlocked: bool,
+}
+
 /// New Config struct (v1.2.0)
 /// Version encoding: major * 10000 + minor * 100 + patch
 /// 1.2.0 = 10200
@@ -2110,6 +2140,38 @@ impl StakingRegistry {
         10000 + duration_bonus // The longer staked, the higher the rewards
     }
 
+    /// Helper to read LockEntry with migration from old format
+    fn get_lock_entry_with_migration(env: &Env, user: &Address, tx_hash: &Bytes) -> Option<LockEntry> {
+        let key = DataKey::UserLockByTxHash(user.clone(), tx_hash.clone());
+
+        // Try reading as new LockEntry first
+        if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&key) {
+            return Some(entry);
+        }
+
+        // Try reading as OldLockEntry and migrate
+        if let Some(old_entry) = env.storage().persistent().get::<DataKey, OldLockEntry>(&key) {
+            let new_entry = LockEntry {
+                user: old_entry.user,
+                amount: old_entry.amount,
+                blub_locked: old_entry.amount, // Use amount as blub_locked for old entries
+                lock_timestamp: old_entry.lock_timestamp,
+                duration_minutes: old_entry.duration_minutes,
+                unlock_timestamp: old_entry.unlock_timestamp,
+                reward_multiplier: old_entry.reward_multiplier,
+                tx_hash: old_entry.tx_hash,
+                pol_contributed: old_entry.amount / 10, // Estimate POL as 10%
+                is_blub_stake: false,
+                unlocked: old_entry.unlocked,
+            };
+            // Save migrated entry
+            env.storage().persistent().set(&key, &new_entry);
+            return Some(new_entry);
+        }
+
+        None
+    }
+
     fn calculate_lp_shares(amount_a: i128, amount_b: i128) -> i128 {
         if amount_a <= 0 || amount_b <= 0 { return 0; }
         Self::integer_sqrt(amount_a.saturating_mul(amount_b))
@@ -2166,13 +2228,14 @@ impl StakingRegistry {
 
         for i in 0..user_locks.len() {
             if let Some(tx_hash) = user_locks.get(i) {
-                if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash)) {
+                // Use migration helper for backward compatibility
+                if let Some(entry) = Self::get_lock_entry_with_migration(&env, &user, &tx_hash) {
                     if !entry.unlocked && entry.blub_locked > 0 {
                         // Calculate multiplier based on actual elapsed time since staking
                         let elapsed_seconds = now.saturating_sub(entry.lock_timestamp);
                         let elapsed_minutes = elapsed_seconds / 60;
                         let time_based_multiplier = Self::calculate_lock_multiplier(elapsed_minutes);
-                        
+
                         total_amount = total_amount.saturating_add(entry.blub_locked);
                         weighted_multiplier = weighted_multiplier.saturating_add(
                             entry.blub_locked.saturating_mul(time_based_multiplier)
@@ -2192,10 +2255,39 @@ impl StakingRegistry {
     /// * `Ok(GlobalState)` - The current global state including locked amounts, supply, and reward rates
     /// * `Err(Error::NotInitialized)` if contract is not initialized
     pub fn get_global_state(env: Env) -> Result<GlobalState, Error> {
-        env.storage()
-            .instance()
-            .get(&DataKey::GlobalState)
-            .ok_or(Error::NotInitialized)
+        // Try reading as new GlobalState first
+        if let Some(state) = env.storage().instance().get::<DataKey, GlobalState>(&DataKey::GlobalState) {
+            return Ok(state);
+        }
+
+        // Try reading as OldGlobalState and migrate
+        if let Some(old_state) = env.storage().instance().get::<DataKey, OldGlobalState>(&DataKey::GlobalState) {
+            let new_state = GlobalState {
+                total_locked: old_state.total_locked,
+                total_blub_supply: old_state.total_blub_supply,
+                total_lp_staked: old_state.total_lp_staked,
+                locked: old_state.locked,
+                total_users: old_state.total_users,
+                last_reward_update: old_state.last_reward_update,
+                reward_per_locked_token: old_state.reward_per_locked_token,
+                reward_per_lp_token: old_state.reward_per_lp_token,
+                total_blub_rewards_distributed: old_state.total_blub_rewards_distributed,
+                lock_counter: old_state.lock_counter,
+                // Initialize new fields with defaults
+                pending_aqua_for_ice: 0,
+                ice_balance: 0,
+                govern_ice_balance: 0,
+                upvote_ice_balance: 0,
+                downvote_ice_balance: 0,
+                ice_lock_counter: 0,
+                pool_count: 0,
+            };
+            // Save migrated state
+            env.storage().instance().set(&DataKey::GlobalState, &new_state);
+            return Ok(new_state);
+        }
+
+        Err(Error::NotInitialized)
     }
 
     // Getters (gas-optimized, return only essential data)
@@ -2424,7 +2516,8 @@ impl StakingRegistry {
         let mut total_contribution = 0i128;
         for i in 0..user_locks.len() {
             if let Some(tx_hash) = user_locks.get(i) {
-                if let Some(lock) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash)) {
+                // Use migration helper for backward compatibility
+                if let Some(lock) = Self::get_lock_entry_with_migration(&env, &user, &tx_hash) {
                     total_contribution = total_contribution.saturating_add(lock.pol_contributed);
                 }
             }
@@ -3134,7 +3227,8 @@ impl StakingRegistry {
 
         for i in 0..user_locks.len() {
             if let Some(tx_hash) = user_locks.get(i) {
-                if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash)) {
+                // Use migration helper for backward compatibility
+                if let Some(entry) = Self::get_lock_entry_with_migration(&env, &user, &tx_hash) {
                     if entry.unlocked {
                         // Already unstaked - count as available
                         unstaking_available = unstaking_available.saturating_add(entry.blub_locked);
@@ -3244,7 +3338,8 @@ impl StakingRegistry {
             }
 
             if let Some(tx_hash) = user_locks.get(i) {
-                if let Some(mut entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash.clone())) {
+                // Use migration helper to handle both old and new LockEntry formats
+                if let Some(mut entry) = Self::get_lock_entry_with_migration(&env, &user, &tx_hash) {
                     // Check cooldown: lock_timestamp + unstake_cooldown_seconds <= now
                     let cooldown_end = entry.lock_timestamp.saturating_add(config.unstake_cooldown_seconds);
                     let cooldown_passed = now >= cooldown_end;
@@ -3678,11 +3773,8 @@ impl StakingRegistry {
             .unwrap_or(Vec::new(&env));
 
         if let Some(tx_hash) = user_locks.get(lock_index) {
-            if let Some(entry) = env
-                .storage()
-                .persistent()
-                .get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user, tx_hash))
-            {
+            // Use migration helper for backward compatibility
+            if let Some(entry) = Self::get_lock_entry_with_migration(&env, &user, &tx_hash) {
                 let unstake_available_at = entry
                     .lock_timestamp
                     .saturating_add(config.unstake_cooldown_seconds);
@@ -3784,11 +3876,8 @@ impl StakingRegistry {
         let mut total = 0i128;
         for i in 0..user_locks.len() {
             if let Some(tx_hash) = user_locks.get(i) {
-                if let Some(entry) = env
-                    .storage()
-                    .persistent()
-                    .get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash))
-                {
+                // Use migration helper for backward compatibility
+                if let Some(entry) = Self::get_lock_entry_with_migration(&env, &user, &tx_hash) {
                     if !entry.unlocked && entry.blub_locked > 0 {
                         total = total.saturating_add(entry.blub_locked);
                     }
