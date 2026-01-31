@@ -72,6 +72,27 @@ pub struct OldConfig {
     pub version: u32,
 }
 
+/// Config struct for v1.1.0 (before cooldown fields were added)
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ConfigV1_1 {
+    pub admin: Address,
+    pub version: u32,
+    pub total_supply: i128,
+    pub treasury_address: Address,
+    pub reward_rate: i128,
+    pub aqua_token: Address,
+    pub blub_token: Address,
+    pub liquidity_contract: Address,
+    pub ice_token: Address,
+    pub govern_ice_token: Address,
+    pub upvote_ice_token: Address,
+    pub downvote_ice_token: Address,
+    pub period_unit_minutes: u64,
+    pub vault_treasury: Address,
+    pub vault_fee_bps: u32,
+}
+
 /// New Config struct (v1.2.0)
 /// Version encoding: major * 10000 + minor * 100 + patch
 /// 1.2.0 = 10200
@@ -2906,6 +2927,91 @@ impl StakingRegistry {
         Ok(())
     }
 
+    /// Migrate contract from v1.1.0 to v1.2.0
+    /// - Adds cooldown fields to Config
+    /// - Initializes RewardStateV2 with correct total_staked
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address for authorization
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(Error::AlreadyInitialized)` if already v1.2.0
+    /// * `Err(Error::Unauthorized)` if not admin
+    pub fn migrate_v1_2_0(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+
+        // Try to read as v1.1.0 config (15 fields, no cooldowns)
+        let old_config: ConfigV1_1 = env.storage().instance()
+            .get(&DataKey::Config)
+            .ok_or(Error::NotInitialized)?;
+
+        // Check admin authorization
+        if old_config.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        // Check if already migrated to v1.2.0
+        if old_config.version >= 10200 {
+            return Err(Error::AlreadyInitialized);
+        }
+
+        // Create new Config with cooldown fields
+        let new_config = Config {
+            admin: old_config.admin,
+            version: 10200, // v1.2.0
+            total_supply: old_config.total_supply,
+            treasury_address: old_config.treasury_address,
+            reward_rate: old_config.reward_rate,
+            aqua_token: old_config.aqua_token,
+            blub_token: old_config.blub_token,
+            liquidity_contract: old_config.liquidity_contract,
+            ice_token: old_config.ice_token,
+            govern_ice_token: old_config.govern_ice_token,
+            upvote_ice_token: old_config.upvote_ice_token,
+            downvote_ice_token: old_config.downvote_ice_token,
+            period_unit_minutes: old_config.period_unit_minutes,
+            vault_treasury: old_config.vault_treasury,
+            vault_fee_bps: old_config.vault_fee_bps,
+            // New cooldown fields with defaults
+            unstake_cooldown_seconds: 864000,      // 10 days
+            claim_reward_cooldown_seconds: 604800, // 7 days
+        };
+
+        // Save new config
+        env.storage().instance().set(&DataKey::Config, &new_config);
+
+        // Get total staked from GlobalState
+        // Use total_locked (AQUA) which equals staked BLUB (1:1 ratio)
+        // total_blub_supply includes 0.1x that goes to LP, not staked
+        let global_state = Self::get_global_state(env.clone())?;
+        let total_staked = global_state.total_locked;
+
+        // Initialize RewardStateV2 if not exists
+        let reward_state_exists: bool = env.storage()
+            .instance()
+            .has(&DataKey::RewardStateV2);
+
+        if !reward_state_exists {
+            let reward_state = RewardState {
+                reward_per_token_stored: 0,
+                last_update_time: env.ledger().timestamp(),
+                total_staked,
+                total_rewards_added: 0,
+                total_rewards_claimed: 0,
+            };
+            env.storage().instance().set(&DataKey::RewardStateV2, &reward_state);
+        }
+
+        // Emit migration event
+        env.events().publish(
+            (symbol_short!("migrated"),),
+            10200u32,
+        );
+
+        Ok(())
+    }
+
     /// Returns the current config version.
     /// For old config: returns the old version number
     /// For new config: returns encoded version (10100 = v1.1.0)
@@ -3361,6 +3467,23 @@ impl StakingRegistry {
             })
     }
 
+    /// Internal: Get user's reward state with migration fix
+    /// For pre-migration stakers, initializes staked_balance from actual locks
+    fn get_user_reward_state_with_migration(env: &Env, user: &Address) -> UserRewardState {
+        let mut user_state = Self::get_user_reward_state(env, user);
+
+        // Migration fix: If user has no reward state but has existing locks,
+        // initialize their staked_balance from their actual locks
+        if user_state.staked_balance == 0 && user_state.reward_per_token_paid == 0 {
+            let actual_staked = Self::get_user_total_staked_blub(env, user);
+            if actual_staked > 0 {
+                user_state.staked_balance = actual_staked;
+            }
+        }
+
+        user_state
+    }
+
     /// Internal: Calculate pending rewards for a user
     /// Formula: earned = balance * (reward_per_token - user_paid) / PRECISION + user_earned
     fn calculate_user_pending_rewards(
@@ -3392,6 +3515,18 @@ impl StakingRegistry {
         reward_state: &RewardState,
     ) -> UserRewardState {
         let mut user_state = Self::get_user_reward_state(env, user);
+
+        // Migration fix: If user has no reward state but has existing locks,
+        // initialize their staked_balance from their actual locks BEFORE calculating rewards.
+        // This ensures pre-migration stakers earn rewards fairly from their first interaction.
+        if user_state.staked_balance == 0 && user_state.reward_per_token_paid == 0 {
+            let actual_staked = Self::get_user_total_staked_blub(env, user);
+            if actual_staked > 0 {
+                // User has existing stakes but no reward state (pre-migration staker)
+                // Initialize their balance so they can earn rewards going forward
+                user_state.staked_balance = actual_staked;
+            }
+        }
 
         // Calculate and save earned rewards
         user_state.rewards_earned =
@@ -3519,9 +3654,9 @@ impl StakingRegistry {
         let config = Self::get_config(env.clone())?;
         let now = env.ledger().timestamp();
 
-        // Get current states
+        // Get current states (with migration fix for pre-migration stakers)
         let reward_state = Self::get_reward_state(&env);
-        let mut user_state = Self::get_user_reward_state(&env, &user);
+        let mut user_state = Self::get_user_reward_state_with_migration(&env, &user);
 
         // Check cooldown
         let cooldown_end = user_state
@@ -3588,7 +3723,7 @@ impl StakingRegistry {
     /// Amount of pending BLUB rewards
     pub fn get_pending_rewards(env: Env, user: Address) -> i128 {
         let reward_state = Self::get_reward_state(&env);
-        let user_state = Self::get_user_reward_state(&env, &user);
+        let user_state = Self::get_user_reward_state_with_migration(&env, &user);
         Self::calculate_user_pending_rewards(&reward_state, &user_state)
     }
 
@@ -3622,7 +3757,7 @@ impl StakingRegistry {
 
         let now = env.ledger().timestamp();
         let reward_state = Self::get_reward_state(&env);
-        let user_state = Self::get_user_reward_state(&env, &user);
+        let user_state = Self::get_user_reward_state_with_migration(&env, &user);
 
         let pending = Self::calculate_user_pending_rewards(&reward_state, &user_state);
         let claim_available_at = user_state
