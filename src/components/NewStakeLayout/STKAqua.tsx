@@ -1104,18 +1104,6 @@ function STKAqua() {
                       {staking.isLoading ? "..." : parseFloat(pendingRewards).toFixed(2)} BLUB
                     </div>
                   </div>
-                  <div>
-                    <div className="text-[#B1B3B8] flex items-center">
-                      <span>POL Contribution</span>
-                      <span className="ml-1 text-[10px]">💧</span>
-                    </div>
-                    <div className="text-white font-medium">
-                      {staking.polInfo?.totalAqua
-                        ? parseFloat(staking.polInfo.totalAqua).toFixed(2)
-                        : "0.00"}{" "}
-                      AQUA
-                    </div>
-                  </div>
                 </div>
               </div>
             )}
