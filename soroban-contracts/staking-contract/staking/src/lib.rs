@@ -2899,13 +2899,17 @@ impl StakingRegistry {
     /// # Authorization
     /// Requires authorization from the `admin` address.
     pub fn upgrade(env: Env, admin: Address, new_wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
-        // Try to get config - works with both old and new format
-        // For old format, we need to check admin differently
+        // Try to get config - works with v1.2.0, v1.1.0, and v1.0.0 formats
         let is_admin = if let Ok(cfg) = Self::get_config(env.clone()) {
+            // v1.2.0 config (17 fields)
             admin.require_auth();
             cfg.admin == admin
+        } else if let Some(cfg_v1_1) = env.storage().instance().get::<DataKey, ConfigV1_1>(&DataKey::Config) {
+            // v1.1.0 config (15 fields)
+            admin.require_auth();
+            cfg_v1_1.admin == admin
         } else {
-            // Try reading as OldConfig
+            // v1.0.0 config (10 fields)
             let old_cfg: OldConfig = env.storage().instance()
                 .get(&DataKey::Config)
                 .ok_or(Error::NotInitialized)?;
