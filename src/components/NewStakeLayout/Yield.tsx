@@ -267,7 +267,9 @@ function Yield() {
         setSorobanBlubBalance("0.00");
       }
 
-      setBlubStakedBalance("0.00");
+      // Don't reset blubStakedBalance to "0.00" on error - keep previous value
+      // Redux state (staking.userStats) is already updated by fetchComprehensiveStakingData
+      // which runs before the queries that may have failed
     } finally {
       setBlubBalanceLoading(false);
     }
@@ -395,14 +397,9 @@ function Yield() {
         // First, update wallet records to get fresh Horizon data
         await updateWalletRecordsWithDelay(2000);
 
-        // Then fetch all other data (which may depend on updated wallet balances)
-        const { fetchComprehensiveStakingData } = await import(
-          "../../lib/slices/stakingSlice"
-        );
-        await Promise.all([
-          dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
-          fetchSorobanBlubBalance(),
-        ]);
+        // Then fetch all staking data (fetchSorobanBlubBalance already calls
+        // fetchComprehensiveStakingData internally, so no need to dispatch it separately)
+        await fetchSorobanBlubBalance();
       } catch (refreshError) {
         console.error("[Yield] Refresh failed:", refreshError);
       }
@@ -627,14 +624,9 @@ function Yield() {
         // First, update wallet records to get fresh Horizon data
         await updateWalletRecordsWithDelay(2000);
 
-        // Then fetch all other data (which may depend on updated wallet balances)
-        const { fetchComprehensiveStakingData: fetchData } = await import(
-          "../../lib/slices/stakingSlice"
-        );
-        await Promise.all([
-          dispatch(fetchData(user.userWalletAddress)),
-          fetchSorobanBlubBalance(),
-        ]);
+        // Then fetch all staking data (fetchSorobanBlubBalance already calls
+        // fetchComprehensiveStakingData internally, so no need to dispatch it separately)
+        await fetchSorobanBlubBalance();
       } catch (refreshError) {
         console.error("[Yield] Refresh failed:", refreshError);
       }
@@ -855,7 +847,7 @@ function Yield() {
                   {`${poolAndClaimBalance.toFixed(2)} BLUB`}
                 </div>
               </div>
-              {parseFloat(blubStakedBalance) > 0 && staking.lockEntries?.length > 0 && (
+              {(parseFloat(staking.userStats?.totalAmount || "0") > 0 || parseFloat(blubStakedBalance) > 0) && staking.lockEntries?.length > 0 && (
                 <div className="mt-2">
                   <button
                     onClick={() => setLocksExpanded(!locksExpanded)}
@@ -908,7 +900,7 @@ function Yield() {
                   )}
                 </div>
               )}
-              {parseFloat(blubStakedBalance) > 0 && poolAndClaimBalance === 0 && !staking.lockEntries?.length && (
+              {(parseFloat(staking.userStats?.totalAmount || "0") > 0 || parseFloat(blubStakedBalance) > 0) && poolAndClaimBalance === 0 && !staking.lockEntries?.length && (
                 <div className="text-[10px] text-[#FFA500] mt-1">
                   {staking.nextUnlockTime ? (() => {
                     const now = Math.floor(Date.now() / 1000);
