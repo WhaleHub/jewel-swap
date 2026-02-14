@@ -38,6 +38,16 @@ export interface RewardStateInfo {
   reward_per_token_stored: number;
 }
 
+export interface LockEntry {
+  index: number;
+  blubAmount: string;
+  aquaAmount: string;
+  lockTimestamp: number;
+  unlockTime: number;
+  unlocked: boolean;
+  isBlubStake: boolean;
+}
+
 export interface StakingState {
   // Loading states
   isLoading: boolean;
@@ -54,6 +64,7 @@ export interface StakingState {
   globalStats: StakeStats | null;
   rewardState: RewardStateInfo | null;
   nextUnlockTime: number | null;
+  lockEntries: LockEntry[];
 
   // Transaction states
   lastTransaction: {
@@ -103,6 +114,7 @@ const initialState: StakingState = {
   globalStats: null,
   rewardState: null,
   nextUnlockTime: null,
+  lockEntries: [],
   lastTransaction: null,
   error: null,
   syncStatus: "idle",
@@ -387,12 +399,12 @@ export const fetchComprehensiveStakingData = createAsyncThunk(
       const { sorobanService } = await import("../../services/soroban.service");
 
       // Fetch data using direct query methods (already formatted)
-      const [stakingInfo, polInfo, blubBalance, rewardState, nextUnlockTime] = await Promise.all([
+      const [stakingInfo, polInfo, blubBalance, rewardState, lockData] = await Promise.all([
         sorobanService.queryUserStakingInfo(userAddress),
         sorobanService.queryPolInfo(),
         sorobanService.queryBlubBalance(userAddress),
         sorobanService.queryRewardState(),
-        sorobanService.queryNextUnlockTime(userAddress),
+        sorobanService.queryUserLockEntries(userAddress),
       ]);
 
       console.log("✅ [stakingSlice] Comprehensive data fetched:", {
@@ -400,7 +412,8 @@ export const fetchComprehensiveStakingData = createAsyncThunk(
         polInfo,
         blubBalance,
         rewardState,
-        nextUnlockTime,
+        lockEntries: lockData.entries.length,
+        nextUnlockTime: lockData.nextUnlockTime,
       });
 
       return {
@@ -408,7 +421,8 @@ export const fetchComprehensiveStakingData = createAsyncThunk(
         blubBalance,
         polInfo,
         rewardState,
-        nextUnlockTime,
+        nextUnlockTime: lockData.nextUnlockTime,
+        lockEntries: lockData.entries,
       };
     } catch (error: any) {
       console.error(
@@ -699,8 +713,9 @@ const stakingSlice = createSlice({
           state.rewardState = payload.rewardState;
         }
 
-        // Update next unlock time
+        // Update next unlock time and lock entries
         state.nextUnlockTime = payload.nextUnlockTime ?? null;
+        state.lockEntries = payload.lockEntries || [];
 
         state.lastSyncTime = Date.now();
       })

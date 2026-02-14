@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { useAppDispatch } from "../../lib/hooks";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TailSpin } from "react-loader-spinner";
 import {
   FREIGHTER_ID,
@@ -81,6 +81,9 @@ function STKAqua() {
 
   // Local loading state for Soroban staking
   const [isSorobanStaking, setIsSorobanStaking] = useState<boolean>(false);
+
+  // Lock entries expandable state
+  const [locksExpanded, setLocksExpanded] = useState<boolean>(false);
 
   // Contract balance state
   const [contractBalance, setContractBalance] = useState<string>("0.00");
@@ -1052,17 +1055,19 @@ function STKAqua() {
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-[#B1B3B8] mt-1">
-                      {staking.nextUnlockTime ? (() => {
-                        const now = Math.floor(Date.now() / 1000);
-                        const remaining = staking.nextUnlockTime - now;
-                        if (remaining <= 0) return "⚡ Ready to unstake!";
-                        const days = Math.floor(remaining / 86400);
-                        const hours = Math.floor((remaining % 86400) / 3600);
-                        const mins = Math.floor((remaining % 3600) / 60);
-                        return `⏳ Unlocks in ${days}d ${hours}h ${mins}m`;
-                      })() : "⚡ 10-day cooldown before unstake"}
-                    </div>
+                    {staking.lockEntries.length > 0 && (
+                      <button
+                        onClick={() => setLocksExpanded(!locksExpanded)}
+                        className="text-[10px] text-[#00CC99] mt-1 hover:underline cursor-pointer"
+                      >
+                        {locksExpanded ? "▾ Hide" : "▸ Show"} {staking.lockEntries.filter(e => !e.unlocked).length} lock{staking.lockEntries.filter(e => !e.unlocked).length !== 1 ? "s" : ""}
+                      </button>
+                    )}
+                    {!staking.lockEntries.length && (
+                      <div className="text-[10px] text-[#B1B3B8] mt-1">
+                        10-day cooldown before unstake
+                      </div>
+                    )}
                   </div>
                   <div>
                     <div className="text-[#B1B3B8] flex items-center">
@@ -1140,6 +1145,61 @@ function STKAqua() {
                     </div>
                   </div>
                 </div>
+
+                {/* Expandable Lock Entries */}
+                {locksExpanded && staking.lockEntries.length > 0 && (
+                  <div className="mt-3 border-t border-[#2A2E3E] pt-3">
+                    <div className="text-[11px] text-[#B1B3B8] mb-2 font-medium">Lock Entries</div>
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                      {staking.lockEntries
+                        .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0)
+                        .sort((a, b) => a.unlockTime - b.unlockTime)
+                        .map((entry) => {
+                          const now = Math.floor(Date.now() / 1000);
+                          const remaining = entry.unlockTime - now;
+                          const isReady = remaining <= 0;
+                          const unlockDate = new Date(entry.unlockTime * 1000);
+
+                          return (
+                            <div
+                              key={entry.index}
+                              className="flex items-center justify-between bg-[#0E111B] rounded-[6px] px-3 py-2 text-[11px]"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <span className={isReady ? "text-[#00CC99]" : "text-[#FFA500]"}>
+                                  {isReady ? "🔓" : "🔒"}
+                                </span>
+                                <span className="text-white font-medium">
+                                  {entry.blubAmount} BLUB
+                                </span>
+                                {entry.isBlubStake && (
+                                  <span className="text-[9px] text-[#4169E1] bg-[#4169E1]/10 px-1 rounded">
+                                    restake
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-right">
+                                {isReady ? (
+                                  <span className="text-[#00CC99]">Ready to unstake</span>
+                                ) : (
+                                  <div>
+                                    <span className="text-[#B1B3B8]">
+                                      {Math.floor(remaining / 86400)}d{" "}
+                                      {Math.floor((remaining % 86400) / 3600)}h{" "}
+                                      {Math.floor((remaining % 3600) / 60)}m
+                                    </span>
+                                    <span className="text-[#666] ml-1">
+                                      ({unlockDate.toLocaleDateString()})
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

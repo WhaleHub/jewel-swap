@@ -62,6 +62,7 @@ function Yield() {
   const [lpPositionData, setLpPositionData] = useState<any>(null);
   const [polData, setPolData] = useState<any>(null);
   const [blubBalanceLoading, setBlubBalanceLoading] = useState<boolean>(false);
+  const [locksExpanded, setLocksExpanded] = useState<boolean>(false);
 
 
   const user = useSelector((state: RootState) => state.user);
@@ -854,7 +855,60 @@ function Yield() {
                   {`${poolAndClaimBalance.toFixed(2)} BLUB`}
                 </div>
               </div>
-              {parseFloat(blubStakedBalance) > 0 && poolAndClaimBalance === 0 && (
+              {parseFloat(blubStakedBalance) > 0 && staking.lockEntries.length > 0 && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => setLocksExpanded(!locksExpanded)}
+                    className="text-[11px] text-[#00CC99] hover:underline cursor-pointer"
+                  >
+                    {locksExpanded ? "▾ Hide" : "▸ Show"} lock details ({staking.lockEntries.filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0).length} entries)
+                  </button>
+                  {locksExpanded && (
+                    <div className="mt-2 space-y-1 max-h-[180px] overflow-y-auto">
+                      {staking.lockEntries
+                        .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0)
+                        .sort((a, b) => a.unlockTime - b.unlockTime)
+                        .map((entry) => {
+                          const now = Math.floor(Date.now() / 1000);
+                          const remaining = entry.unlockTime - now;
+                          const isReady = remaining <= 0;
+                          const unlockDate = new Date(entry.unlockTime * 1000);
+
+                          return (
+                            <div
+                              key={entry.index}
+                              className="flex items-center justify-between bg-[#0E111B] rounded-[6px] px-3 py-2 text-[11px]"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <span className={isReady ? "text-[#00CC99]" : "text-[#FFA500]"}>
+                                  {isReady ? "🔓" : "🔒"}
+                                </span>
+                                <span className="text-white font-medium">
+                                  {entry.blubAmount} BLUB
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                {isReady ? (
+                                  <span className="text-[#00CC99]">Ready</span>
+                                ) : (
+                                  <span className="text-[#B1B3B8]">
+                                    {Math.floor(remaining / 86400)}d{" "}
+                                    {Math.floor((remaining % 86400) / 3600)}h{" "}
+                                    {Math.floor((remaining % 3600) / 60)}m
+                                    <span className="text-[#666] ml-1">
+                                      ({unlockDate.toLocaleDateString()})
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+              {parseFloat(blubStakedBalance) > 0 && poolAndClaimBalance === 0 && !staking.lockEntries.length && (
                 <div className="text-[10px] text-[#FFA500] mt-1">
                   {staking.nextUnlockTime ? (() => {
                     const now = Math.floor(Date.now() / 1000);

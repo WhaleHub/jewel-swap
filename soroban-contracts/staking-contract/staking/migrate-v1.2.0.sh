@@ -501,3 +501,6 @@ case "${1:-}" in
         echo "  (BLUB airdrop to old holders commented out — uncomment when ready)"
         ;;
 esac
+
+
+# https://aqua.network/vote/?base=BLUB:GDERSSCKJQPPXUQOZIOXGRVAGNLVPVZCJ2MAX7RCMVMWGRPVAEG7XGTK&counter=AQUA:GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA

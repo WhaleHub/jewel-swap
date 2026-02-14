@@ -1294,10 +1294,22 @@ export class SorobanService {
   }
 
   /**
-   * Query the next unlock time for a user's locked entries
-   * Returns the earliest unlock timestamp (seconds) or null if no active locks
+   * Query all user lock entries with unlock times
+   * Returns { entries, nextUnlockTime, cooldownSeconds }
    */
-  async queryNextUnlockTime(userAddress: string): Promise<number | null> {
+  async queryUserLockEntries(userAddress: string): Promise<{
+    entries: Array<{
+      index: number;
+      blubAmount: string;
+      aquaAmount: string;
+      lockTimestamp: number;
+      unlockTime: number;
+      unlocked: boolean;
+      isBlubStake: boolean;
+    }>;
+    nextUnlockTime: number | null;
+    cooldownSeconds: number;
+  }> {
     try {
       const contract = this.getContract("staking");
       const account = await this.server.getAccount(userAddress);
@@ -1321,7 +1333,7 @@ export class SorobanService {
         ? scValToNative(countSim.result.retval)
         : 0;
 
-      if (lockCount === 0) return null;
+      if (lockCount === 0) return { entries: [], nextUnlockTime: null, cooldownSeconds: 864000 };
 
       // Get config for cooldown
       const configTx = new TransactionBuilder(account, {
@@ -1341,7 +1353,15 @@ export class SorobanService {
         ? Number(config.unstake_cooldown_seconds)
         : 864000;
 
-      // Find earliest unlock time from active (non-unlocked) entries
+      const entries: Array<{
+        index: number;
+        blubAmount: string;
+        aquaAmount: string;
+        lockTimestamp: number;
+        unlockTime: number;
+        unlocked: boolean;
+        isBlubStake: boolean;
+      }> = [];
       let earliestUnlock: number | null = null;
 
       for (let i = 0; i < lockCount; i++) {
@@ -1362,9 +1382,20 @@ export class SorobanService {
         const lockSim: any = await this.server.simulateTransaction(lockTx);
         if (lockSim.result?.retval) {
           const entry = scValToNative(lockSim.result.retval);
-          if (!entry.unlocked && entry.blub_locked > 0) {
-            const unlockTime =
-              Number(entry.lock_timestamp) + cooldown;
+          const blubLocked = Number(entry.blub_locked || 0);
+          const unlockTime = Number(entry.lock_timestamp) + cooldown;
+
+          entries.push({
+            index: i,
+            blubAmount: (blubLocked / 10000000).toFixed(2),
+            aquaAmount: (Number(entry.amount || 0) / 10000000).toFixed(2),
+            lockTimestamp: Number(entry.lock_timestamp),
+            unlockTime,
+            unlocked: !!entry.unlocked,
+            isBlubStake: !!entry.is_blub_stake,
+          });
+
+          if (!entry.unlocked && blubLocked > 0) {
             if (earliestUnlock === null || unlockTime < earliestUnlock) {
               earliestUnlock = unlockTime;
             }
@@ -1372,14 +1403,23 @@ export class SorobanService {
         }
       }
 
-      return earliestUnlock;
+      return { entries, nextUnlockTime: earliestUnlock, cooldownSeconds: cooldown };
     } catch (error: any) {
       console.error(
-        "❌ [SorobanService] Failed to query next unlock time:",
+        "❌ [SorobanService] Failed to query user lock entries:",
         error
       );
-      return null;
+      return { entries: [], nextUnlockTime: null, cooldownSeconds: 864000 };
     }
+  }
+
+  /**
+   * Query the next unlock time for a user's locked entries
+   * Returns the earliest unlock timestamp (seconds) or null if no active locks
+   */
+  async queryNextUnlockTime(userAddress: string): Promise<number | null> {
+    const { nextUnlockTime } = await this.queryUserLockEntries(userAddress);
+    return nextUnlockTime;
   }
 
   /**
