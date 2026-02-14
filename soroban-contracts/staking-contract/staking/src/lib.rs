@@ -1002,9 +1002,27 @@ impl StakingRegistry {
         user_locks.push_back(tx_hash_bytes.clone());
         env.storage().persistent().set(&DataKey::UserLocks(user.clone()), &user_locks);
         
-        // Update lock totals with both AQUA and BLUB
+        // Update global lock totals with both AQUA and BLUB
         Self::update_lock_totals_with_blub(&env, amount, blub_staked, reward_multiplier)?;
-        
+
+        // Update per-user lock totals
+        let mut user_totals: LockTotals = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLockTotals(user.clone()))
+            .unwrap_or(LockTotals {
+                total_locked_aqua: 0,
+                total_blub_minted: 0,
+                total_entries: 0,
+                last_update_ts: 0,
+                accumulated_rewards: 0,
+            });
+        user_totals.total_locked_aqua = user_totals.total_locked_aqua.saturating_add(amount);
+        user_totals.total_blub_minted = user_totals.total_blub_minted.saturating_add(blub_staked);
+        user_totals.total_entries = user_totals.total_entries.saturating_add(1);
+        user_totals.last_update_ts = now;
+        env.storage().persistent().set(&DataKey::UserLockTotals(user.clone()), &user_totals);
+
         // Update POL contribution with both AQUA and BLUB
         Self::update_pol_contribution(&env, pol_aqua, blub_to_lp)?;
         
@@ -1242,9 +1260,29 @@ impl StakingRegistry {
 
         Self::update_lock_totals(&env, amount, reward_multiplier)?;
 
+        // Update per-user lock totals
+        let mut user_totals: LockTotals = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLockTotals(user.clone()))
+            .unwrap_or(LockTotals {
+                total_locked_aqua: 0,
+                total_blub_minted: 0,
+                total_entries: 0,
+                last_update_ts: 0,
+                accumulated_rewards: 0,
+            });
+        user_totals.total_locked_aqua = user_totals.total_locked_aqua.saturating_add(amount);
+        user_totals.total_blub_minted = user_totals.total_blub_minted.saturating_add(amount);
+        user_totals.total_entries = user_totals.total_entries.saturating_add(1);
+        user_totals.last_update_ts = now;
+        env.storage().persistent().set(&DataKey::UserLockTotals(user.clone()), &user_totals);
+
         Self::update_pol_contribution(&env, pol_contribution, pol_contribution)?;
 
-        Self::update_global_state(&env, amount, 0, false)?;
+        // Update global state directly on local variable (avoid helper overwrite bug)
+        global_state.total_locked = global_state.total_locked.saturating_add(amount);
+        global_state.last_reward_update = env.ledger().timestamp();
 
         // Emit POL contribution event
         let pol = Self::get_pol(&env);
@@ -1318,16 +1356,19 @@ impl StakingRegistry {
 
         let blub_locked = amount;
 
-        Self::update_global_state_with_blub(&env, -amount, -blub_locked, 0, false)?;
+        // Update global state directly on local variable (avoid helper overwrite bug)
+        global_state.total_locked = global_state.total_locked.saturating_sub(amount).max(0);
+        global_state.total_blub_supply = global_state.total_blub_supply.saturating_sub(blub_locked).max(0);
+        global_state.last_reward_update = env.ledger().timestamp();
 
-        let entry = UnlockEntry { 
-            amount, 
-            tx_hash: tx_hash.clone(), 
+        let entry = UnlockEntry {
+            amount,
+            tx_hash: tx_hash.clone(),
             timestamp: now,
             claimed: false,
         };
         env.storage().persistent().set(&DataKey::UserUnlockByTxHash(user.clone(), tx_hash.clone()), &entry);
-        
+
         // Add tx_hash to user's unlocks list
         let mut user_unlocks: Vec<Bytes> = env
             .storage()
@@ -1337,28 +1378,25 @@ impl StakingRegistry {
         user_unlocks.push_back(tx_hash.clone());
         env.storage().persistent().set(&DataKey::UserUnlocks(user.clone()), &user_unlocks);
 
+        // Update per-user lock totals
         let mut totals: LockTotals = env
             .storage()
             .persistent()
             .get(&DataKey::UserLockTotals(user.clone()))
-            .unwrap_or(LockTotals { 
-                total_locked_aqua: 0, 
+            .unwrap_or(LockTotals {
+                total_locked_aqua: 0,
                 total_blub_minted: 0,
-                total_entries: 0, 
+                total_entries: 0,
                 last_update_ts: 0,
                 accumulated_rewards: 0,
             });
 
-        let pending_blub_rewards = Self::calculate_pending_rewards(&env, &user, &totals, now)?;
-        totals.accumulated_rewards = totals.accumulated_rewards.saturating_add(pending_blub_rewards);
-
-        // Transfer LOCKED BLUB + REWARDS from contract to user's wallet
-        // Using external BLUB token
-        let total_blub_to_transfer = blub_locked + pending_blub_rewards;
-        if total_blub_to_transfer > 0 {
+        // Transfer LOCKED BLUB from contract to user's wallet
+        // Rewards are claimed separately via claim_rewards() (Synthetix system)
+        if blub_locked > 0 {
             use soroban_sdk::token;
             let blub_client = token::Client::new(&env, &config.blub_token);
-            let transfer_result = blub_client.try_transfer(&contract_address, &user, &total_blub_to_transfer);
+            let transfer_result = blub_client.try_transfer(&contract_address, &user, &blub_locked);
             if transfer_result.is_err() {
                 global_state.locked = false;
                 env.storage().instance().set(&DataKey::GlobalState, &global_state);
@@ -1367,18 +1405,8 @@ impl StakingRegistry {
         }
 
         // Update user totals
-        if totals.total_locked_aqua >= amount {
-            totals.total_locked_aqua -= amount;
-        } else {
-            totals.total_locked_aqua = 0;
-        }
-
-        if totals.total_blub_minted >= blub_locked {
-            totals.total_blub_minted -= blub_locked;
-        } else {
-            totals.total_blub_minted = 0;
-        }
-
+        totals.total_locked_aqua = totals.total_locked_aqua.saturating_sub(amount).max(0);
+        totals.total_blub_minted = totals.total_blub_minted.saturating_sub(blub_locked).max(0);
         totals.last_update_ts = now;
         env.storage().persistent().set(&DataKey::UserLockTotals(user.clone()), &totals);
 
@@ -1487,10 +1515,29 @@ impl StakingRegistry {
 
         Self::update_lock_totals_with_blub(&env, 0, amount, reward_multiplier)?;
 
-        Self::update_global_state_with_blub(&env, 0, amount, 0, false)?;
+        // Update per-user lock totals
+        let mut user_totals: LockTotals = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLockTotals(user.clone()))
+            .unwrap_or(LockTotals {
+                total_locked_aqua: 0,
+                total_blub_minted: 0,
+                total_entries: 0,
+                last_update_ts: 0,
+                accumulated_rewards: 0,
+            });
+        user_totals.total_blub_minted = user_totals.total_blub_minted.saturating_add(amount);
+        user_totals.total_entries = user_totals.total_entries.saturating_add(1);
+        user_totals.last_update_ts = now;
+        env.storage().persistent().set(&DataKey::UserLockTotals(user.clone()), &user_totals);
+
+        // Update global state directly on local variable (avoid helper overwrite bug)
+        global_state.total_blub_supply = global_state.total_blub_supply.saturating_add(amount);
+        global_state.last_reward_update = env.ledger().timestamp();
 
         // ===== INTERACTIONS: TRANSFER BLUB LAST =====
-        
+
         use soroban_sdk::token;
         let blub_client = token::Client::new(&env, &config.blub_token);
         let transfer_result = blub_client.try_transfer(&user, &contract_address, &amount);
@@ -1499,7 +1546,7 @@ impl StakingRegistry {
             env.storage().instance().set(&DataKey::GlobalState, &global_state);
             return Err(Error::InsufficientBalance);
         }
-        
+
         // ===== RELEASE RE-ENTRANCY LOCK =====
         global_state.locked = false;
         env.storage().instance().set(&DataKey::GlobalState, &global_state);
@@ -1731,21 +1778,11 @@ impl StakingRegistry {
                 pending_locked: 0,
             });
 
-        // Calculate locked rewards
-        let lock_totals: LockTotals = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLockTotals(user.clone()))
-            .unwrap_or(LockTotals { 
-                total_locked_aqua: 0,
-                total_blub_minted: 0,
-                total_entries: 0, 
-                last_update_ts: 0,
-                accumulated_rewards: 0,
-            });
-
-        let pending_locked_rewards = Self::calculate_pending_rewards(&env, &user, &lock_totals, now)?;
-        totals.pending_locked = lock_totals.accumulated_rewards.saturating_add(pending_locked_rewards);
+        // Calculate locked rewards using Synthetix system (v1.2.0)
+        let reward_state = Self::get_reward_state(&env);
+        let user_reward_state = Self::get_user_reward_state(&env, &user);
+        let pending_locked_rewards = Self::calculate_user_pending_rewards(&reward_state, &user_reward_state);
+        totals.pending_locked = pending_locked_rewards;
 
         // Calculate LP rewards for all pools
         let pools: Vec<Bytes> = env
@@ -2003,22 +2040,6 @@ impl StakingRegistry {
     }
 
     /// Update global state including BLUB supply
-    fn update_global_state_with_blub(env: &Env, locked_delta: i128, blub_delta: i128, lp_delta: i128, is_new_user: bool) -> Result<(), Error> {
-        let mut global_state = Self::get_global_state(env.clone())?;
-        
-        global_state.total_locked = global_state.total_locked.saturating_add(locked_delta);
-        global_state.total_blub_supply = global_state.total_blub_supply.saturating_add(blub_delta);
-        global_state.total_lp_staked = global_state.total_lp_staked.saturating_add(lp_delta);
-        
-        if is_new_user {
-            global_state.total_users = global_state.total_users.saturating_add(1);
-        }
-        
-        global_state.last_reward_update = env.ledger().timestamp();
-        
-        env.storage().instance().set(&DataKey::GlobalState, &global_state);
-        Ok(())
-    }
 
     fn update_reward_rates(env: &Env, kind: u32, distributed_amount: i128) -> Result<(), Error> {
         let mut global_state = Self::get_global_state(env.clone())?;
@@ -2147,65 +2168,8 @@ impl StakingRegistry {
         x
     }
 
-    fn calculate_pending_rewards(env: &Env, user: &Address, totals: &LockTotals, current_time: u64) -> Result<i128, Error> {
-        // Check for zero OR negative total_locked_aqua to prevent negative rewards
-        if totals.total_locked_aqua <= 0 || totals.last_update_ts >= current_time {
-            return Ok(0);
-        }
-
-        let cfg = Self::get_config(env.clone())?;
-        let time_diff = current_time.saturating_sub(totals.last_update_ts);
-        let minutes_elapsed = time_diff / 60;
-        let periods_elapsed = minutes_elapsed / cfg.period_unit_minutes;
-
-        if periods_elapsed == 0 { return Ok(0); }
-
-        let total_multiplier = Self::get_user_total_multiplier(env, user)?;
-
-        let base_reward = totals.total_locked_aqua
-            .saturating_mul(cfg.reward_rate as i128)
-            .saturating_mul(periods_elapsed as i128)
-            .saturating_mul(total_multiplier)
-            / 100_000_000;
-
-        // Ensure reward is never negative
-        Ok(base_reward.max(0))
-    }
-
-    fn get_user_total_multiplier(env: &Env, user: &Address) -> Result<i128, Error> {
-        let user_locks: Vec<Bytes> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLocks(user.clone()))
-            .unwrap_or(Vec::new(env));
-
-        if user_locks.is_empty() { return Ok(10000); }
-
-        let now = env.ledger().timestamp();
-        let mut total_amount = 0i128;
-        let mut weighted_multiplier = 0i128;
-
-        for i in 0..user_locks.len() {
-            if let Some(tx_hash) = user_locks.get(i) {
-                if let Some(entry) = env.storage().persistent().get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash)) {
-                    if !entry.unlocked && entry.blub_locked > 0 {
-                        // Calculate multiplier based on actual elapsed time since staking
-                        let elapsed_seconds = now.saturating_sub(entry.lock_timestamp);
-                        let elapsed_minutes = elapsed_seconds / 60;
-                        let time_based_multiplier = Self::calculate_lock_multiplier(elapsed_minutes);
-                        
-                        total_amount = total_amount.saturating_add(entry.blub_locked);
-                        weighted_multiplier = weighted_multiplier.saturating_add(
-                            entry.blub_locked.saturating_mul(time_based_multiplier)
-                        );
-                    }
-                }
-            }
-        }
-
-        if total_amount == 0 { return Ok(10000); }
-        Ok(weighted_multiplier / total_amount)
-    }
+    // Old reward system functions (calculate_pending_rewards, get_user_total_multiplier) removed.
+    // Rewards are now handled exclusively by the Synthetix-style system (v1.2.0).
 
     /// Retrieves the global contract state.
     ///
@@ -3229,7 +3193,6 @@ impl StakingRegistry {
     ///   - total_unlocked_entries: Number of unlocked positions ready to unstake
     /// * `Err(Error)` if calculation fails
     pub fn get_user_staking_info(env: Env, user: Address) -> Result<UserStakingInfo, Error> {
-        let now = env.ledger().timestamp();
         
         let user_locks: Vec<Bytes> = env
             .storage()
@@ -3258,25 +3221,15 @@ impl StakingRegistry {
             }
         }
 
-        // Get accumulated and pending rewards
-        let lock_totals: LockTotals = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLockTotals(user.clone()))
-            .unwrap_or(LockTotals { 
-                total_locked_aqua: 0,
-                total_blub_minted: 0,
-                total_entries: 0, 
-                last_update_ts: 0,
-                accumulated_rewards: 0,
-            });
-
-        let pending_rewards = Self::calculate_pending_rewards(&env, &user, &lock_totals, now)?;
+        // Get pending rewards from Synthetix reward system (v1.2.0)
+        let reward_state = Self::get_reward_state(&env);
+        let user_reward_state = Self::get_user_reward_state(&env, &user);
+        let pending_rewards = Self::calculate_user_pending_rewards(&reward_state, &user_reward_state);
 
         Ok(UserStakingInfo {
             total_staked_blub,
             unstaking_available,
-            accumulated_rewards: lock_totals.accumulated_rewards,
+            accumulated_rewards: user_reward_state.total_claimed,
             pending_rewards,
             total_locked_entries,
             total_unlocked_entries,
@@ -3382,30 +3335,12 @@ impl StakingRegistry {
             return Err(Error::NoUnlockableAmount);
         }
 
-        // Calculate and add pending rewards
-        let mut totals: LockTotals = env
-            .storage()
-            .persistent()
-            .get(&DataKey::UserLockTotals(user.clone()))
-            .unwrap_or(LockTotals { 
-                total_locked_aqua: 0, 
-                total_blub_minted: 0,
-                total_entries: 0, 
-                last_update_ts: 0,
-                accumulated_rewards: 0,
-            });
-
-        // Ensure pending rewards is never negative
-        let pending_blub_rewards = Self::calculate_pending_rewards(&env, &user, &totals, now)?.max(0);
-        totals.accumulated_rewards = totals.accumulated_rewards.saturating_add(pending_blub_rewards).max(0);
-
-        // Ensure total transfer amount is never negative
-        let total_blub_to_transfer = (total_blub_unstaked + pending_blub_rewards).max(0);
-        if total_blub_to_transfer > 0 {
+        // Transfer unstaked BLUB to user
+        // Rewards are claimed separately via claim_rewards() (Synthetix system)
+        if total_blub_unstaked > 0 {
             use soroban_sdk::token;
-            let config = Self::get_config(env.clone())?;
             let blub_client = token::Client::new(&env, &config.blub_token);
-            let transfer_result = blub_client.try_transfer(&contract_address, &user, &total_blub_to_transfer);
+            let transfer_result = blub_client.try_transfer(&contract_address, &user, &total_blub_unstaked);
             if transfer_result.is_err() {
                 global_state.locked = false;
                 env.storage().instance().set(&DataKey::GlobalState, &global_state);
@@ -3413,14 +3348,24 @@ impl StakingRegistry {
             }
         }
 
-        // Prevent negative values using .max(0)
+        // Update per-user lock totals
+        let mut totals: LockTotals = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserLockTotals(user.clone()))
+            .unwrap_or(LockTotals {
+                total_locked_aqua: 0,
+                total_blub_minted: 0,
+                total_entries: 0,
+                last_update_ts: 0,
+                accumulated_rewards: 0,
+            });
         totals.total_locked_aqua = totals.total_locked_aqua.saturating_sub(total_aqua_unlocked).max(0);
         totals.total_blub_minted = totals.total_blub_minted.saturating_sub(total_blub_unstaked).max(0);
-        totals.accumulated_rewards = totals.accumulated_rewards.max(0);
         totals.last_update_ts = now;
         env.storage().persistent().set(&DataKey::UserLockTotals(user.clone()), &totals);
 
-        // Prevent negative values in global state
+        // Update global state directly (avoid helper overwrite bug)
         global_state.total_locked = global_state.total_locked.saturating_sub(total_aqua_unlocked).max(0);
         global_state.total_blub_supply = global_state.total_blub_supply.saturating_sub(total_blub_unstaked).max(0);
         global_state.locked = false;
@@ -3428,7 +3373,7 @@ impl StakingRegistry {
 
         env.events().publish(
             (symbol_short!("unstake"), user.clone()),
-            (total_blub_unstaked, pending_blub_rewards),
+            total_blub_unstaked,
         );
 
         // ===== SYNC REWARD BALANCE (v1.2.0) =====
@@ -3471,22 +3416,8 @@ impl StakingRegistry {
             })
     }
 
-    /// Internal: Get user's reward state with migration fix
-    /// For pre-migration stakers, initializes staked_balance from actual locks
-    fn get_user_reward_state_with_migration(env: &Env, user: &Address) -> UserRewardState {
-        let mut user_state = Self::get_user_reward_state(env, user);
-
-        // Migration fix: If user has no reward state but has existing locks,
-        // initialize their staked_balance from their actual locks
-        if user_state.staked_balance == 0 && user_state.reward_per_token_paid == 0 {
-            let actual_staked = Self::get_user_total_staked_blub(env, user);
-            if actual_staked > 0 {
-                user_state.staked_balance = actual_staked;
-            }
-        }
-
-        user_state
-    }
+    // get_user_reward_state removed - not needed for fresh deployment
+    // Use get_user_reward_state directly instead
 
     /// Internal: Calculate pending rewards for a user
     /// Formula: earned = balance * (reward_per_token - user_paid) / PRECISION + user_earned
@@ -3520,19 +3451,7 @@ impl StakingRegistry {
     ) -> UserRewardState {
         let mut user_state = Self::get_user_reward_state(env, user);
 
-        // Migration fix: If user has no reward state but has existing locks,
-        // initialize their staked_balance from their actual locks BEFORE calculating rewards.
-        // This ensures pre-migration stakers earn rewards fairly from their first interaction.
-        if user_state.staked_balance == 0 && user_state.reward_per_token_paid == 0 {
-            let actual_staked = Self::get_user_total_staked_blub(env, user);
-            if actual_staked > 0 {
-                // User has existing stakes but no reward state (pre-migration staker)
-                // Initialize their balance so they can earn rewards going forward
-                user_state.staked_balance = actual_staked;
-            }
-        }
-
-        // Calculate and save earned rewards
+        // Calculate and save earned rewards based on current staked_balance
         user_state.rewards_earned =
             Self::calculate_user_pending_rewards(reward_state, &user_state);
 
@@ -3660,7 +3579,7 @@ impl StakingRegistry {
 
         // Get current states (with migration fix for pre-migration stakers)
         let reward_state = Self::get_reward_state(&env);
-        let mut user_state = Self::get_user_reward_state_with_migration(&env, &user);
+        let mut user_state = Self::get_user_reward_state(&env, &user);
 
         // Check cooldown
         let cooldown_end = user_state
@@ -3727,7 +3646,7 @@ impl StakingRegistry {
     /// Amount of pending BLUB rewards
     pub fn get_pending_rewards(env: Env, user: Address) -> i128 {
         let reward_state = Self::get_reward_state(&env);
-        let user_state = Self::get_user_reward_state_with_migration(&env, &user);
+        let user_state = Self::get_user_reward_state(&env, &user);
         Self::calculate_user_pending_rewards(&reward_state, &user_state)
     }
 
@@ -3761,7 +3680,7 @@ impl StakingRegistry {
 
         let now = env.ledger().timestamp();
         let reward_state = Self::get_reward_state(&env);
-        let user_state = Self::get_user_reward_state_with_migration(&env, &user);
+        let user_state = Self::get_user_reward_state(&env, &user);
 
         let pending = Self::calculate_user_pending_rewards(&reward_state, &user_state);
         let claim_available_at = user_state

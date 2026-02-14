@@ -1,0 +1,12 @@
+{
+  "migration_version": "1.2.0",
+  "started_at": "2026-02-14T07:39:20Z",
+  "step1_fund_issuer": true,
+  "step2_deploy_sac": true,
+  "step3_build": true,
+  "step4_deploy_staking": true,
+  "step5_init_staking": true,
+  "step6_transfer_sac_admin": true,
+  "new_blub_sac_id": "CBMFDIRY5OKI4JJURXC4SMEQPWB4UUADIADJK4NA6CYBNOYK4W4TMLLF",
+  "new_staking_contract": "CC72BEVVKHQ57PB5FCKAZYRXCSR6DOQSTN46QR7RZMMM64YWNRPDS24S"
+}

@@ -30,6 +30,14 @@ export interface PolInfo {
   iceVotingPower: string;
 }
 
+export interface RewardStateInfo {
+  total_rewards_added: number;
+  total_rewards_claimed: number;
+  total_staked: number;
+  last_update_time: number;
+  reward_per_token_stored: number;
+}
+
 export interface StakingState {
   // Loading states
   isLoading: boolean;
@@ -44,6 +52,7 @@ export interface StakingState {
 
   // Global data
   globalStats: StakeStats | null;
+  rewardState: RewardStateInfo | null;
 
   // Transaction states
   lastTransaction: {
@@ -59,6 +68,29 @@ export interface StakingState {
   lastSyncTime: number | null;
 }
 
+const SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60;
+
+export function calculateAPY(rewardState: RewardStateInfo | null): string {
+  if (
+    !rewardState ||
+    rewardState.total_staked <= 0 ||
+    rewardState.total_rewards_added <= 0 ||
+    rewardState.last_update_time <= 0
+  ) {
+    return "--";
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const elapsed = now - rewardState.last_update_time;
+  if (elapsed <= 0) return "--";
+
+  const annualizedRate =
+    (rewardState.total_rewards_added / rewardState.total_staked) /
+    (elapsed / SECONDS_PER_YEAR);
+
+  return (annualizedRate * 100).toFixed(2);
+}
+
 const initialState: StakingState = {
   isLoading: false,
   isStaking: false,
@@ -68,6 +100,7 @@ const initialState: StakingState = {
   userStats: null,
   polInfo: null,
   globalStats: null,
+  rewardState: null,
   lastTransaction: null,
   error: null,
   syncStatus: "idle",
@@ -352,22 +385,25 @@ export const fetchComprehensiveStakingData = createAsyncThunk(
       const { sorobanService } = await import("../../services/soroban.service");
 
       // Fetch data using direct query methods (already formatted)
-      const [stakingInfo, polInfo, blubBalance] = await Promise.all([
+      const [stakingInfo, polInfo, blubBalance, rewardState] = await Promise.all([
         sorobanService.queryUserStakingInfo(userAddress),
         sorobanService.queryPolInfo(),
         sorobanService.queryBlubBalance(userAddress),
+        sorobanService.queryRewardState(),
       ]);
 
       console.log("✅ [stakingSlice] Comprehensive data fetched:", {
         stakingInfo,
         polInfo,
         blubBalance,
+        rewardState,
       });
 
       return {
         stakingInfo,
         blubBalance,
         polInfo,
+        rewardState,
       };
     } catch (error: any) {
       console.error(
@@ -651,6 +687,11 @@ const stakingSlice = createSlice({
             rewardsEarned: payload.polInfo.total_pol_rewards_earned || "0",
             iceVotingPower: payload.polInfo.ice_voting_power_used || "0",
           };
+        }
+
+        // Update reward state
+        if (payload.rewardState) {
+          state.rewardState = payload.rewardState;
         }
 
         state.lastSyncTime = Date.now();

@@ -27,6 +27,7 @@ import {
   clearError,
   clearTransaction,
   fetchComprehensiveStakingData,
+  calculateAPY,
 } from "../../lib/slices/stakingSlice";
 import { sorobanService } from "../../services/soroban.service";
 import { apiService } from "../../services/api.service";
@@ -223,7 +224,7 @@ function STKAqua() {
       );
       setDialogTitle("Staking Successful!");
       setDialogMsg(
-        `Transaction Hash: ${result.transactionHash}\n\nYour AQUA has been staked. Rewards increase the longer you keep it staked. You can unstake at any time.`
+        `Transaction Hash: ${result.transactionHash}\n\nYour AQUA has been staked. Rewards increase the longer you keep it staked. You can unstake after a 10-day cooldown.`
       );
       setOptDialog(true);
       setIsSorobanStaking(false);
@@ -907,7 +908,7 @@ function STKAqua() {
                 </div>
                 <div className="text-xs text-[#B1B3B8]">
                   Your rewards increase the longer you keep your BLUB staked.
-                  Unstake anytime without penalty.
+                  Unstake after 10-day cooldown, no penalty.
                 </div>
               </div>
             )}
@@ -924,7 +925,7 @@ function STKAqua() {
                     onClick={() =>
                       onDialogOpen(
                         useSoroban
-                          ? "Soroban staking provides time-based rewards - the longer you stake, the more you earn. You can unstake anytime."
+                          ? "Soroban staking provides time-based rewards - the longer you stake, the more you earn. You can unstake after a 10-day cooldown."
                           : "Legacy staking uses the original BLUB conversion system without time-based rewards or governance features.",
                         useSoroban ? "Soroban Staking" : "Legacy Staking"
                       )
@@ -1052,7 +1053,7 @@ function STKAqua() {
                       )}
                     </div>
                     <div className="text-[10px] text-[#B1B3B8] mt-1">
-                      ⚡ Unstakeable anytime
+                      ⚡ 10-day cooldown before unstake
                     </div>
                   </div>
                   <div>
@@ -1082,14 +1083,9 @@ function STKAqua() {
                     <div className="text-white font-medium">
                       {staking.isLoading
                         ? "..."
-                        : staking.userStats?.activeAmount
-                        ? (
-                            parseFloat(staking.userStats.activeAmount || "0") +
-                            parseFloat(
-                              staking.userStats.unstakingAvailable || "0"
-                            )
-                          ).toFixed(2)
-                        : "0.00"}{" "}
+                        : parseFloat(
+                            staking.userStats?.unstakingAvailable || "0"
+                          ).toFixed(2)}{" "}
                       BLUB
                     </div>
                   </div>
@@ -1114,6 +1110,25 @@ function STKAqua() {
                         ? parseFloat(staking.polInfo.totalAqua).toFixed(2)
                         : "0.00"}{" "}
                       AQUA
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[#B1B3B8] flex items-center">
+                      <span>Staking APY</span>
+                      <span className="ml-1 text-[10px] text-[#00CC99]">
+                        📈 Yield
+                      </span>
+                    </div>
+                    <div className="text-white font-medium">
+                      {staking.isLoading ? (
+                        "..."
+                      ) : (
+                        <span className="text-[#00CC99]">
+                          {calculateAPY(staking.rewardState) === "--"
+                            ? "--"
+                            : `${calculateAPY(staking.rewardState)}%`}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

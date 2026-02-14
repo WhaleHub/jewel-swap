@@ -1233,6 +1233,67 @@ export class SorobanService {
   }
 
   /**
+   * Query reward state from staking contract
+   */
+  async queryRewardState(): Promise<any> {
+    try {
+      console.log(
+        "🔍 [SorobanService] Querying reward state from staking contract..."
+      );
+
+      const contract = this.getContract("staking");
+      const dummyAddress =
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+      const account = await this.server
+        .getAccount(dummyAddress)
+        .catch(async () => {
+          const keys = Keypair.random();
+          return await this.server
+            .getAccount(keys.publicKey())
+            .catch(() => null);
+        });
+
+      if (!account) {
+        console.warn(
+          "⚠️ [SorobanService] Could not get account for reward state query"
+        );
+        return null;
+      }
+
+      const transaction = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(contract.call("get_reward_state_view"))
+        .setTimeout(30)
+        .build();
+
+      const simulation: any = await this.server.simulateTransaction(
+        transaction
+      );
+
+      if (simulation.result?.retval) {
+        const raw = scValToNative(simulation.result.retval);
+        const result = {
+          total_rewards_added: Number(raw.total_rewards_added) / 10000000,
+          total_rewards_claimed: Number(raw.total_rewards_claimed) / 10000000,
+          total_staked: Number(raw.total_staked) / 10000000,
+          last_update_time: Number(raw.last_update_time),
+          reward_per_token_stored: Number(raw.reward_per_token_stored),
+        };
+        console.log("✅ [SorobanService] Reward state:", result);
+        return result;
+      }
+
+      return null;
+    } catch (error: any) {
+      console.error("❌ [SorobanService] Failed to query reward state:", error);
+      return null;
+    }
+  }
+
+  /**
    * Stake BLUB tokens (restake)
    * Calls stake contract function
    */

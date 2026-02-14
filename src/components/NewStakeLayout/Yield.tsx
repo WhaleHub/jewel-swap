@@ -158,19 +158,12 @@ function Yield() {
     }
   }, [user?.userRecords?.account?.pools]);
 
-  // Add the two calculated values
   // Calculate unstakable BLUB from Soroban staking info
-  // NOTE: total_staked_blub is immediately unstakeable (no time lock in contract)
-  // unstaking_available is for already-unlocked entries (partial unstakes)
+  // Only unstaking_available (locks past 10-day cooldown) can actually be unstaked
   const poolAndClaimBalance = useMemo(() => {
-    const totalStaked = staking.userStats?.activeAmount || "0";
     const unstakingAvailable = staking.userStats?.unstakingAvailable || "0";
-    // Sum both: actively staked (immediately unstakeable) + already unlocked entries
-    return Math.max(
-      0,
-      parseFloat(totalStaked) + parseFloat(unstakingAvailable)
-    );
-  }, [staking.userStats?.activeAmount, staking.userStats?.unstakingAvailable]);
+    return Math.max(0, parseFloat(unstakingAvailable));
+  }, [staking.userStats?.unstakingAvailable]);
 
   // Fetch BLUB balance from Soroban contract
   const fetchSorobanBlubBalance = async () => {
@@ -855,12 +848,17 @@ function Yield() {
 
               <div className="flex items-center text-normal mt-6 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">
-                  Staked Balance:
+                  Unstakeable:
                 </div>
                 <div className="font-medium">
-                  {`${parseFloat(blubStakedBalance).toFixed(2)} BLUB`}
+                  {`${poolAndClaimBalance.toFixed(2)} BLUB`}
                 </div>
               </div>
+              {parseFloat(blubStakedBalance) > 0 && poolAndClaimBalance === 0 && (
+                <div className="text-[10px] text-[#FFA500] mt-1">
+                  10-day cooldown active. Your {parseFloat(blubStakedBalance).toFixed(2)} staked BLUB will be unstakeable after cooldown.
+                </div>
+              )}
 
               <Button
                 className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold"

@@ -1,0 +1,60 @@
+{
+  "snapshot_date": "2026-01-31",
+  "contract": "CBGYTUQDPZAKOM2YULOSBLQB4XPNSUGD6GBEK75EWEOAXLAVOD7C4HGO",
+  "global_state": {
+    "total_locked": "2895430000000",
+    "total_blub_supply": "3188731000000",
+    "lock_counter": 34,
+    "total_users_with_locks": 5
+  },
+  "protocol_owned_liquidity": {
+    "aqua_blub_lp_position": "239336571853",
+    "total_aqua_contributed": "290341000000",
+    "total_blub_contributed": "290341000000"
+  },
+  "stakers": [
+    {
+      "address": "GARYN7BW43SNIK7ZBR44G5PJDNH2MCX4AOY5IWHEJV42FQNRVUHX7HME",
+      "blub_balance": "18.8000000",
+      "lock_count": 10,
+      "note": "Most locks unlocked"
+    },
+    {
+      "address": "GBNC63HMPHNBZCG6WPWZXKUC3NS7JUKBJLXEBGJMAJEGNY64QVLW5RZW",
+      "blub_balance": "60.0000000",
+      "lock_count": 2,
+      "note": "All locks unlocked"
+    },
+    {
+      "address": "GBTU72UJV766YP5VM7QZGKZ27H7YGQQJOLUNOM2ZA3XBE6FZYVPI2PW5",
+      "blub_balance": "93661.5335182",
+      "lock_count": 6,
+      "note": "LARGEST STAKER - Has active locks (unlocked=false)"
+    },
+    {
+      "address": "GBXTXYAPPDYMQUDWHOBMXSF5RRFOZUJ7OUEMQPSG3L2EXYJ6ATM6SWS6",
+      "blub_balance": "141.0000000",
+      "lock_count": 6,
+      "note": "All locks unlocked"
+    },
+    {
+      "address": "GCKTMO57VPZIOMFW47ZHXNWARPQRO4UGNNLHVFSEKDB2XKC74ZP4EKXD",
+      "blub_balance": "1261.6000000",
+      "lock_count": 10,
+      "note": "Most locks unlocked"
+    }
+  ],
+  "blub_holders_without_locks": [
+    {"address": "GAQNTTXCXPWGKYUV6WCG4ONFQAPKLAUC7RBRSPBSTSQ5LHQ22XF5XUE5", "balance": "56288.3616408"},
+    {"address": "GAQXUHVEYDHETYFGMRA6M4UTNAKA7ZR5TCIDU6UOROGIBMWUCN6MI7KX", "balance": "22345.2535716"},
+    {"address": "GCSSE2QXLLB745CQLGT3BRSSSCOWNXDEVXDCTNZ2P7I2T53DJF6FMZWB", "balance": "11747.1582849"},
+    {"address": "GC7COXLURUY25JVU6A5V73F5Y23CBSHKGGDIU57F5LJSAIW4XCTISUSP", "balance": "5360.0097307"},
+    {"address": "GD3EXP7GTMP7UFHPOR4O24EUH7S6VDKT7UAC4GDGPNFOBU3SAOFCPVTH", "balance": "2713.2850280"},
+    {"address": "GATLTA7377MRPTVW2NA3BPXEWDHFW7SAKKDISK4OUI7SJPVTEGHL75DD", "balance": "1589.2863417"},
+    {"address": "GBHM65LUCZDGA2LT7CKARIV65VLR6NNWJSTPHBJHNXNW4UHDEWMTSBAG", "balance": "1511.3349874"}
+  ],
+  "contract_balances": {
+    "AQUA": "16838207 stroops",
+    "BLUB": "2902326000000 stroops"
+  }
+}
