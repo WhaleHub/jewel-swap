@@ -1055,15 +1055,15 @@ function STKAqua() {
                         </span>
                       )}
                     </div>
-                    {staking.lockEntries.length > 0 && (
+                    {staking.lockEntries?.length > 0 && (
                       <button
                         onClick={() => setLocksExpanded(!locksExpanded)}
                         className="text-[10px] text-[#00CC99] mt-1 hover:underline cursor-pointer"
                       >
-                        {locksExpanded ? "▾ Hide" : "▸ Show"} {staking.lockEntries.filter(e => !e.unlocked).length} lock{staking.lockEntries.filter(e => !e.unlocked).length !== 1 ? "s" : ""}
+                        {locksExpanded ? "▾ Hide" : "▸ Show"} {staking.lockEntries?.filter(e => !e.unlocked).length ?? 0} lock{staking.lockEntries?.filter(e => !e.unlocked).length !== 1 ? "s" : ""}
                       </button>
                     )}
-                    {!staking.lockEntries.length && (
+                    {!staking.lockEntries?.length && (
                       <div className="text-[10px] text-[#B1B3B8] mt-1">
                         10-day cooldown before unstake
                       </div>
@@ -1147,7 +1147,7 @@ function STKAqua() {
                 </div>
 
                 {/* Expandable Lock Entries */}
-                {locksExpanded && staking.lockEntries.length > 0 && (
+                {locksExpanded && staking.lockEntries?.length > 0 && (
                   <div className="mt-3 border-t border-[#2A2E3E] pt-3">
                     <div className="text-[11px] text-[#B1B3B8] mb-2 font-medium">Lock Entries</div>
                     <div className="space-y-2 max-h-[200px] overflow-y-auto">

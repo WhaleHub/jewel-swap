@@ -855,17 +855,17 @@ function Yield() {
                   {`${poolAndClaimBalance.toFixed(2)} BLUB`}
                 </div>
               </div>
-              {parseFloat(blubStakedBalance) > 0 && staking.lockEntries.length > 0 && (
+              {parseFloat(blubStakedBalance) > 0 && staking.lockEntries?.length > 0 && (
                 <div className="mt-2">
                   <button
                     onClick={() => setLocksExpanded(!locksExpanded)}
                     className="text-[11px] text-[#00CC99] hover:underline cursor-pointer"
                   >
-                    {locksExpanded ? "▾ Hide" : "▸ Show"} lock details ({staking.lockEntries.filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0).length} entries)
+                    {locksExpanded ? "▾ Hide" : "▸ Show"} lock details ({staking.lockEntries?.filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0).length ?? 0} entries)
                   </button>
                   {locksExpanded && (
                     <div className="mt-2 space-y-1 max-h-[180px] overflow-y-auto">
-                      {staking.lockEntries
+                      {(staking.lockEntries ?? [])
                         .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0)
                         .sort((a, b) => a.unlockTime - b.unlockTime)
                         .map((entry) => {
@@ -908,7 +908,7 @@ function Yield() {
                   )}
                 </div>
               )}
-              {parseFloat(blubStakedBalance) > 0 && poolAndClaimBalance === 0 && !staking.lockEntries.length && (
+              {parseFloat(blubStakedBalance) > 0 && poolAndClaimBalance === 0 && !staking.lockEntries?.length && (
                 <div className="text-[10px] text-[#FFA500] mt-1">
                   {staking.nextUnlockTime ? (() => {
                     const now = Math.floor(Date.now() / 1000);
