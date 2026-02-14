@@ -1125,25 +1125,6 @@ function STKAqua() {
                       AQUA
                     </div>
                   </div>
-                  <div>
-                    <div className="text-[#B1B3B8] flex items-center">
-                      <span>Staking APY</span>
-                      <span className="ml-1 text-[10px] text-[#00CC99]">
-                        📈 Yield
-                      </span>
-                    </div>
-                    <div className="text-white font-medium">
-                      {staking.isLoading ? (
-                        "..."
-                      ) : (
-                        <span className="text-[#00CC99]">
-                          {calculateAPY(staking.rewardState) === "--"
-                            ? "--"
-                            : `${calculateAPY(staking.rewardState)}%`}
-                        </span>
-                      )}
-                    </div>
-                  </div>
                 </div>
 
                 {/* Expandable Lock Entries */}
@@ -1252,6 +1233,47 @@ function STKAqua() {
                 {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toFixed(2) : "0.00"} BLUB
               </div>
             </div>
+
+            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
+              <div className="text-sm font-normal text-white flex items-center space-x-1">
+                <span>Staking APY</span>
+                <InformationCircleIcon
+                  className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      "APY is calculated as (total_rewards / total_staked) annualized over the reward period. Your share of rewards is proportional to your staked BLUB relative to the total staked pool.",
+                      "How APY is calculated"
+                    )
+                  }
+                />
+              </div>
+              <div className="text-xl font-normal">
+                {staking.isLoading ? (
+                  "..."
+                ) : (
+                  <span className="text-[#00CC99]">
+                    {calculateAPY(staking.rewardState) === "--"
+                      ? "--"
+                      : `${calculateAPY(staking.rewardState)}%`}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {(calculateAPY(staking.rewardState) === "--" || calculateAPY(staking.rewardState) === "0.00") && (
+              <div className="text-[#B1B3B8] text-xs leading-relaxed bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px]">
+                Rewards will be distributed once our{" "}
+                <a
+                  href="https://aqua.network/market/AQUA:GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA/BLUB:GDERSSCKJQPPXUQOZIOXGRVAGNLVPVZCJ2MAX7RCMVMWGRPVAEG7XGTK"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#00CC99] underline hover:text-[#00AA77]"
+                >
+                  AQUA/BLUB market pair
+                </a>{" "}
+                starts generating trading fees.
+              </div>
+            )}
 
             {rewardInfo && rewardInfo.last_claim_time > 0 && !rewardInfo.can_claim && (
               <div className="flex items-center text-sm mt-4 space-x-1">

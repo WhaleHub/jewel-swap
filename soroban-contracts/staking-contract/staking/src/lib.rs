@@ -4197,16 +4197,62 @@ impl StakingRegistry {
 
         let contract_address = env.current_contract_address();
 
-        // STEP 1: Transfer tokens from user to contract
+        // STEP 1: Query pool reserves to compute optimal deposit amounts.
+        // The Aquarius pool transfers the EXACT amounts we pass, so the auth
+        // entries must match precisely. For pools with existing liquidity we
+        // compute amounts that respect the current ratio so the pool doesn't
+        // reject the deposit or leave dust.
+        let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
+        let reserves = aquarius_pool.get_reserves();
+
+        let (deposit_a, deposit_b): (i128, i128) = if reserves.len() >= 2 {
+            let r_a = reserves.get(0).unwrap();
+            let r_b = reserves.get(1).unwrap();
+
+            if r_a > 0 && r_b > 0 {
+                // Pool has liquidity – calculate proportional amounts.
+                // Try fitting desired_a first: optimal_b = desired_a * r_b / r_a
+                let optimal_b = (desired_a as u128)
+                    .checked_mul(r_b)
+                    .unwrap_or(0)
+                    .checked_div(r_a)
+                    .unwrap_or(0);
+
+                if optimal_b <= desired_b as u128 {
+                    // desired_a fits; use it and the proportional b
+                    (desired_a, optimal_b as i128)
+                } else {
+                    // desired_b is the binding constraint
+                    let optimal_a = (desired_b as u128)
+                        .checked_mul(r_a)
+                        .unwrap_or(0)
+                        .checked_div(r_b)
+                        .unwrap_or(0);
+                    (optimal_a as i128, desired_b)
+                }
+            } else {
+                // Empty pool – first deposit, use exact amounts
+                (desired_a, desired_b)
+            }
+        } else {
+            // Fallback for unexpected reserve format
+            (desired_a, desired_b)
+        };
+
+        if deposit_a <= 0 || deposit_b <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        // STEP 2: Transfer computed amounts from user to contract
         use soroban_sdk::token;
         let token_a_client = token::Client::new(&env, &pool_info.token_a);
         let token_b_client = token::Client::new(&env, &pool_info.token_b);
 
-        token_a_client.transfer(&user, &contract_address, &desired_a);
-        token_b_client.transfer(&user, &contract_address, &desired_b);
+        token_a_client.transfer(&user, &contract_address, &deposit_a);
+        token_b_client.transfer(&user, &contract_address, &deposit_b);
 
-        // STEP 2: Authorize Aquarius pool to transfer tokens from this contract
-        // The pool will call token.transfer(this_contract, pool, amount)
+        // STEP 3: Authorize Aquarius pool to transfer tokens from this contract.
+        // Auth entries must match the EXACT amounts the pool will transfer.
         let auth_entries = soroban_sdk::vec![
             &env,
             InvokerContractAuthEntry::Contract(SubContractInvocation {
@@ -4216,7 +4262,7 @@ impl StakingRegistry {
                     args: (
                         contract_address.clone(),
                         pool_info.pool_address.clone(),
-                        desired_a,
+                        deposit_a,
                     ).into_val(&env),
                 },
                 sub_invocations: soroban_sdk::vec![&env],
@@ -4228,7 +4274,7 @@ impl StakingRegistry {
                     args: (
                         contract_address.clone(),
                         pool_info.pool_address.clone(),
-                        desired_b,
+                        deposit_b,
                     ).into_val(&env),
                 },
                 sub_invocations: soroban_sdk::vec![&env],
@@ -4236,24 +4282,22 @@ impl StakingRegistry {
         ];
         env.authorize_as_current_contract(auth_entries);
 
-        // STEP 3: Deposit tokens to Aquarius pool
-        let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
-
-        let mut desired_amounts = Vec::new(&env);
-        desired_amounts.push_back(desired_a as u128);
-        desired_amounts.push_back(desired_b as u128);
+        // STEP 4: Deposit tokens to Aquarius pool
+        let mut deposit_amounts = Vec::new(&env);
+        deposit_amounts.push_back(deposit_a as u128);
+        deposit_amounts.push_back(deposit_b as u128);
 
         let (_actual_amounts, lp_shares_minted) = aquarius_pool.deposit(
             &contract_address,
-            &desired_amounts,
+            &deposit_amounts,
             &min_shares,
         );
 
-        // STEP 3: Update pool's total LP tokens
+        // STEP 5: Update pool's total LP tokens
         let old_total = pool_info.total_lp_tokens;
         pool_info.total_lp_tokens = old_total.saturating_add(lp_shares_minted as i128);
 
-        // STEP 4: Get or create user position
+        // STEP 6: Get or create user position
         let mut user_position: UserVaultPosition = env
             .storage()
             .persistent()
@@ -4266,7 +4310,7 @@ impl StakingRegistry {
                 active: true,
             });
 
-        // STEP 5: Calculate user's new share ratio
+        // STEP 7: Calculate user's new share ratio
         // Old user LP = (pool_total_before * user_share_ratio) / 1_000_000_000_000
         let user_old_lp = if old_total > 0 && user_position.share_ratio > 0 {
             (old_total as i128)
@@ -4301,7 +4345,7 @@ impl StakingRegistry {
 
         env.events().publish(
             (symbol_short!("vault_dep"), user.clone(), pool_id),
-            (desired_a, desired_b, lp_shares_minted, user_position.share_ratio),
+            (deposit_a, deposit_b, lp_shares_minted, user_position.share_ratio),
         );
 
         Ok(())

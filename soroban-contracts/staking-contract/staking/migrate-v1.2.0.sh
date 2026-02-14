@@ -134,7 +134,7 @@ step1_fund_issuer() {
     # Check if already funded
     print_info "Checking account balance..."
     if stellar contract invoke \
-        --id CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2QLGM5A0 \
+        --id CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA \
         --network mainnet \
         -- \
         balance \
@@ -504,3 +504,4 @@ esac
 
 
 # https://aqua.network/vote/?base=BLUB:GDERSSCKJQPPXUQOZIOXGRVAGNLVPVZCJ2MAX7RCMVMWGRPVAEG7XGTK&counter=AQUA:GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA
+

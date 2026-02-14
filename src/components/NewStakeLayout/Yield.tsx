@@ -31,6 +31,7 @@ import {
   blubIssuerPublicKey,
   lpSignerPublicKey,
 } from "../../utils/constants";
+// calculateAPY no longer needed in this component
 import {
   Asset,
   BASE_FEE,
@@ -55,6 +56,10 @@ function Yield() {
   const [dialogMsg, setDialogMsg] = useState<string>("");
   const [openDialog, setOptDialog] = useState<boolean>(false);
   const [dialogTitle, setDialogTitle] = useState<string>("");
+
+  // Reward state
+  const [, setPendingRewards] = useState<string>("0.00");
+  const [rewardInfo, setRewardInfo] = useState<any>(null);
 
   // Soroban BLUB balance state
   const [sorobanBlubBalance, setSorobanBlubBalance] = useState<string>("0.00");
@@ -272,6 +277,26 @@ function Yield() {
       // which runs before the queries that may have failed
     } finally {
       setBlubBalanceLoading(false);
+    }
+  };
+
+  // Fetch pending rewards from contract
+  const fetchPendingRewards = async () => {
+    if (!user.userWalletAddress) return;
+
+    try {
+      const { sorobanService } = await import("../../services/soroban.service");
+      const rewardInfoData = await sorobanService.queryUserRewardInfo(
+        user.userWalletAddress
+      );
+
+      if (rewardInfoData) {
+        setPendingRewards(rewardInfoData.pending_rewards || "0");
+        setRewardInfo(rewardInfoData);
+      }
+    } catch (error: any) {
+      console.error("❌ [Yield] Error fetching pending rewards:", error);
+      setPendingRewards("0");
     }
   };
 
@@ -686,10 +711,12 @@ function Yield() {
     if (user?.userWalletAddress) {
       // Initial fetch
       fetchSorobanBlubBalance();
+      fetchPendingRewards();
 
       // Set up auto-refresh every 30 seconds for real-time updates
       const refreshInterval = setInterval(() => {
         fetchSorobanBlubBalance();
+        fetchPendingRewards();
       }, 30000);
 
       // Cleanup interval on unmount

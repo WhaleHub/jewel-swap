@@ -278,13 +278,13 @@ const Navbar = () => {
 
   return (
     <nav className="fixed top-0 right-0 z-30 w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[32px] px-[15px] md:px-[32px] transition-all duration-300 font-inter">
-      <div className="flex md:flex-row justify-between items-center  w-full max-w-[1954px] h-full mx-auto">
-        <div>
+      <div className="flex flex-row justify-between items-center w-full max-w-[1954px] h-full mx-auto">
+        <div className="shrink-0">
           <a
             href="/"
-            className="flex justify-center items-center "
+            className="flex justify-center items-center"
           >
-            <img src={"/whalehub_logo.svg"} className="w-full" alt="Whalehub" />
+            <img src={"/whalehub_logo.svg"} className="w-full max-w-[140px] md:max-w-none" alt="Whalehub" />
           </a>
         </div>
 
@@ -298,7 +298,7 @@ const Navbar = () => {
         </div>
 
         <div className="flex justify-end items-center gap-[5.6px]">
-          <div className="fixed w-52 text-right">
+          <div className="shrink-0 text-right">
             <Menu>
               <MenuButton
                 onClick={(e) => {
