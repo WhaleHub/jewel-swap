@@ -416,6 +416,10 @@ pub enum DataKey {
     // Synthetix-style Reward System (v1.2.0)
     RewardStateV2,                    // Global reward state
     UserRewardStateV2(Address),       // Per-user reward state
+    // Stable admin key — NEVER change the format of this entry.
+    // It stores just an Address and ensures upgrade() is always callable
+    // regardless of Config struct changes.
+    AdminAddress,
 }
 
 #[contracttype]
@@ -636,6 +640,9 @@ impl StakingRegistry {
             claim_reward_cooldown_seconds: 604800, // 7 days
         };
         env.storage().instance().set(&DataKey::Config, &cfg);
+
+        // Store admin in a stable, format-independent key so upgrade() always works
+        env.storage().instance().set(&DataKey::AdminAddress, &admin);
 
         // Initialize global state
         let global_state = GlobalState {
@@ -2863,26 +2870,32 @@ impl StakingRegistry {
     /// # Authorization
     /// Requires authorization from the `admin` address.
     pub fn upgrade(env: Env, admin: Address, new_wasm_hash: soroban_sdk::BytesN<32>) -> Result<(), Error> {
-        // Try to get config - works with v1.2.0, v1.1.0, and v1.0.0 formats
-        let is_admin = if let Ok(cfg) = Self::get_config(env.clone()) {
-            // v1.2.0 config (17 fields)
-            admin.require_auth();
+        admin.require_auth();
+
+        // STEP 1: Verify admin using the stable AdminAddress key first.
+        // This key stores just an Address and will never break due to
+        // Config struct changes, preventing the contract from being bricked.
+        let is_admin = if let Some(stored_admin) = env.storage().instance().get::<DataKey, Address>(&DataKey::AdminAddress) {
+            stored_admin == admin
+        } else if let Ok(cfg) = Self::get_config(env.clone()) {
             cfg.admin == admin
         } else if let Some(cfg_v1_1) = env.storage().instance().get::<DataKey, ConfigV1_1>(&DataKey::Config) {
-            // v1.1.0 config (15 fields)
-            admin.require_auth();
             cfg_v1_1.admin == admin
         } else {
-            // v1.0.0 config (10 fields)
             let old_cfg: OldConfig = env.storage().instance()
                 .get(&DataKey::Config)
                 .ok_or(Error::NotInitialized)?;
-            admin.require_auth();
             old_cfg.admin == admin
         };
 
         if !is_admin {
             return Err(Error::Unauthorized);
+        }
+
+        // STEP 2: Ensure AdminAddress key exists for future upgrades.
+        // This handles contracts initialized before this key was added.
+        if !env.storage().instance().has(&DataKey::AdminAddress) {
+            env.storage().instance().set(&DataKey::AdminAddress, &admin);
         }
 
         env.deployer().update_current_contract_wasm(new_wasm_hash);
