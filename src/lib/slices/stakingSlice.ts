@@ -53,6 +53,7 @@ export interface StakingState {
   // Global data
   globalStats: StakeStats | null;
   rewardState: RewardStateInfo | null;
+  nextUnlockTime: number | null;
 
   // Transaction states
   lastTransaction: {
@@ -101,6 +102,7 @@ const initialState: StakingState = {
   polInfo: null,
   globalStats: null,
   rewardState: null,
+  nextUnlockTime: null,
   lastTransaction: null,
   error: null,
   syncStatus: "idle",
@@ -385,11 +387,12 @@ export const fetchComprehensiveStakingData = createAsyncThunk(
       const { sorobanService } = await import("../../services/soroban.service");
 
       // Fetch data using direct query methods (already formatted)
-      const [stakingInfo, polInfo, blubBalance, rewardState] = await Promise.all([
+      const [stakingInfo, polInfo, blubBalance, rewardState, nextUnlockTime] = await Promise.all([
         sorobanService.queryUserStakingInfo(userAddress),
         sorobanService.queryPolInfo(),
         sorobanService.queryBlubBalance(userAddress),
         sorobanService.queryRewardState(),
+        sorobanService.queryNextUnlockTime(userAddress),
       ]);
 
       console.log("✅ [stakingSlice] Comprehensive data fetched:", {
@@ -397,6 +400,7 @@ export const fetchComprehensiveStakingData = createAsyncThunk(
         polInfo,
         blubBalance,
         rewardState,
+        nextUnlockTime,
       });
 
       return {
@@ -404,6 +408,7 @@ export const fetchComprehensiveStakingData = createAsyncThunk(
         blubBalance,
         polInfo,
         rewardState,
+        nextUnlockTime,
       };
     } catch (error: any) {
       console.error(
@@ -693,6 +698,9 @@ const stakingSlice = createSlice({
         if (payload.rewardState) {
           state.rewardState = payload.rewardState;
         }
+
+        // Update next unlock time
+        state.nextUnlockTime = payload.nextUnlockTime ?? null;
 
         state.lastSyncTime = Date.now();
       })

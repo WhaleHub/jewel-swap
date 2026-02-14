@@ -1294,6 +1294,95 @@ export class SorobanService {
   }
 
   /**
+   * Query the next unlock time for a user's locked entries
+   * Returns the earliest unlock timestamp (seconds) or null if no active locks
+   */
+  async queryNextUnlockTime(userAddress: string): Promise<number | null> {
+    try {
+      const contract = this.getContract("staking");
+      const account = await this.server.getAccount(userAddress);
+
+      // Get lock count
+      const countTx = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(
+          contract.call(
+            "get_user_lock_count",
+            Address.fromString(userAddress).toScVal()
+          )
+        )
+        .setTimeout(30)
+        .build();
+
+      const countSim: any = await this.server.simulateTransaction(countTx);
+      const lockCount = countSim.result?.retval
+        ? scValToNative(countSim.result.retval)
+        : 0;
+
+      if (lockCount === 0) return null;
+
+      // Get config for cooldown
+      const configTx = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(contract.call("get_config"))
+        .setTimeout(30)
+        .build();
+
+      const configSim: any = await this.server.simulateTransaction(configTx);
+      const config = configSim.result?.retval
+        ? scValToNative(configSim.result.retval)
+        : null;
+
+      const cooldown = config?.unstake_cooldown_seconds
+        ? Number(config.unstake_cooldown_seconds)
+        : 864000;
+
+      // Find earliest unlock time from active (non-unlocked) entries
+      let earliestUnlock: number | null = null;
+
+      for (let i = 0; i < lockCount; i++) {
+        const lockTx = new TransactionBuilder(account, {
+          fee: "100",
+          networkPassphrase: this.getNetworkPassphrase(),
+        })
+          .addOperation(
+            contract.call(
+              "get_user_lock_by_index",
+              Address.fromString(userAddress).toScVal(),
+              nativeToScVal(i, { type: "u32" })
+            )
+          )
+          .setTimeout(30)
+          .build();
+
+        const lockSim: any = await this.server.simulateTransaction(lockTx);
+        if (lockSim.result?.retval) {
+          const entry = scValToNative(lockSim.result.retval);
+          if (!entry.unlocked && entry.blub_locked > 0) {
+            const unlockTime =
+              Number(entry.lock_timestamp) + cooldown;
+            if (earliestUnlock === null || unlockTime < earliestUnlock) {
+              earliestUnlock = unlockTime;
+            }
+          }
+        }
+      }
+
+      return earliestUnlock;
+    } catch (error: any) {
+      console.error(
+        "❌ [SorobanService] Failed to query next unlock time:",
+        error
+      );
+      return null;
+    }
+  }
+
+  /**
    * Stake BLUB tokens (restake)
    * Calls stake contract function
    */

@@ -1053,7 +1053,15 @@ function STKAqua() {
                       )}
                     </div>
                     <div className="text-[10px] text-[#B1B3B8] mt-1">
-                      ⚡ 10-day cooldown before unstake
+                      {staking.nextUnlockTime ? (() => {
+                        const now = Math.floor(Date.now() / 1000);
+                        const remaining = staking.nextUnlockTime - now;
+                        if (remaining <= 0) return "⚡ Ready to unstake!";
+                        const days = Math.floor(remaining / 86400);
+                        const hours = Math.floor((remaining % 86400) / 3600);
+                        const mins = Math.floor((remaining % 3600) / 60);
+                        return `⏳ Unlocks in ${days}d ${hours}h ${mins}m`;
+                      })() : "⚡ 10-day cooldown before unstake"}
                     </div>
                   </div>
                   <div>

@@ -856,7 +856,15 @@ function Yield() {
               </div>
               {parseFloat(blubStakedBalance) > 0 && poolAndClaimBalance === 0 && (
                 <div className="text-[10px] text-[#FFA500] mt-1">
-                  10-day cooldown active. Your {parseFloat(blubStakedBalance).toFixed(2)} staked BLUB will be unstakeable after cooldown.
+                  {staking.nextUnlockTime ? (() => {
+                    const now = Math.floor(Date.now() / 1000);
+                    const remaining = staking.nextUnlockTime - now;
+                    if (remaining <= 0) return "Cooldown complete! Refresh to unstake.";
+                    const days = Math.floor(remaining / 86400);
+                    const hours = Math.floor((remaining % 86400) / 3600);
+                    const mins = Math.floor((remaining % 3600) / 60);
+                    return `${parseFloat(blubStakedBalance).toFixed(2)} BLUB unstakeable in ${days}d ${hours}h ${mins}m (${new Date(staking.nextUnlockTime * 1000).toLocaleDateString()})`;
+                  })() : "10-day cooldown active."}
                 </div>
               )}
 
