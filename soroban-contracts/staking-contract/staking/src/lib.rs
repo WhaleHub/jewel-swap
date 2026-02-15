@@ -571,6 +571,17 @@ pub struct PolRewardsClaimedEvent {
     pub timestamp: u64,
 }
 
+/// Event emitted when AQUA revenue is converted to BLUB rewards
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AquaRewardsConvertedEvent {
+    pub aqua_amount: i128,
+    pub blub_reward_amount: i128,
+    pub total_staked: i128,
+    pub reward_per_token: i128,
+    pub timestamp: u64,
+}
+
 // Gas-optimized batch reward calculation event
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3570,6 +3581,104 @@ impl StakingRegistry {
             timestamp: now,
         };
         env.events().publish((symbol_short!("rwd_add"),), event);
+
+        Ok(())
+    }
+
+    /// Accepts AQUA protocol revenue and mints equivalent BLUB as staker rewards.
+    ///
+    /// The admin specifies both the AQUA amount (protocol revenue collected) and
+    /// the BLUB reward amount (based on off-chain market rate lookup). The AQUA is
+    /// transferred to the contract (tracked as POL), and BLUB is minted and
+    /// distributed to stakers via the Synthetix reward accumulator.
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (must match config.admin)
+    /// * `aqua_amount` - Amount of AQUA to transfer from admin to contract
+    /// * `blub_reward_amount` - Amount of BLUB to mint as staker rewards
+    ///
+    /// # Returns
+    /// * `Ok(())` on success
+    /// * `Err(Unauthorized)` if caller is not admin
+    /// * `Err(InvalidInput)` if either amount <= 0
+    /// * `Err(InsufficientBalance)` if AQUA transfer fails
+    pub fn add_rewards_from_aqua(
+        env: Env,
+        admin: Address,
+        aqua_amount: i128,
+        blub_reward_amount: i128,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+
+        let config = Self::get_config(env.clone())?;
+        if config.admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        if aqua_amount <= 0 || blub_reward_amount <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        let contract_address = env.current_contract_address();
+        let mut reward_state = Self::get_reward_state(&env);
+        let now = env.ledger().timestamp();
+
+        // Transfer AQUA from admin to contract
+        use soroban_sdk::token;
+        let aqua_client = token::Client::new(&env, &config.aqua_token);
+        let transfer_result = aqua_client.try_transfer(&admin, &contract_address, &aqua_amount);
+        if transfer_result.is_err() {
+            return Err(Error::InsufficientBalance);
+        }
+
+        // Transfer BLUB from admin to contract (admin swaps AQUA→BLUB on AMM off-chain)
+        let blub_client = token::Client::new(&env, &config.blub_token);
+        let blub_transfer_result = blub_client.try_transfer(&admin, &contract_address, &blub_reward_amount);
+        if blub_transfer_result.is_err() {
+            return Err(Error::InsufficientBalance);
+        }
+
+        // Future: mint BLUB directly instead of transferring (when minting is enabled)
+        // let blub_sac_client = token::StellarAssetClient::new(&env, &config.blub_token);
+        // blub_sac_client.mint(&contract_address, &blub_reward_amount);
+
+        // Update reward_per_token (same math as add_rewards)
+        if reward_state.total_staked > 0 {
+            let reward_per_token_increase = blub_reward_amount
+                .saturating_mul(REWARD_PRECISION)
+                / reward_state.total_staked;
+
+            reward_state.reward_per_token_stored = reward_state
+                .reward_per_token_stored
+                .saturating_add(reward_per_token_increase);
+        }
+
+        reward_state.total_rewards_added = reward_state
+            .total_rewards_added
+            .saturating_add(blub_reward_amount);
+        reward_state.last_update_time = now;
+
+        env.storage()
+            .instance()
+            .set(&DataKey::RewardStateV2, &reward_state);
+
+        // Track AQUA in Protocol Owned Liquidity
+        let mut pol = Self::get_pol(&env);
+        pol.total_aqua_contributed = pol.total_aqua_contributed.saturating_add(aqua_amount);
+        env.storage()
+            .instance()
+            .set(&DataKey::ProtocolOwnedLiquidity, &pol);
+
+        // Emit event
+        let event = AquaRewardsConvertedEvent {
+            aqua_amount,
+            blub_reward_amount,
+            total_staked: reward_state.total_staked,
+            reward_per_token: reward_state.reward_per_token_stored,
+            timestamp: now,
+        };
+        env.events()
+            .publish((symbol_short!("rwd_aqua"),), event);
 
         Ok(())
     }
