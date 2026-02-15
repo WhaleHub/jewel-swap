@@ -908,8 +908,8 @@ export class SorobanService {
           pending_rewards: info.pending_rewards
             ? (Number(info.pending_rewards) / 10000000).toFixed(7)
             : "0",
-          total_locked_entries: info.total_locked_entries || 0,
-          total_unlocked_entries: info.total_unlocked_entries || 0,
+          total_locked_entries: Number(info.total_locked_entries) || 0,
+          total_unlocked_entries: Number(info.total_unlocked_entries) || 0,
         };
       }
 
@@ -2037,9 +2037,9 @@ export class SorobanService {
           staked_balance: info.staked_balance
             ? (Number(info.staked_balance) / 10000000).toFixed(7)
             : "0",
-          last_claim_time: info.last_claim_time || 0,
+          last_claim_time: Number(info.last_claim_time) || 0,
           can_claim: info.can_claim || false,
-          claim_available_at: info.claim_available_at || 0,
+          claim_available_at: Number(info.claim_available_at) || 0,
         };
       }
 

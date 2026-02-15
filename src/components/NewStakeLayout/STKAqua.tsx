@@ -66,6 +66,7 @@ function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const staking = useSelector((state: RootState) => state.staking);
+  const stakingAPY = useMemo(() => calculateAPY(staking.rewardState), [staking.rewardState]);
 
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
   const [dialogMsg, setDialogMsg] = useState<string>("");
@@ -1252,15 +1253,15 @@ function STKAqua() {
                   "..."
                 ) : (
                   <span className="text-[#00CC99]">
-                    {calculateAPY(staking.rewardState) === "--"
+                    {stakingAPY === "--"
                       ? "--"
-                      : `${calculateAPY(staking.rewardState)}%`}
+                      : `${stakingAPY}%`}
                   </span>
                 )}
               </div>
             </div>
 
-            {(calculateAPY(staking.rewardState) === "--" || calculateAPY(staking.rewardState) === "0.00") && (
+            {(stakingAPY === "--" || stakingAPY === "0.00") && (
               <div className="text-[#B1B3B8] text-xs leading-relaxed bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px]">
                 Rewards will be distributed once our{" "}
                 <a

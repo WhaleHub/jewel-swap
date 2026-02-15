@@ -92,13 +92,18 @@ export function calculateAPY(rewardState: RewardStateInfo | null): string {
     return "--";
   }
 
-  const now = Math.floor(Date.now() / 1000);
+  // Snap to nearest 5 minutes to prevent per-second flickering
+  const now = Math.floor(Date.now() / 300000) * 300;
   const elapsed = now - rewardState.last_update_time;
-  if (elapsed <= 0) return "--";
+
+  // Use a minimum of 7 days for annualization to prevent extreme values
+  // when rewards were just recently added via add_rewards()
+  const MIN_PERIOD = 7 * 24 * 3600;
+  const effectiveElapsed = Math.max(elapsed, MIN_PERIOD);
 
   const annualizedRate =
     (rewardState.total_rewards_added / rewardState.total_staked) /
-    (elapsed / SECONDS_PER_YEAR);
+    (effectiveElapsed / SECONDS_PER_YEAR);
 
   return (annualizedRate * 100).toFixed(2);
 }
