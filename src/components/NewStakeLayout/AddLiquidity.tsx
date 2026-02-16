@@ -107,7 +107,7 @@ function AddLiquidity() {
         try {
           const poolInfo = await vaultService.getPoolInfo(i);
           console.log(`[AddLiquidity] Pool ${i}:`, poolInfo);
-          if (poolInfo.active) {
+          if (poolInfo.active && poolInfo.token_a_code !== "UNKNOWN" && poolInfo.token_b_code !== "UNKNOWN") {
             loadedPools.push(poolInfo);
           }
         } catch (poolError) {
