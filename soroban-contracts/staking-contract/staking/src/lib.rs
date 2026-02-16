@@ -378,6 +378,18 @@ pub struct UserVaultPosition {
     pub active: bool,
 }
 
+/// Tracks cumulative compound stats per vault pool.
+/// Stored separately from PoolInfo to preserve upgrade compatibility.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PoolCompoundStats {
+    pub total_compounded_lp: i128,      // Total LP minted from compounding
+    pub total_rewards_claimed: i128,    // Total AQUA rewards claimed
+    pub total_treasury_fees: i128,      // Total AQUA sent to treasury
+    pub last_compound_time: u64,        // Timestamp of last compound
+    pub compound_count: u32,            // Number of successful compounds
+}
+
 // ============================================================================
 // Liquidity Pool Integration (AQUA/BLUB AMM Pool)
 // ============================================================================
@@ -420,6 +432,9 @@ pub enum DataKey {
     // It stores just an Address and ensures upgrade() is always callable
     // regardless of Config struct changes.
     AdminAddress,
+    // Compound tracking (v1.3.0)
+    PoolCompoundStats(u32),           // Cumulative compound stats per pool
+    UserDepositedLp(Address, u32),    // User's total deposited LP (excl. compound gains)
 }
 
 #[contracttype]
@@ -2827,21 +2842,43 @@ impl StakingRegistry {
         Ok(())
     }
 
+    /// Updates vault treasury address (admin-only).
+    pub fn update_vault_treasury(env: Env, admin: Address, new_treasury: Address) -> Result<(), Error> {
+        let mut cfg = Self::get_config(env.clone())?;
+        admin.require_auth();
+        if cfg.admin != admin { return Err(Error::Unauthorized); }
+
+        cfg.vault_treasury = new_treasury.clone();
+        env.storage().instance().set(&DataKey::Config, &cfg);
+
+        env.events().publish(
+            (symbol_short!("vtrs_upd"),),
+            new_treasury,
+        );
+
+        Ok(())
+    }
+
+    /// Updates vault fee in basis points (admin-only).
+    /// Max 5000 (50%).
+    pub fn update_vault_fee_bps(env: Env, admin: Address, new_fee_bps: u32) -> Result<(), Error> {
+        let mut cfg = Self::get_config(env.clone())?;
+        admin.require_auth();
+        if cfg.admin != admin { return Err(Error::Unauthorized); }
+        if new_fee_bps > 5000 { return Err(Error::InvalidInput); }
+
+        cfg.vault_fee_bps = new_fee_bps;
+        env.storage().instance().set(&DataKey::Config, &cfg);
+
+        env.events().publish(
+            (symbol_short!("vfee_upd"),),
+            new_fee_bps,
+        );
+
+        Ok(())
+    }
+
     /// Updates ICE token addresses (admin-only).
-    ///
-    /// # Arguments
-    /// * `admin` - The admin address authorizing this operation
-    /// * `ice_token` - The ICE token contract address
-    /// * `govern_ice_token` - The governICE token contract address
-    /// * `upvote_ice_token` - The upvoteICE token contract address
-    /// * `downvote_ice_token` - The downvoteICE token contract address
-    ///
-    /// # Returns
-    /// * `Ok(())` on success
-    /// * `Err(Error::Unauthorized)` if caller is not the admin
-    ///
-    /// # Authorization
-    /// Requires authorization from the `admin` address.
     pub fn update_ice_tokens(
         env: Env,
         admin: Address,
@@ -4319,11 +4356,18 @@ impl StakingRegistry {
 
         let contract_address = env.current_contract_address();
 
-        // STEP 1: Query pool reserves to compute optimal deposit amounts.
-        // The Aquarius pool transfers the EXACT amounts we pass, so the auth
-        // entries must match precisely. For pools with existing liquidity we
-        // compute amounts that respect the current ratio so the pool doesn't
-        // reject the deposit or leave dust.
+        // STEP 1: Transfer full desired amounts from user to contract.
+        // We transfer the exact function parameters so auth entries are
+        // deterministic and won't break if pool reserves shift between
+        // simulation and execution.
+        use soroban_sdk::token;
+        let token_a_client = token::Client::new(&env, &pool_info.token_a);
+        let token_b_client = token::Client::new(&env, &pool_info.token_b);
+
+        token_a_client.transfer(&user, &contract_address, &desired_a);
+        token_b_client.transfer(&user, &contract_address, &desired_b);
+
+        // STEP 2: Query pool reserves to compute optimal deposit amounts.
         let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
         let reserves = aquarius_pool.get_reserves();
 
@@ -4333,7 +4377,6 @@ impl StakingRegistry {
 
             if r_a > 0 && r_b > 0 {
                 // Pool has liquidity – calculate proportional amounts.
-                // Try fitting desired_a first: optimal_b = desired_a * r_b / r_a
                 let optimal_b = (desired_a as u128)
                     .checked_mul(r_b)
                     .unwrap_or(0)
@@ -4341,10 +4384,8 @@ impl StakingRegistry {
                     .unwrap_or(0);
 
                 if optimal_b <= desired_b as u128 {
-                    // desired_a fits; use it and the proportional b
                     (desired_a, optimal_b as i128)
                 } else {
-                    // desired_b is the binding constraint
                     let optimal_a = (desired_b as u128)
                         .checked_mul(r_a)
                         .unwrap_or(0)
@@ -4353,28 +4394,20 @@ impl StakingRegistry {
                     (optimal_a as i128, desired_b)
                 }
             } else {
-                // Empty pool – first deposit, use exact amounts
                 (desired_a, desired_b)
             }
         } else {
-            // Fallback for unexpected reserve format
             (desired_a, desired_b)
         };
 
         if deposit_a <= 0 || deposit_b <= 0 {
+            // Refund everything before failing
+            token_a_client.transfer(&contract_address, &user, &desired_a);
+            token_b_client.transfer(&contract_address, &user, &desired_b);
             return Err(Error::InvalidInput);
         }
 
-        // STEP 2: Transfer computed amounts from user to contract
-        use soroban_sdk::token;
-        let token_a_client = token::Client::new(&env, &pool_info.token_a);
-        let token_b_client = token::Client::new(&env, &pool_info.token_b);
-
-        token_a_client.transfer(&user, &contract_address, &deposit_a);
-        token_b_client.transfer(&user, &contract_address, &deposit_b);
-
         // STEP 3: Authorize Aquarius pool to transfer tokens from this contract.
-        // Auth entries must match the EXACT amounts the pool will transfer.
         let auth_entries = soroban_sdk::vec![
             &env,
             InvokerContractAuthEntry::Contract(SubContractInvocation {
@@ -4415,11 +4448,21 @@ impl StakingRegistry {
             &min_shares,
         );
 
-        // STEP 5: Update pool's total LP tokens
+        // STEP 5: Refund excess tokens back to user
+        let refund_a = desired_a - deposit_a;
+        let refund_b = desired_b - deposit_b;
+        if refund_a > 0 {
+            token_a_client.transfer(&contract_address, &user, &refund_a);
+        }
+        if refund_b > 0 {
+            token_b_client.transfer(&contract_address, &user, &refund_b);
+        }
+
+        // STEP 7: Update pool's total LP tokens
         let old_total = pool_info.total_lp_tokens;
         pool_info.total_lp_tokens = old_total.saturating_add(lp_shares_minted as i128);
 
-        // STEP 6: Get or create user position
+        // STEP 8: Get or create user position
         let mut user_position: UserVaultPosition = env
             .storage()
             .persistent()
@@ -4432,7 +4475,7 @@ impl StakingRegistry {
                 active: true,
             });
 
-        // STEP 7: Calculate user's new share ratio
+        // STEP 9: Calculate user's new share ratio
         // Old user LP = (pool_total_before * user_share_ratio) / 1_000_000_000_000
         let user_old_lp = if old_total > 0 && user_position.share_ratio > 0 {
             (old_total as i128)
@@ -4464,6 +4507,16 @@ impl StakingRegistry {
         env.storage()
             .persistent()
             .set(&DataKey::UserVaultPosition(user.clone(), pool_id), &user_position);
+
+        // Track user's deposited LP (excludes compound gains)
+        let prev_deposited: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserDepositedLp(user.clone(), pool_id))
+            .unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserDepositedLp(user.clone(), pool_id), &prev_deposited.saturating_add(lp_shares_minted as i128));
 
         env.events().publish(
             (symbol_short!("vault_dep"), user.clone(), pool_id),
@@ -4605,6 +4658,25 @@ impl StakingRegistry {
             .persistent()
             .set(&DataKey::UserVaultPosition(user.clone(), pool_id), &user_position);
 
+        // Proportionally reduce user's deposited LP tracking
+        let prev_deposited: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserDepositedLp(user.clone(), pool_id))
+            .unwrap_or(0);
+        if prev_deposited > 0 && user_total_lp > 0 {
+            // Reduce proportionally: deposited *= (1 - withdrawn/total)
+            let withdrawn_fraction = lp_to_withdraw
+                .checked_mul(prev_deposited)
+                .unwrap_or(0)
+                .checked_div(user_total_lp)
+                .unwrap_or(0);
+            let new_deposited = prev_deposited.saturating_sub(withdrawn_fraction);
+            env.storage()
+                .persistent()
+                .set(&DataKey::UserDepositedLp(user.clone(), pool_id), &new_deposited);
+        }
+
         env.events().publish(
             (symbol_short!("vault_wd"), user.clone(), pool_id),
             (lp_to_withdraw, amount_a, amount_b),
@@ -4622,7 +4694,83 @@ impl StakingRegistry {
     ///
     /// # Authorization
     /// Requires admin authorization
-    pub fn claim_and_compound(env: Env, pool_id: u32) -> Result<(), Error> {
+    /// Claims boosted rewards from a pool, sends 30% to treasury and 70% to admin.
+    /// The admin (backend) must then swap the AQUA to both pool tokens and call
+    /// `admin_compound_deposit` to complete the compound cycle.
+    ///
+    /// Returns: (total_rewards, treasury_amount, compound_amount) — all in AQUA raw units.
+    pub fn claim_and_compound(env: Env, pool_id: u32) -> Result<(i128, i128, i128), Error> {
+        let config = Self::get_config(env.clone())?;
+        config.admin.require_auth();
+
+        let pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)?;
+
+        if !pool_info.active {
+            return Err(Error::PoolNotActive);
+        }
+
+        let contract_address = env.current_contract_address();
+
+        // STEP 1: Claim AQUA rewards from Aquarius pool
+        let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
+        let total_rewards = aquarius_pool.claim(&contract_address);
+
+        if total_rewards == 0 {
+            env.events().publish(
+                (symbol_short!("compound"), pool_id),
+                symbol_short!("no_reward"),
+            );
+            return Ok((0, 0, 0));
+        }
+
+        // STEP 2: Split rewards — 30% to treasury, 70% to admin for compounding
+        let treasury_amount = (total_rewards as u128)
+            .checked_mul(config.vault_fee_bps as u128)
+            .unwrap_or(0)
+            .checked_div(10000)
+            .unwrap_or(0);
+
+        let compound_amount = total_rewards.saturating_sub(treasury_amount);
+
+        use soroban_sdk::token;
+        let aqua_client = token::Client::new(&env, &config.aqua_token);
+
+        // STEP 3: Transfer 30% to vault treasury
+        if treasury_amount > 0 {
+            aqua_client.transfer(&contract_address, &config.vault_treasury, &(treasury_amount as i128));
+        }
+
+        // STEP 4: Transfer 70% to admin wallet for off-chain swap + compound
+        if compound_amount > 0 {
+            aqua_client.transfer(&contract_address, &config.admin, &(compound_amount as i128));
+        }
+
+        env.events().publish(
+            (symbol_short!("compound"), pool_id),
+            (total_rewards as i128, treasury_amount as i128, compound_amount as i128),
+        );
+
+        Ok((total_rewards as i128, treasury_amount as i128, compound_amount as i128))
+    }
+
+    /// Deposits tokens from admin into an Aquarius pool on behalf of the contract.
+    /// Called by backend after swapping AQUA into both pool tokens.
+    /// This completes the compound cycle started by `claim_and_compound`.
+    ///
+    /// # Arguments
+    /// * `pool_id` - Pool ID to deposit into
+    /// * `amount_a` - Amount of token_a to deposit (from admin wallet)
+    /// * `amount_b` - Amount of token_b to deposit (from admin wallet)
+    pub fn admin_compound_deposit(
+        env: Env,
+        pool_id: u32,
+        amount_a: i128,
+        amount_b: i128,
+    ) -> Result<i128, Error> {
         let config = Self::get_config(env.clone())?;
         config.admin.require_auth();
 
@@ -4636,150 +4784,96 @@ impl StakingRegistry {
             return Err(Error::PoolNotActive);
         }
 
+        if amount_a <= 0 || amount_b <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
         let contract_address = env.current_contract_address();
 
-        // STEP 1: Claim rewards from Aquarius pool
-        // Our contract holds LP tokens, so Aquarius tracks our position with ICE boost
+        // STEP 1: Transfer both tokens from admin to contract
+        use soroban_sdk::token;
+        let token_a_client = token::Client::new(&env, &pool_info.token_a);
+        let token_b_client = token::Client::new(&env, &pool_info.token_b);
+
+        token_a_client.transfer(&config.admin, &contract_address, &amount_a);
+        token_b_client.transfer(&config.admin, &contract_address, &amount_b);
+
+        // STEP 2: Deposit to Aquarius pool
         let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
-        let total_rewards = aquarius_pool.claim(&contract_address);
 
-        if total_rewards == 0 {
-            env.events().publish(
-                (symbol_short!("compound"), pool_id),
-                symbol_short!("no_reward"),
-            );
-            return Ok(());
-        }
+        let auth_entries = soroban_sdk::vec![
+            &env,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: pool_info.token_a.clone(),
+                    fn_name: Symbol::new(&env, "transfer"),
+                    args: (
+                        contract_address.clone(),
+                        pool_info.pool_address.clone(),
+                        amount_a,
+                    ).into_val(&env),
+                },
+                sub_invocations: soroban_sdk::vec![&env],
+            }),
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: pool_info.token_b.clone(),
+                    fn_name: Symbol::new(&env, "transfer"),
+                    args: (
+                        contract_address.clone(),
+                        pool_info.pool_address.clone(),
+                        amount_b,
+                    ).into_val(&env),
+                },
+                sub_invocations: soroban_sdk::vec![&env],
+            }),
+        ];
+        env.authorize_as_current_contract(auth_entries);
 
-        // STEP 2: Split rewards - 30% to treasury, 70% for auto-compound
-        let treasury_amount = (total_rewards as u128)
-            .checked_mul(config.vault_fee_bps as u128)
-            .unwrap_or(0)
-            .checked_div(10000)
-            .unwrap_or(0);
+        let mut desired_amounts = Vec::new(&env);
+        desired_amounts.push_back(amount_a as u128);
+        desired_amounts.push_back(amount_b as u128);
 
-        let compound_amount = total_rewards.saturating_sub(treasury_amount);
-
-        // STEP 3: Transfer 30% to vault treasury
-        if treasury_amount > 0 {
-            use soroban_sdk::token;
-            let aqua_client = token::Client::new(&env, &config.aqua_token);
-            aqua_client.transfer(&contract_address, &config.vault_treasury, &(treasury_amount as i128));
-        }
-
-        // STEP 4: Auto-compound 70% back to the pool
-        if compound_amount > 0 {
-            // Determine how to split AQUA for the pool's token pair
-            let (token_a_is_aqua, token_b_is_aqua) = (
-                pool_info.token_a == config.aqua_token,
-                pool_info.token_b == config.aqua_token,
-            );
-
-            let mut token_a_amount: u128 = 0;
-            let mut token_b_amount: u128 = 0;
-
-            if token_a_is_aqua && token_b_is_aqua {
-                // Both tokens are AQUA (shouldn't happen, but handle it)
-                token_a_amount = compound_amount / 2;
-                token_b_amount = compound_amount - token_a_amount;
-            } else if token_a_is_aqua {
-                // token_a is AQUA, need to swap half for token_b
-                token_a_amount = compound_amount / 2;
-                // TODO: Swap remaining half AQUA to token_b via liquidity_contract
-                // For now, we just hold the AQUA and emit event for backend to handle
-                token_b_amount = 0; // Backend will handle swap
-
-                env.events().publish(
-                    (symbol_short!("need_swap"), pool_id),
-                    (compound_amount - token_a_amount, symbol_short!("to_b")),
-                );
-            } else if token_b_is_aqua {
-                // token_b is AQUA, need to swap half for token_a
-                token_b_amount = compound_amount / 2;
-                // TODO: Swap remaining half AQUA to token_a via liquidity_contract
-                token_a_amount = 0; // Backend will handle swap
-
-                env.events().publish(
-                    (symbol_short!("need_swap"), pool_id),
-                    (compound_amount - token_b_amount, symbol_short!("to_a")),
-                );
-            } else {
-                // Neither token is AQUA - need to swap AQUA to both tokens
-                // TODO: Swap half AQUA to token_a, half to token_b via liquidity_contract
-                // Backend will handle this complex swap scenario
-
-                env.events().publish(
-                    (symbol_short!("need_swap"), pool_id),
-                    (compound_amount, symbol_short!("to_both")),
-                );
-            }
-
-            // STEP 5: Deposit tokens back to Aquarius pool (if we have both tokens)
-            // Note: For non-AQUA pairs, backend must complete swaps first, then call this again
-            if token_a_amount > 0 && token_b_amount > 0 {
-                // Authorize Aquarius pool to transfer tokens from this contract
-                let auth_entries = soroban_sdk::vec![
-                    &env,
-                    InvokerContractAuthEntry::Contract(SubContractInvocation {
-                        context: ContractContext {
-                            contract: pool_info.token_a.clone(),
-                            fn_name: Symbol::new(&env, "transfer"),
-                            args: (
-                                contract_address.clone(),
-                                pool_info.pool_address.clone(),
-                                token_a_amount as i128,
-                            ).into_val(&env),
-                        },
-                        sub_invocations: soroban_sdk::vec![&env],
-                    }),
-                    InvokerContractAuthEntry::Contract(SubContractInvocation {
-                        context: ContractContext {
-                            contract: pool_info.token_b.clone(),
-                            fn_name: Symbol::new(&env, "transfer"),
-                            args: (
-                                contract_address.clone(),
-                                pool_info.pool_address.clone(),
-                                token_b_amount as i128,
-                            ).into_val(&env),
-                        },
-                        sub_invocations: soroban_sdk::vec![&env],
-                    }),
-                ];
-                env.authorize_as_current_contract(auth_entries);
-
-                let mut desired_amounts = Vec::new(&env);
-                desired_amounts.push_back(token_a_amount);
-                desired_amounts.push_back(token_b_amount);
-
-                // Deposit to Aquarius pool - get LP shares back
-                let (_actual_amounts, lp_shares_minted) = aquarius_pool.deposit(
-                    &contract_address,
-                    &desired_amounts,
-                    &0u128, // min_shares = 0 for auto-compound (we trust the pool)
-                );
-
-                // Update pool's total LP tokens
-                pool_info.total_lp_tokens = pool_info
-                    .total_lp_tokens
-                    .saturating_add(lp_shares_minted as i128);
-
-                env.storage()
-                    .persistent()
-                    .set(&DataKey::PoolInfo(pool_id), &pool_info);
-
-                env.events().publish(
-                    (symbol_short!("compound"), pool_id),
-                    (lp_shares_minted, pool_info.total_lp_tokens),
-                );
-            }
-        }
-
-        env.events().publish(
-            (symbol_short!("compound"), pool_id),
-            (total_rewards, treasury_amount, compound_amount),
+        let (_actual_amounts, lp_shares_minted) = aquarius_pool.deposit(
+            &contract_address,
+            &desired_amounts,
+            &0u128,
         );
 
-        Ok(())
+        // STEP 3: Update pool LP tracking
+        pool_info.total_lp_tokens = pool_info
+            .total_lp_tokens
+            .saturating_add(lp_shares_minted as i128);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolInfo(pool_id), &pool_info);
+
+        // STEP 4: Update compound stats
+        let mut stats: PoolCompoundStats = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolCompoundStats(pool_id))
+            .unwrap_or(PoolCompoundStats {
+                total_compounded_lp: 0,
+                total_rewards_claimed: 0,
+                total_treasury_fees: 0,
+                last_compound_time: 0,
+                compound_count: 0,
+            });
+        stats.total_compounded_lp = stats.total_compounded_lp.saturating_add(lp_shares_minted as i128);
+        stats.last_compound_time = env.ledger().timestamp();
+        stats.compound_count = stats.compound_count.saturating_add(1);
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolCompoundStats(pool_id), &stats);
+
+        env.events().publish(
+            (symbol_short!("cmp_dep"), pool_id),
+            (lp_shares_minted, pool_info.total_lp_tokens),
+        );
+
+        Ok(lp_shares_minted as i128)
     }
 
     // ============================================================================
@@ -4846,6 +4940,68 @@ impl StakingRegistry {
             .persistent()
             .get(&DataKey::UserVaultPosition(user, pool_id))
             .ok_or(Error::PositionNotFound)
+    }
+
+    /// Gets total number of vault pools.
+    /// Gets compound stats for a vault pool.
+    pub fn get_pool_compound_stats(env: Env, pool_id: u32) -> PoolCompoundStats {
+        env.storage()
+            .persistent()
+            .get(&DataKey::PoolCompoundStats(pool_id))
+            .unwrap_or(PoolCompoundStats {
+                total_compounded_lp: 0,
+                total_rewards_claimed: 0,
+                total_treasury_fees: 0,
+                last_compound_time: 0,
+                compound_count: 0,
+            })
+    }
+
+    /// Gets user's compound gains for a specific pool.
+    /// Returns (current_lp, deposited_lp, compound_gain_lp).
+    pub fn get_user_compound_gains(env: Env, user: Address, pool_id: u32) -> (i128, i128, i128) {
+        let pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .unwrap_or(PoolInfo {
+                pool_id,
+                pool_address: env.current_contract_address(),
+                token_a: env.current_contract_address(),
+                token_b: env.current_contract_address(),
+                share_token: env.current_contract_address(),
+                total_lp_tokens: 0,
+                active: false,
+                added_at: 0,
+            });
+
+        let user_position: UserVaultPosition = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserVaultPosition(user.clone(), pool_id))
+            .unwrap_or(UserVaultPosition {
+                user: user.clone(),
+                pool_id,
+                share_ratio: 0,
+                deposited_at: 0,
+                active: false,
+            });
+
+        let current_lp = (pool_info.total_lp_tokens as i128)
+            .checked_mul(user_position.share_ratio)
+            .unwrap_or(0)
+            .checked_div(1_000_000_000_000)
+            .unwrap_or(0);
+
+        let deposited_lp: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserDepositedLp(user, pool_id))
+            .unwrap_or(0);
+
+        let compound_gain = current_lp.saturating_sub(deposited_lp);
+
+        (current_lp, deposited_lp, compound_gain)
     }
 
     /// Gets total number of vault pools.

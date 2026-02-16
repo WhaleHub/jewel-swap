@@ -1468,6 +1468,55 @@ export class SorobanService {
   }
 
   /**
+   * Build transaction for add_rewards_from_aqua (admin operation).
+   * Accepts AQUA protocol revenue and BLUB reward amount (from off-chain AMM swap).
+   * Both tokens are transferred from admin to contract.
+   *
+   * @param adminAddress - Admin wallet address
+   * @param aquaAmount - AQUA amount in stroops (protocol revenue)
+   * @param blubRewardAmount - BLUB amount in stroops (from AMM swap, distributed to stakers)
+   * @returns Unsigned transaction for wallet signing
+   */
+  async addRewardsFromAqua(
+    adminAddress: string,
+    aquaAmount: string,
+    blubRewardAmount: string
+  ): Promise<ContractCallResult> {
+    try {
+      console.log("[SorobanService] Building add_rewards_from_aqua tx:", {
+        adminAddress,
+        aquaAmount,
+        blubRewardAmount,
+      });
+
+      const { transaction } = await this.buildContractTransaction(
+        "staking",
+        "add_rewards_from_aqua",
+        [
+          adminAddress,    // admin: Address
+          aquaAmount,      // aqua_amount: i128 (string digits -> i128)
+          blubRewardAmount, // blub_reward_amount: i128 (string digits -> i128)
+        ],
+        adminAddress
+      );
+
+      console.log("[SorobanService] add_rewards_from_aqua transaction built");
+
+      return {
+        success: true,
+        data: { transaction },
+        transactionHash: transaction.hash().toString("hex"),
+      };
+    } catch (error: any) {
+      console.error("[SorobanService] Error building add_rewards_from_aqua:", error);
+      return {
+        success: false,
+        error: error.message || "Failed to build add_rewards_from_aqua transaction",
+      };
+    }
+  }
+
+  /**
    * Get contract configuration
    */
   getConfig(): ContractConfig {

@@ -505,3 +505,8 @@ esac
 
 # https://aqua.network/vote/?base=BLUB:GDERSSCKJQPPXUQOZIOXGRVAGNLVPVZCJ2MAX7RCMVMWGRPVAEG7XGTK&counter=AQUA:GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA
 
+
+
+
+stellar contract optimize --wasm /Users/viktorvostrikov/Desktop/whalehub/jewel-swap/soroban-contracts/staking-contract/target/wasm32-unknown-unknown/release/whalehub_staking.wasm 
+    stellar contract install --source blub-issuer-v2 --network mainnet --wasm /Users/viktorvostrikov/Desktop/whalehub/jewel-swap/soroban-contracts/staking-contract/target/wasm32-unknown-unknown/release/whalehub_staking.wasm
