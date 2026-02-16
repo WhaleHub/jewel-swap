@@ -924,14 +924,19 @@ function AddLiquidity() {
                       )
                     }
                   />
-                  <div className="flex justify-between mt-2">
-                    {[25, 50, 75, 100].map((percent) => (
+                  <div className="flex items-center space-x-2 mt-2">
+                    {[25, 50, 75, 100].map((preset) => (
                       <button
-                        key={percent}
-                        className="bg-[#3C404D] px-3 py-1 rounded-[4px] text-sm hover:bg-[#00CC99] transition-colors"
-                        onClick={() => setWithdrawPercent(percent)}
+                        key={preset}
+                        className={clsx(
+                          "px-3 py-1.5 rounded-[6px] text-sm font-medium transition-colors",
+                          withdrawPercent === preset
+                            ? "bg-[#00CC99] text-white"
+                            : "bg-[#3C404D] text-[#B1B3B8] hover:bg-[#4C505D]"
+                        )}
+                        onClick={() => setWithdrawPercent(preset)}
                       >
-                        {percent}%
+                        {preset}%
                       </button>
                     ))}
                   </div>
@@ -975,7 +980,7 @@ function AddLiquidity() {
                 </div>
 
                 <Button
-                  className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#CC0000_0%,_#990000_100%)] text-base font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleWithdraw}
                   disabled={isWithdrawing}
                 >
