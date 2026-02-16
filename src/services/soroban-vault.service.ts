@@ -603,6 +603,12 @@ export class SorobanVaultService {
    */
   async getTokenBalance(tokenAddress: string, userAddress: string): Promise<string> {
     try {
+      // For native XLM, return spendable balance (total - reserves) via Horizon
+      const NATIVE_XLM_SAC = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
+      if (tokenAddress === NATIVE_XLM_SAC) {
+        return await this.getNativeSpendableBalance(userAddress);
+      }
+
       const contract = new Contract(tokenAddress);
       const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
 
@@ -628,6 +634,26 @@ export class SorobanVaultService {
       return "0";
     } catch (error) {
       console.error(`Failed to get token balance for ${tokenAddress}:`, error);
+      return "0";
+    }
+  }
+
+  private async getNativeSpendableBalance(userAddress: string): Promise<string> {
+    try {
+      const horizonUrl = process.env.REACT_APP_HORIZON_URL || "https://horizon.stellar.org";
+      const res = await fetch(`${horizonUrl}/accounts/${userAddress}`);
+      if (!res.ok) return "0";
+      const acc = await res.json();
+      const totalXlm = parseFloat(acc.balances.find((b: any) => b.asset_type === "native")?.balance || "0");
+      const subentryCount = acc.subentry_count || 0;
+      const numSponsoring = acc.num_sponsoring || 0;
+      const numSponsored = acc.num_sponsored || 0;
+      // Stellar reserve: 1 base + 0.5 per subentry + sponsoring adjustments
+      const reserve = 1 + (subentryCount + numSponsoring - numSponsored) * 0.5;
+      const spendable = Math.max(0, totalXlm - reserve);
+      return spendable.toFixed(7);
+    } catch (error) {
+      console.error("Failed to get native spendable balance:", error);
       return "0";
     }
   }
