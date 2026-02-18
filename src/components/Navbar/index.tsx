@@ -198,7 +198,8 @@ const Navbar = () => {
                 );
 
                 dispatch(setConnectingWallet(false));
-                dispatch(setWalletConnectName(LOBSTR_ID));
+                // Store WALLET_CONNECT_ID so signing uses WalletConnect path, not LOBSTR extension API
+                dispatch(setWalletConnectName(WALLET_CONNECT_ID));
                 dispatch(walletSelectionAction(false));
                 dispatch(setWalletConnected(true));
                 dispatch(setUserWalletAddress(address));

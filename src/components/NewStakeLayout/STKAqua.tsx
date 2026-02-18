@@ -10,7 +10,6 @@ import {
   FREIGHTER_ID,
   FreighterModule,
   LOBSTR_ID,
-  LobstrModule,
   StellarWalletsKit,
   WalletNetwork,
 } from "@creit.tech/stellar-wallets-kit";
@@ -105,18 +104,8 @@ function STKAqua() {
 
 
   const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
-    const { address } = await kit.getAddress();
+    if (!user.userWalletAddress) return;
+    const address = user.userWalletAddress;
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
 
@@ -541,22 +530,12 @@ function STKAqua() {
 
   // Add delay-based balance refresh for better sync with backend
   const updateWalletRecordsWithDelay = async (delayMs: number = 3000) => {
+    if (!user.userWalletAddress) return;
     // Wait for backend to complete BLUB minting
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
     try {
-      const selectedModule =
-        user?.walletName === LOBSTR_ID
-          ? new LobstrModule()
-          : new FreighterModule();
-
-      const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: FREIGHTER_ID,
-        modules: [selectedModule],
-      });
-
-      const { address } = await kit.getAddress();
+      const address = user.userWalletAddress;
       const stellarService = new StellarService();
       const wrappedAccount = await stellarService.loadAccount(address);
 
@@ -574,27 +553,10 @@ function STKAqua() {
       }, 2000);
     } catch (error) {
       console.error("Error updating wallet records:", error);
-      // Fallback to regular update
-      updateWalletRecords();
     }
   };
 
-  const handleSetMaxDeposit = () => {
-    let depositAmount = 0;
-
-    if (typeof userAquaBalance === "number" && !isNaN(userAquaBalance)) {
-      depositAmount = userAquaBalance;
-    } else if (typeof userAquaBalance === "string") {
-      const convertedAmount = parseFloat(userAquaBalance);
-      if (!isNaN(convertedAmount)) {
-        depositAmount = convertedAmount;
-      }
-    }
-
-    setAquaDepositAmount(depositAmount);
-  };
-
-  const handleAddTrustline = async () => {
+const handleAddTrustline = async () => {
     const stellarService = new StellarService();
 
     // Load sender's Stellar account
@@ -893,12 +855,22 @@ function STKAqua() {
                 }
                 value={`${aquaDepositAmount ?? ""}`}
               />
-              <button
-                className="bg-[#3C404D] p-2 rounded-[4px]"
-                onClick={handleSetMaxDeposit}
-              >
-                Max
-              </button>
+            </div>
+            <div className="flex items-center space-x-2 mt-2">
+              {[25, 50, 75, 100].map((pct) => (
+                <button
+                  key={pct}
+                  className="flex-1 bg-[#3C404D] hover:bg-[#4C5060] text-white text-xs py-1.5 rounded-[4px] transition-colors"
+                  onClick={() => {
+                    const bal = typeof userAquaBalance === "string"
+                      ? parseFloat(userAquaBalance)
+                      : (userAquaBalance ?? 0);
+                    setAquaDepositAmount(parseFloat(((bal * pct) / 100).toFixed(7)));
+                  }}
+                >
+                  {pct === 100 ? "Max" : `${pct}%`}
+                </button>
+              ))}
             </div>
 
             {/* Time-based rewards info */}
