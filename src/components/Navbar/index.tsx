@@ -45,6 +45,15 @@ import { isMobileDevice } from "../../utils/helpers";
 // This is required for kit.openModal() to work
 void StellarWalletsModal;
 
+// Detect if browser is Safari (any platform) — Safari doesn't support the
+// LOBSTR/Freighter browser extensions, so we route those users through WalletConnect.
+const isSafariBrowser = (): boolean => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  // Chrome/Chromium/Edge report "Safari" too, so exclude them
+  return /Safari/i.test(ua) && !/Chrome|CriOS|FxiOS|EdgA|GSA/i.test(ua);
+};
+
 // Factory function to create a fresh WalletConnect kit instance
 // This is needed because WalletConnect has a known bug where the modal
 // won't reopen after being closed without completing a connection
@@ -55,12 +64,12 @@ const createWalletConnectKit = () => {
     network: WALLET_NETWORK,
     modules: [
       new WalletConnectModule({
-        url: "app.whalehub.io",
+        url: "https://app.whalehub.io",
         projectId: "3dcbb538e6a1ff9db2cdbf0b1c209a9d",
         method: WalletConnectAllowedMethods.SIGN,
-        description: `A DESCRIPTION TO SHOW USERS`,
+        description: "WhaleHub — stake AQUA, earn BLUB rewards",
         name: "Whalehub",
-        icons: ["A LOGO/ICON TO SHOW TO YOUR USERS"],
+        icons: ["https://app.whalehub.io/Blub_logo2.svg"],
         network: WALLET_NETWORK,
       }),
     ],
@@ -160,21 +169,13 @@ const Navbar = () => {
         } else {
           console.log("🦞 [Navbar] Connecting LOBSTR wallet");
 
-          // On mobile, use WalletConnect which supports LOBSTR via deep linking
-          if (isMobile) {
-            console.log(
-              "📱 [Navbar] Mobile detected, using WalletConnect for LOBSTR"
-            );
-
-            toast.info("Opening WalletConnect to connect with LOBSTR...", {
-              autoClose: 2000,
-            });
-
-            // Create fresh kit instance to fix WalletConnect bug where modal won't reopen
-            // See: https://github.com/WalletConnect/walletconnect-monorepo/issues/747
+          // Helper: open LOBSTR via WalletConnect modal
+          // Used on mobile AND on Safari/browsers where the extension is unavailable
+          const connectLobstrViaWalletConnect = async () => {
+            // Create kit BEFORE any awaits so it's triggered by the user gesture.
+            // Safari blocks popup opens that occur after async operations.
             kit = createWalletConnectKit();
 
-            // Use WalletConnect - LOBSTR supports it via deep link (lobstr://wc)
             await kit.openModal({
               onWalletSelected: async (option: ISupportedWallet) => {
                 console.log(
@@ -187,18 +188,11 @@ const Navbar = () => {
 
                 console.log(
                   "📍 [Navbar] LOBSTR (via WalletConnect) address received:",
-                  {
-                    address: address,
-                    addressLength: address?.length,
-                    isValidFormat: address
-                      ? /^G[A-Z0-9]{55}$/.test(address)
-                      : false,
-                    timestamp: new Date().toISOString(),
-                  }
+                  { address, timestamp: new Date().toISOString() }
                 );
 
                 dispatch(setConnectingWallet(false));
-                // Store WALLET_CONNECT_ID so signing uses WalletConnect path, not LOBSTR extension API
+                // Use WALLET_CONNECT_ID so signing uses WalletConnect path
                 dispatch(setWalletConnectName(WALLET_CONNECT_ID));
                 dispatch(walletSelectionAction(false));
                 dispatch(setWalletConnected(true));
@@ -209,6 +203,31 @@ const Navbar = () => {
                 dispatch(setConnectingWallet(false));
               },
             });
+          };
+
+          // On mobile, always use WalletConnect (LOBSTR extension is not available on mobile)
+          if (isMobile) {
+            console.log("📱 [Navbar] Mobile detected, using WalletConnect for LOBSTR");
+            toast.info("Opening WalletConnect to connect with LOBSTR...", { autoClose: 2000 });
+            await connectLobstrViaWalletConnect();
+            return;
+          }
+
+          // On desktop Safari (or any browser without the LOBSTR extension),
+          // redirect to WalletConnect. The LOBSTR extension only works in Chrome/Firefox.
+          const safari = isSafariBrowser();
+          const { isLobstrAvailable } = await import("../../utils/helpers");
+          const lobstrAvail = !safari && await isLobstrAvailable();
+
+          if (!lobstrAvail) {
+            console.log("🦞 [Navbar] LOBSTR extension not available (Safari or not installed), using WalletConnect");
+            toast.info(
+              safari
+                ? "LOBSTR extension is not available on Safari. Connecting via WalletConnect instead."
+                : "LOBSTR extension not found. Connecting via WalletConnect instead.",
+              { autoClose: 3000 }
+            );
+            await connectLobstrViaWalletConnect();
             return;
           }
 

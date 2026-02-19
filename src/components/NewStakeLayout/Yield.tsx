@@ -419,11 +419,7 @@ function Yield() {
 
       // Refresh all balances immediately after successful transaction
       try {
-        // First, update wallet records to get fresh Horizon data
         await updateWalletRecordsWithDelay(2000);
-
-        // Then fetch all staking data (fetchSorobanBlubBalance already calls
-        // fetchComprehensiveStakingData internally, so no need to dispatch it separately)
         await fetchSorobanBlubBalance();
       } catch (refreshError) {
         console.error("[Yield] Refresh failed:", refreshError);
@@ -432,6 +428,11 @@ function Yield() {
       // Show success message after refresh
       toast.success(`Successfully unstaked ${blubUnstakeAmount} BLUB!`);
       setDialogTitle("Unstaking Successful!");
+
+      // Secondary Soroban refresh after 7s — Soroban RPC can return stale data
+      // for a few seconds after a tx confirms. This ensures the UI shows the
+      // correct balance even if the first refresh hit a stale node.
+      setTimeout(() => fetchSorobanBlubBalance().catch(() => {}), 7000);
       setDialogMsg(
         `Transaction Hash: ${result.transactionHash}\n\nYour BLUB has been unstaked and transferred to your wallet.`
       );
@@ -451,46 +452,25 @@ function Yield() {
   };
 
   const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
-    const { address } = await kit.getAddress();
+    if (!user.userWalletAddress) return;
+    const address = user.userWalletAddress;
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
-
     dispatch(getAccountInfo(address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };
 
   // Add delay-based balance refresh for better sync with backend
+  // Uses user.userWalletAddress directly so it works for all wallet types
+  // (Freighter, LOBSTR, WalletConnect).
   const updateWalletRecordsWithDelay = async (delayMs: number = 3000) => {
-    // Wait for backend to complete transaction processing
+    if (!user.userWalletAddress) return;
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
     try {
-      const selectedModule =
-        user?.walletName === LOBSTR_ID
-          ? new LobstrModule()
-          : new FreighterModule();
-
-      const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: FREIGHTER_ID,
-        modules: [selectedModule],
-      });
-
-      const { address } = await kit.getAddress();
+      const address = user.userWalletAddress;
       const stellarService = new StellarService();
       const wrappedAccount = await stellarService.loadAccount(address);
-
       dispatch(getAccountInfo(address));
       dispatch(storeAccountBalance(wrappedAccount.balances));
 
@@ -505,8 +485,6 @@ function Yield() {
       }, 2000);
     } catch (error) {
       console.error("Error updating wallet records:", error);
-      // Fallback to regular update
-      updateWalletRecords();
     }
   };
 

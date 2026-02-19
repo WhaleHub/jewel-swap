@@ -1209,6 +1209,24 @@ const handleAddTrustline = async () => {
 
             <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
               <div className="text-sm font-normal text-white flex items-center space-x-1">
+                <span>Total Distributed</span>
+                <InformationCircleIcon
+                  className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      "Total BLUB rewards distributed to all stakers from POL (Protocol-Owned Liquidity) yield. Rewards are added automatically by the backend when AQUA is claimed from the BLUB-AQUA pool and swapped to BLUB.",
+                      "Total Distributed"
+                    )
+                  }
+                />
+              </div>
+              <div className="text-xl font-normal text-[#00CC99]">
+                {staking.isLoading ? "..." : (staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
+              </div>
+            </div>
+
+            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
+              <div className="text-sm font-normal text-white flex items-center space-x-1">
                 <span>Staking APY</span>
                 <InformationCircleIcon
                   className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
@@ -1232,21 +1250,6 @@ const handleAddTrustline = async () => {
                 )}
               </div>
             </div>
-
-            {(stakingAPY === "--" || stakingAPY === "0.00") && (
-              <div className="text-[#B1B3B8] text-xs leading-relaxed bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px]">
-                Rewards will be distributed once our{" "}
-                <a
-                  href="https://aqua.network/market/AQUA:GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA/BLUB:GDERSSCKJQPPXUQOZIOXGRVAGNLVPVZCJ2MAX7RCMVMWGRPVAEG7XGTK"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#00CC99] underline hover:text-[#00AA77]"
-                >
-                  AQUA/BLUB market pair
-                </a>{" "}
-                starts generating trading fees.
-              </div>
-            )}
 
             {rewardInfo && rewardInfo.last_claim_time > 0 && !rewardInfo.can_claim && (
               <div className="flex items-center text-sm mt-4 space-x-1">
