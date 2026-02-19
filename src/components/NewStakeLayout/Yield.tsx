@@ -164,12 +164,23 @@ function Yield() {
     }
   }, [user?.userRecords?.account?.pools]);
 
-  // Calculate unstakable BLUB from Soroban staking info
-  // Only unstaking_available (locks past 10-day cooldown) can actually be unstaked
+  // Calculate unstakable BLUB from lock entries directly.
+  // The contract's get_user_staking_info.unstaking_available is always 0 because
+  // unstake() zeros out blub_locked before setting unlocked=true, so the view
+  // adds 0 for each "unlocked" entry. We compute the correct value ourselves:
+  // sum blubAmount for entries where cooldown has passed and not yet unstaked.
   const poolAndClaimBalance = useMemo(() => {
+    if (staking.lockEntries?.length > 0) {
+      const now = Math.floor(Date.now() / 1000);
+      const available = staking.lockEntries
+        .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0 && e.unlockTime <= now)
+        .reduce((sum, e) => sum + parseFloat(e.blubAmount), 0);
+      if (available > 0) return available;
+    }
+    // Fallback to contract-reported value (may be 0 due to above issue)
     const unstakingAvailable = staking.userStats?.unstakingAvailable || "0";
     return Math.max(0, parseFloat(unstakingAvailable));
-  }, [staking.userStats?.unstakingAvailable]);
+  }, [staking.lockEntries, staking.userStats?.unstakingAvailable]);
 
   // Fetch BLUB balance from Soroban contract
   const fetchSorobanBlubBalance = async () => {
@@ -311,10 +322,8 @@ function Yield() {
   };
 
   const handleSetMaxDepositForUnstakeBlub = () => {
-    // Use unstakingAvailable from Soroban staking info (expired but not yet unstaked)
-    const unstakingAvailable = staking.userStats?.unstakingAvailable || "0";
-    const depositAmount = Math.max(0, parseFloat(unstakingAvailable));
-    setBlubUnstakeAmount(depositAmount);
+    // Use poolAndClaimBalance which correctly computes from lock entries
+    setBlubUnstakeAmount(poolAndClaimBalance);
   };
 
   const handleUnstakeAqua = async () => {
