@@ -31,6 +31,7 @@ import {
   blubIssuerPublicKey,
   lpSignerPublicKey,
 } from "../../utils/constants";
+// calculateAPY no longer needed in this component
 import {
   Asset,
   BASE_FEE,
@@ -56,12 +57,17 @@ function Yield() {
   const [openDialog, setOptDialog] = useState<boolean>(false);
   const [dialogTitle, setDialogTitle] = useState<string>("");
 
+  // Reward state
+  const [, setPendingRewards] = useState<string>("0.00");
+  const [rewardInfo, setRewardInfo] = useState<any>(null);
+
   // Soroban BLUB balance state
   const [sorobanBlubBalance, setSorobanBlubBalance] = useState<string>("0.00");
   const [blubStakedBalance, setBlubStakedBalance] = useState<string>("0.00");
   const [lpPositionData, setLpPositionData] = useState<any>(null);
   const [polData, setPolData] = useState<any>(null);
   const [blubBalanceLoading, setBlubBalanceLoading] = useState<boolean>(false);
+  const [locksExpanded, setLocksExpanded] = useState<boolean>(false);
 
 
   const user = useSelector((state: RootState) => state.user);
@@ -158,19 +164,23 @@ function Yield() {
     }
   }, [user?.userRecords?.account?.pools]);
 
-  // Add the two calculated values
-  // Calculate unstakable BLUB from Soroban staking info
-  // NOTE: total_staked_blub is immediately unstakeable (no time lock in contract)
-  // unstaking_available is for already-unlocked entries (partial unstakes)
+  // Calculate unstakable BLUB from lock entries directly.
+  // The contract's get_user_staking_info.unstaking_available is always 0 because
+  // unstake() zeros out blub_locked before setting unlocked=true, so the view
+  // adds 0 for each "unlocked" entry. We compute the correct value ourselves:
+  // sum blubAmount for entries where cooldown has passed and not yet unstaked.
   const poolAndClaimBalance = useMemo(() => {
-    const totalStaked = staking.userStats?.activeAmount || "0";
+    if (staking.lockEntries?.length > 0) {
+      const now = Math.floor(Date.now() / 1000);
+      const available = staking.lockEntries
+        .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0 && e.unlockTime <= now)
+        .reduce((sum, e) => sum + parseFloat(e.blubAmount), 0);
+      if (available > 0) return available;
+    }
+    // Fallback to contract-reported value (may be 0 due to above issue)
     const unstakingAvailable = staking.userStats?.unstakingAvailable || "0";
-    // Sum both: actively staked (immediately unstakeable) + already unlocked entries
-    return Math.max(
-      0,
-      parseFloat(totalStaked) + parseFloat(unstakingAvailable)
-    );
-  }, [staking.userStats?.activeAmount, staking.userStats?.unstakingAvailable]);
+    return Math.max(0, parseFloat(unstakingAvailable));
+  }, [staking.lockEntries, staking.userStats?.unstakingAvailable]);
 
   // Fetch BLUB balance from Soroban contract
   const fetchSorobanBlubBalance = async () => {
@@ -273,9 +283,31 @@ function Yield() {
         setSorobanBlubBalance("0.00");
       }
 
-      setBlubStakedBalance("0.00");
+      // Don't reset blubStakedBalance to "0.00" on error - keep previous value
+      // Redux state (staking.userStats) is already updated by fetchComprehensiveStakingData
+      // which runs before the queries that may have failed
     } finally {
       setBlubBalanceLoading(false);
+    }
+  };
+
+  // Fetch pending rewards from contract
+  const fetchPendingRewards = async () => {
+    if (!user.userWalletAddress) return;
+
+    try {
+      const { sorobanService } = await import("../../services/soroban.service");
+      const rewardInfoData = await sorobanService.queryUserRewardInfo(
+        user.userWalletAddress
+      );
+
+      if (rewardInfoData) {
+        setPendingRewards(rewardInfoData.pending_rewards || "0");
+        setRewardInfo(rewardInfoData);
+      }
+    } catch (error: any) {
+      console.error("❌ [Yield] Error fetching pending rewards:", error);
+      setPendingRewards("0");
     }
   };
 
@@ -290,10 +322,8 @@ function Yield() {
   };
 
   const handleSetMaxDepositForUnstakeBlub = () => {
-    // Use unstakingAvailable from Soroban staking info (expired but not yet unstaked)
-    const unstakingAvailable = staking.userStats?.unstakingAvailable || "0";
-    const depositAmount = Math.max(0, parseFloat(unstakingAvailable));
-    setBlubUnstakeAmount(depositAmount);
+    // Use poolAndClaimBalance which correctly computes from lock entries
+    setBlubUnstakeAmount(poolAndClaimBalance);
   };
 
   const handleUnstakeAqua = async () => {
@@ -398,17 +428,8 @@ function Yield() {
 
       // Refresh all balances immediately after successful transaction
       try {
-        // First, update wallet records to get fresh Horizon data
         await updateWalletRecordsWithDelay(2000);
-
-        // Then fetch all other data (which may depend on updated wallet balances)
-        const { fetchComprehensiveStakingData } = await import(
-          "../../lib/slices/stakingSlice"
-        );
-        await Promise.all([
-          dispatch(fetchComprehensiveStakingData(user.userWalletAddress)),
-          fetchSorobanBlubBalance(),
-        ]);
+        await fetchSorobanBlubBalance();
       } catch (refreshError) {
         console.error("[Yield] Refresh failed:", refreshError);
       }
@@ -416,6 +437,11 @@ function Yield() {
       // Show success message after refresh
       toast.success(`Successfully unstaked ${blubUnstakeAmount} BLUB!`);
       setDialogTitle("Unstaking Successful!");
+
+      // Secondary Soroban refresh after 7s — Soroban RPC can return stale data
+      // for a few seconds after a tx confirms. This ensures the UI shows the
+      // correct balance even if the first refresh hit a stale node.
+      setTimeout(() => fetchSorobanBlubBalance().catch(() => {}), 7000);
       setDialogMsg(
         `Transaction Hash: ${result.transactionHash}\n\nYour BLUB has been unstaked and transferred to your wallet.`
       );
@@ -435,46 +461,25 @@ function Yield() {
   };
 
   const updateWalletRecords = async () => {
-    const selectedModule =
-      user?.walletName === LOBSTR_ID
-        ? new LobstrModule()
-        : new FreighterModule();
-
-    const kit: StellarWalletsKit = new StellarWalletsKit({
-      network: WalletNetwork.PUBLIC,
-      selectedWalletId: FREIGHTER_ID,
-      modules: [selectedModule],
-    });
-
-    const { address } = await kit.getAddress();
+    if (!user.userWalletAddress) return;
+    const address = user.userWalletAddress;
     const stellarService = new StellarService();
     const wrappedAccount = await stellarService.loadAccount(address);
-
     dispatch(getAccountInfo(address));
     dispatch(storeAccountBalance(wrappedAccount.balances));
   };
 
   // Add delay-based balance refresh for better sync with backend
+  // Uses user.userWalletAddress directly so it works for all wallet types
+  // (Freighter, LOBSTR, WalletConnect).
   const updateWalletRecordsWithDelay = async (delayMs: number = 3000) => {
-    // Wait for backend to complete transaction processing
+    if (!user.userWalletAddress) return;
     await new Promise((resolve) => setTimeout(resolve, delayMs));
 
     try {
-      const selectedModule =
-        user?.walletName === LOBSTR_ID
-          ? new LobstrModule()
-          : new FreighterModule();
-
-      const kit: StellarWalletsKit = new StellarWalletsKit({
-        network: WalletNetwork.PUBLIC,
-        selectedWalletId: FREIGHTER_ID,
-        modules: [selectedModule],
-      });
-
-      const { address } = await kit.getAddress();
+      const address = user.userWalletAddress;
       const stellarService = new StellarService();
       const wrappedAccount = await stellarService.loadAccount(address);
-
       dispatch(getAccountInfo(address));
       dispatch(storeAccountBalance(wrappedAccount.balances));
 
@@ -489,8 +494,6 @@ function Yield() {
       }, 2000);
     } catch (error) {
       console.error("Error updating wallet records:", error);
-      // Fallback to regular update
-      updateWalletRecords();
     }
   };
 
@@ -633,14 +636,9 @@ function Yield() {
         // First, update wallet records to get fresh Horizon data
         await updateWalletRecordsWithDelay(2000);
 
-        // Then fetch all other data (which may depend on updated wallet balances)
-        const { fetchComprehensiveStakingData: fetchData } = await import(
-          "../../lib/slices/stakingSlice"
-        );
-        await Promise.all([
-          dispatch(fetchData(user.userWalletAddress)),
-          fetchSorobanBlubBalance(),
-        ]);
+        // Then fetch all staking data (fetchSorobanBlubBalance already calls
+        // fetchComprehensiveStakingData internally, so no need to dispatch it separately)
+        await fetchSorobanBlubBalance();
       } catch (refreshError) {
         console.error("[Yield] Refresh failed:", refreshError);
       }
@@ -700,10 +698,12 @@ function Yield() {
     if (user?.userWalletAddress) {
       // Initial fetch
       fetchSorobanBlubBalance();
+      fetchPendingRewards();
 
       // Set up auto-refresh every 30 seconds for real-time updates
       const refreshInterval = setInterval(() => {
         fetchSorobanBlubBalance();
+        fetchPendingRewards();
       }, 30000);
 
       // Cleanup interval on unmount
@@ -855,12 +855,89 @@ function Yield() {
 
               <div className="flex items-center text-normal mt-6 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">
-                  Staked Balance:
+                  Unstakeable:
                 </div>
-                <div className="font-medium">
-                  {`${parseFloat(blubStakedBalance).toFixed(2)} BLUB`}
-                </div>
+                {blubBalanceLoading ? (
+                  <TailSpin
+                    height="14"
+                    width="14"
+                    color="#B1B3B8"
+                    ariaLabel="loading"
+                    radius="1"
+                    visible={true}
+                  />
+                ) : (
+                  <div className="font-medium">
+                    {`${poolAndClaimBalance.toFixed(2)} BLUB`}
+                  </div>
+                )}
               </div>
+              {(parseFloat(staking.userStats?.totalAmount || "0") > 0 || parseFloat(blubStakedBalance) > 0) && staking.lockEntries?.length > 0 && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => setLocksExpanded(!locksExpanded)}
+                    className="text-[11px] text-[#00CC99] hover:underline cursor-pointer"
+                  >
+                    {locksExpanded ? "▾ Hide" : "▸ Show"} lock details ({staking.lockEntries?.filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0).length ?? 0} entries)
+                  </button>
+                  {locksExpanded && (
+                    <div className="mt-2 space-y-1 max-h-[180px] overflow-y-auto">
+                      {(staking.lockEntries ?? [])
+                        .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0)
+                        .sort((a, b) => a.unlockTime - b.unlockTime)
+                        .map((entry) => {
+                          const now = Math.floor(Date.now() / 1000);
+                          const remaining = entry.unlockTime - now;
+                          const isReady = remaining <= 0;
+                          const unlockDate = new Date(entry.unlockTime * 1000);
+
+                          return (
+                            <div
+                              key={entry.index}
+                              className="flex items-center justify-between bg-[#0E111B] rounded-[6px] px-3 py-2 text-[11px]"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <span className={isReady ? "text-[#00CC99]" : "text-[#FFA500]"}>
+                                  {isReady ? "🔓" : "🔒"}
+                                </span>
+                                <span className="text-white font-medium">
+                                  {entry.blubAmount} BLUB
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                {isReady ? (
+                                  <span className="text-[#00CC99]">Ready</span>
+                                ) : (
+                                  <span className="text-[#B1B3B8]">
+                                    {Math.floor(remaining / 86400)}d{" "}
+                                    {Math.floor((remaining % 86400) / 3600)}h{" "}
+                                    {Math.floor((remaining % 3600) / 60)}m
+                                    <span className="text-[#666] ml-1">
+                                      ({unlockDate.toLocaleDateString()})
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
+                </div>
+              )}
+              {(parseFloat(staking.userStats?.totalAmount || "0") > 0 || parseFloat(blubStakedBalance) > 0) && poolAndClaimBalance === 0 && !staking.lockEntries?.length && (
+                <div className="text-[10px] text-[#FFA500] mt-1">
+                  {staking.nextUnlockTime ? (() => {
+                    const now = Math.floor(Date.now() / 1000);
+                    const remaining = staking.nextUnlockTime - now;
+                    if (remaining <= 0) return "Cooldown complete! Refresh to unstake.";
+                    const days = Math.floor(remaining / 86400);
+                    const hours = Math.floor((remaining % 86400) / 3600);
+                    const mins = Math.floor((remaining % 3600) / 60);
+                    return `${parseFloat(blubStakedBalance).toFixed(2)} BLUB unstakeable in ${days}d ${hours}h ${mins}m (${new Date(staking.nextUnlockTime * 1000).toLocaleDateString()})`;
+                  })() : "10-day cooldown active."}
+                </div>
+              )}
 
               <Button
                 className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold"

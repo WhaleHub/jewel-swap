@@ -318,6 +318,18 @@ export class ApiService {
     return response.data.data;
   }
 
+  async recordAquaRewardConversion(request: {
+    aquaAmount: string;
+    blubRewardAmount: string;
+    txHash: string;
+  }): Promise<any> {
+    const response = await this.api.post<ApiResponse>(
+      "/api/soroban/rewards/aqua-conversion",
+      request
+    );
+    return response.data.data;
+  }
+
   // ===================
   // LIQUIDITY ENDPOINTS
   // ===================

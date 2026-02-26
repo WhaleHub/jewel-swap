@@ -69,6 +69,11 @@ const defaultData: PoolType[] = [
     tvl: 24000,
     rewardsApy: "2.9%",
   },
+  {
+    pool: "AQUA/XLM",
+    tvl: 0,
+    rewardsApy: "--",
+  },
 ];
 
 const poolRecords: Record<
@@ -85,6 +90,12 @@ const poolRecords: Record<
     img1: usdcLogo,
     img2: xlmLogo,
     assetA: new Asset(usdcAssetCode, usdcIssuer),
+    assetB: new Asset(XlmAssetCode),
+  },
+  "AQUA/XLM": {
+    img1: aquaLogo,
+    img2: xlmLogo,
+    assetA: new Asset(aquaAssetCode, aquaAssetIssuer),
     assetB: new Asset(XlmAssetCode),
   },
 };

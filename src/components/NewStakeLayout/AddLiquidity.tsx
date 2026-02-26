@@ -61,6 +61,14 @@ function AddLiquidity() {
   const [reserveB, setReserveB] = useState<string>("0");
   const [totalLpSupply, setTotalLpSupply] = useState<string>("0");
 
+  // Compound stats
+  const [compoundStats, setCompoundStats] = useState<{
+    totalCompoundedLp: string; totalRewardsClaimed: string; compoundCount: number; lastCompoundTime: number;
+  } | null>(null);
+  const [userCompoundGains, setUserCompoundGains] = useState<{
+    currentLp: string; depositedLp: string; compoundGainLp: string;
+  } | null>(null);
+
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
 
   // Slippage tolerance in percentage (e.g., 0.5 = 0.5%)
@@ -99,7 +107,7 @@ function AddLiquidity() {
         try {
           const poolInfo = await vaultService.getPoolInfo(i);
           console.log(`[AddLiquidity] Pool ${i}:`, poolInfo);
-          if (poolInfo.active) {
+          if (poolInfo.active && poolInfo.token_a_code !== "UNKNOWN" && poolInfo.token_b_code !== "UNKNOWN") {
             loadedPools.push(poolInfo);
           }
         } catch (poolError) {
@@ -123,16 +131,19 @@ function AddLiquidity() {
     if (!userWalletAddress) return;
 
     try {
-      const position = await vaultService.getUserVaultPosition(
-        userWalletAddress,
-        poolId
-      );
+      const [position, poolStats, gains] = await Promise.all([
+        vaultService.getUserVaultPosition(userWalletAddress, poolId),
+        vaultService.getPoolCompoundStats(poolId),
+        vaultService.getUserCompoundGains(userWalletAddress, poolId),
+      ]);
 
       if (position) {
         setUserPositions([position]);
       } else {
         setUserPositions([]);
       }
+      setCompoundStats(poolStats);
+      setUserCompoundGains(gains);
     } catch (error) {
       console.error("Failed to load user position:", error);
       setUserPositions([]);
@@ -254,14 +265,13 @@ function AddLiquidity() {
     return Math.min(sharesFromA, sharesFromB).toString();
   };
 
-  // Apply slippage tolerance to get minimum acceptable amount
+  // Apply slippage tolerance to get minimum acceptable amount (human-readable)
   const applySlippage = (amount: string | number): string => {
     const value = typeof amount === "string" ? parseFloat(amount) : amount;
     if (isNaN(value) || value <= 0) return "0";
 
     const minAmount = value * (1 - slippageTolerance / 100);
-    // Convert to token units (7 decimals for Stellar)
-    return Math.floor(minAmount * 1e7).toString();
+    return minAmount.toString();
   };
 
   // Handle slippage preset selection
@@ -357,7 +367,9 @@ function AddLiquidity() {
         selectedPool.token_a_code,
         amount1,
         selectedPool.token_b_code,
-        amount2
+        amount2,
+        parseFloat(reserveA),
+        parseFloat(reserveB)
       );
 
       if (totalUsdValue < 1) {
@@ -862,6 +874,37 @@ function AddLiquidity() {
               </div>
             ) : (
               <>
+                {/* Position & Compound Gains */}
+                <div className="bg-[#0E111B] p-4 rounded-[8px] mb-4">
+                  <div className="text-sm text-[#B1B3B8] mb-2">Your Position</div>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between text-white">
+                      <span>LP Tokens:</span>
+                      <span>{parseFloat(userPosition.user_lp_amount || "0").toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between text-white">
+                      <span>Pool Share:</span>
+                      <span>{parseFloat(userPosition.percentage || "0").toFixed(2)}%</span>
+                    </div>
+                    {userCompoundGains && parseFloat(userCompoundGains.compoundGainLp) > 0 && (
+                      <div className="flex justify-between text-[#00CC99]">
+                        <span>Compound Gains:</span>
+                        <span>+{parseFloat(userCompoundGains.compoundGainLp).toFixed(4)} LP</span>
+                      </div>
+                    )}
+                  </div>
+                  {compoundStats && compoundStats.compoundCount > 0 && (
+                    <div className="mt-2 pt-2 border-t border-[#3C404D] text-xs text-[#B1B3B8]">
+                      <span>Auto-compounded {compoundStats.compoundCount}x</span>
+                      {compoundStats.lastCompoundTime > 0 && (
+                        <span className="ml-2">
+                          (last: {new Date(compoundStats.lastCompoundTime * 1000).toLocaleDateString()})
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <label className="text-sm text-[#B1B3B8] mb-2 block">
                     Withdrawal Percentage
@@ -881,14 +924,19 @@ function AddLiquidity() {
                       )
                     }
                   />
-                  <div className="flex justify-between mt-2">
-                    {[25, 50, 75, 100].map((percent) => (
+                  <div className="flex items-center space-x-2 mt-2">
+                    {[25, 50, 75, 100].map((preset) => (
                       <button
-                        key={percent}
-                        className="bg-[#3C404D] px-3 py-1 rounded-[4px] text-sm hover:bg-[#00CC99] transition-colors"
-                        onClick={() => setWithdrawPercent(percent)}
+                        key={preset}
+                        className={clsx(
+                          "px-3 py-1.5 rounded-[6px] text-sm font-medium transition-colors",
+                          withdrawPercent === preset
+                            ? "bg-[#00CC99] text-white"
+                            : "bg-[#3C404D] text-[#B1B3B8] hover:bg-[#4C505D]"
+                        )}
+                        onClick={() => setWithdrawPercent(preset)}
                       >
-                        {percent}%
+                        {preset}%
                       </button>
                     ))}
                   </div>
@@ -932,7 +980,7 @@ function AddLiquidity() {
                 </div>
 
                 <Button
-                  className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#CC0000_0%,_#990000_100%)] text-base font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleWithdraw}
                   disabled={isWithdrawing}
                 >

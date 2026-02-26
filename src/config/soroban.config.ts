@@ -112,6 +112,18 @@ export const SOROBAN_CONFIG = {
       assetB: "BLUB",
       feeRate: 0.003, // 0.3%
     },
+    xlmUsdc: {
+      id: "2",
+      assetA: "XLM",
+      assetB: "USDC",
+      feeRate: 0.003, // 0.3%
+    },
+    aquaXlm: {
+      id: "3",
+      assetA: "AQUA",
+      assetB: "XLM",
+      feeRate: 0.003, // 0.3%
+    },
   },
 
   // POL Configuration

@@ -908,8 +908,8 @@ export class SorobanService {
           pending_rewards: info.pending_rewards
             ? (Number(info.pending_rewards) / 10000000).toFixed(7)
             : "0",
-          total_locked_entries: info.total_locked_entries || 0,
-          total_unlocked_entries: info.total_unlocked_entries || 0,
+          total_locked_entries: Number(info.total_locked_entries) || 0,
+          total_unlocked_entries: Number(info.total_unlocked_entries) || 0,
         };
       }
 
@@ -1233,6 +1233,210 @@ export class SorobanService {
   }
 
   /**
+   * Query reward state from staking contract
+   */
+  async queryRewardState(): Promise<any> {
+    try {
+      console.log(
+        "🔍 [SorobanService] Querying reward state from staking contract..."
+      );
+
+      const contract = this.getContract("staking");
+      const dummyAddress =
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+      const account = await this.server
+        .getAccount(dummyAddress)
+        .catch(async () => {
+          const keys = Keypair.random();
+          return await this.server
+            .getAccount(keys.publicKey())
+            .catch(() => null);
+        });
+
+      if (!account) {
+        console.warn(
+          "⚠️ [SorobanService] Could not get account for reward state query"
+        );
+        return null;
+      }
+
+      const transaction = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(contract.call("get_reward_state_view"))
+        .setTimeout(30)
+        .build();
+
+      const simulation: any = await this.server.simulateTransaction(
+        transaction
+      );
+
+      if (simulation.result?.retval) {
+        const raw = scValToNative(simulation.result.retval);
+        const result = {
+          total_rewards_added: Number(raw.total_rewards_added) / 10000000,
+          total_rewards_claimed: Number(raw.total_rewards_claimed) / 10000000,
+          total_staked: Number(raw.total_staked) / 10000000,
+          last_update_time: Number(raw.last_update_time),
+          reward_per_token_stored: Number(raw.reward_per_token_stored),
+        };
+        console.log("✅ [SorobanService] Reward state:", result);
+        return result;
+      }
+
+      return null;
+    } catch (error: any) {
+      console.error("❌ [SorobanService] Failed to query reward state:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Query all user lock entries with unlock times
+   * Returns { entries, nextUnlockTime, cooldownSeconds }
+   */
+  async queryUserLockEntries(userAddress: string): Promise<{
+    entries: Array<{
+      index: number;
+      blubAmount: string;
+      aquaAmount: string;
+      lockTimestamp: number;
+      unlockTime: number;
+      unlocked: boolean;
+      isBlubStake: boolean;
+    }>;
+    nextUnlockTime: number | null;
+    cooldownSeconds: number;
+  }> {
+    try {
+      const contract = this.getContract("staking");
+      const account = await this.server.getAccount(userAddress);
+
+      // Get lock count
+      const countTx = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(
+          contract.call(
+            "get_user_lock_count",
+            Address.fromString(userAddress).toScVal()
+          )
+        )
+        .setTimeout(30)
+        .build();
+
+      const countSim: any = await this.server.simulateTransaction(countTx);
+      const lockCount = countSim.result?.retval
+        ? scValToNative(countSim.result.retval)
+        : 0;
+
+      if (lockCount === 0) return { entries: [], nextUnlockTime: null, cooldownSeconds: 864000 };
+
+      // Get config for cooldown
+      const configTx = new TransactionBuilder(account, {
+        fee: "100",
+        networkPassphrase: this.getNetworkPassphrase(),
+      })
+        .addOperation(contract.call("get_config"))
+        .setTimeout(30)
+        .build();
+
+      const configSim: any = await this.server.simulateTransaction(configTx);
+      const config = configSim.result?.retval
+        ? scValToNative(configSim.result.retval)
+        : null;
+
+      const cooldown = config?.unstake_cooldown_seconds
+        ? Number(config.unstake_cooldown_seconds)
+        : 864000;
+
+      const entries: Array<{
+        index: number;
+        blubAmount: string;
+        aquaAmount: string;
+        lockTimestamp: number;
+        unlockTime: number;
+        unlocked: boolean;
+        isBlubStake: boolean;
+      }> = [];
+      let nextFutureUnlock: number | null = null;
+      const nowSec = Math.floor(Date.now() / 1000);
+
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+      for (let i = 0; i < lockCount; i++) {
+        // Small delay between calls to avoid RPC 429 rate limits
+        if (i > 0) await delay(150);
+
+        const lockTx = new TransactionBuilder(account, {
+          fee: "100",
+          networkPassphrase: this.getNetworkPassphrase(),
+        })
+          .addOperation(
+            contract.call(
+              "get_user_lock_by_index",
+              Address.fromString(userAddress).toScVal(),
+              nativeToScVal(i, { type: "u32" })
+            )
+          )
+          .setTimeout(30)
+          .build();
+
+        let lockSim: any;
+        try {
+          lockSim = await this.server.simulateTransaction(lockTx);
+        } catch (entryErr: any) {
+          console.warn(`⚠️ [SorobanService] Lock entry ${i} failed (skipping):`, entryErr?.message);
+          continue;
+        }
+
+        if (lockSim.result?.retval) {
+          const entry = scValToNative(lockSim.result.retval);
+          const blubLocked = Number(entry.blub_locked || 0);
+          const unlockTime = Number(entry.lock_timestamp) + cooldown;
+
+          entries.push({
+            index: i,
+            blubAmount: (blubLocked / 10000000).toFixed(2),
+            aquaAmount: (Number(entry.amount || 0) / 10000000).toFixed(2),
+            lockTimestamp: Number(entry.lock_timestamp),
+            unlockTime,
+            unlocked: !!entry.unlocked,
+            isBlubStake: !!entry.is_blub_stake,
+          });
+
+          // Track earliest FUTURE unlock (past unlocks are already actionable)
+          if (!entry.unlocked && blubLocked > 0 && unlockTime > nowSec) {
+            if (nextFutureUnlock === null || unlockTime < nextFutureUnlock) {
+              nextFutureUnlock = unlockTime;
+            }
+          }
+        }
+      }
+
+      return { entries, nextUnlockTime: nextFutureUnlock, cooldownSeconds: cooldown };
+    } catch (error: any) {
+      console.error(
+        "❌ [SorobanService] Failed to query user lock entries:",
+        error
+      );
+      return { entries: [], nextUnlockTime: null, cooldownSeconds: 864000 };
+    }
+  }
+
+  /**
+   * Query the next unlock time for a user's locked entries
+   * Returns the earliest unlock timestamp (seconds) or null if no active locks
+   */
+  async queryNextUnlockTime(userAddress: string): Promise<number | null> {
+    const { nextUnlockTime } = await this.queryUserLockEntries(userAddress);
+    return nextUnlockTime;
+  }
+
+  /**
    * Stake BLUB tokens (restake)
    * Calls stake contract function
    */
@@ -1273,6 +1477,55 @@ export class SorobanService {
       return {
         success: false,
         error: error.message || "Failed to stake BLUB",
+      };
+    }
+  }
+
+  /**
+   * Build transaction for add_rewards_from_aqua (admin operation).
+   * Accepts AQUA protocol revenue and BLUB reward amount (from off-chain AMM swap).
+   * Both tokens are transferred from admin to contract.
+   *
+   * @param adminAddress - Admin wallet address
+   * @param aquaAmount - AQUA amount in stroops (protocol revenue)
+   * @param blubRewardAmount - BLUB amount in stroops (from AMM swap, distributed to stakers)
+   * @returns Unsigned transaction for wallet signing
+   */
+  async addRewardsFromAqua(
+    adminAddress: string,
+    aquaAmount: string,
+    blubRewardAmount: string
+  ): Promise<ContractCallResult> {
+    try {
+      console.log("[SorobanService] Building add_rewards_from_aqua tx:", {
+        adminAddress,
+        aquaAmount,
+        blubRewardAmount,
+      });
+
+      const { transaction } = await this.buildContractTransaction(
+        "staking",
+        "add_rewards_from_aqua",
+        [
+          adminAddress,    // admin: Address
+          aquaAmount,      // aqua_amount: i128 (string digits -> i128)
+          blubRewardAmount, // blub_reward_amount: i128 (string digits -> i128)
+        ],
+        adminAddress
+      );
+
+      console.log("[SorobanService] add_rewards_from_aqua transaction built");
+
+      return {
+        success: true,
+        data: { transaction },
+        transactionHash: transaction.hash().toString("hex"),
+      };
+    } catch (error: any) {
+      console.error("[SorobanService] Error building add_rewards_from_aqua:", error);
+      return {
+        success: false,
+        error: error.message || "Failed to build add_rewards_from_aqua transaction",
       };
     }
   }
@@ -1847,9 +2100,9 @@ export class SorobanService {
           staked_balance: info.staked_balance
             ? (Number(info.staked_balance) / 10000000).toFixed(7)
             : "0",
-          last_claim_time: info.last_claim_time || 0,
+          last_claim_time: Number(info.last_claim_time) || 0,
           can_claim: info.can_claim || false,
-          claim_available_at: info.claim_available_at || 0,
+          claim_available_at: Number(info.claim_available_at) || 0,
         };
       }
 

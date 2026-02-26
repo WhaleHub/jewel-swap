@@ -30,6 +30,24 @@ export interface PolInfo {
   iceVotingPower: string;
 }
 
+export interface RewardStateInfo {
+  total_rewards_added: number;
+  total_rewards_claimed: number;
+  total_staked: number;
+  last_update_time: number;
+  reward_per_token_stored: number;
+}
+
+export interface LockEntry {
+  index: number;
+  blubAmount: string;
+  aquaAmount: string;
+  lockTimestamp: number;
+  unlockTime: number;
+  unlocked: boolean;
+  isBlubStake: boolean;
+}
+
 export interface StakingState {
   // Loading states
   isLoading: boolean;
@@ -44,6 +62,9 @@ export interface StakingState {
 
   // Global data
   globalStats: StakeStats | null;
+  rewardState: RewardStateInfo | null;
+  nextUnlockTime: number | null;
+  lockEntries: LockEntry[];
 
   // Transaction states
   lastTransaction: {
@@ -59,6 +80,34 @@ export interface StakingState {
   lastSyncTime: number | null;
 }
 
+const SECONDS_PER_YEAR = 365.25 * 24 * 60 * 60;
+
+export function calculateAPY(rewardState: RewardStateInfo | null): string {
+  if (
+    !rewardState ||
+    rewardState.total_staked <= 0 ||
+    rewardState.total_rewards_added <= 0 ||
+    rewardState.last_update_time <= 0
+  ) {
+    return "--";
+  }
+
+  // Snap to nearest 5 minutes to prevent per-second flickering
+  const now = Math.floor(Date.now() / 300000) * 300;
+  const elapsed = now - rewardState.last_update_time;
+
+  // Use a minimum of 7 days for annualization to prevent extreme values
+  // when rewards were just recently added via add_rewards()
+  const MIN_PERIOD = 7 * 24 * 3600;
+  const effectiveElapsed = Math.max(elapsed, MIN_PERIOD);
+
+  const annualizedRate =
+    (rewardState.total_rewards_added / rewardState.total_staked) /
+    (effectiveElapsed / SECONDS_PER_YEAR);
+
+  return (annualizedRate * 100).toFixed(2);
+}
+
 const initialState: StakingState = {
   isLoading: false,
   isStaking: false,
@@ -68,6 +117,9 @@ const initialState: StakingState = {
   userStats: null,
   polInfo: null,
   globalStats: null,
+  rewardState: null,
+  nextUnlockTime: null,
+  lockEntries: [],
   lastTransaction: null,
   error: null,
   syncStatus: "idle",
@@ -352,22 +404,30 @@ export const fetchComprehensiveStakingData = createAsyncThunk(
       const { sorobanService } = await import("../../services/soroban.service");
 
       // Fetch data using direct query methods (already formatted)
-      const [stakingInfo, polInfo, blubBalance] = await Promise.all([
+      const [stakingInfo, polInfo, blubBalance, rewardState, lockData] = await Promise.all([
         sorobanService.queryUserStakingInfo(userAddress),
         sorobanService.queryPolInfo(),
         sorobanService.queryBlubBalance(userAddress),
+        sorobanService.queryRewardState(),
+        sorobanService.queryUserLockEntries(userAddress),
       ]);
 
       console.log("✅ [stakingSlice] Comprehensive data fetched:", {
         stakingInfo,
         polInfo,
         blubBalance,
+        rewardState,
+        lockEntries: lockData.entries.length,
+        nextUnlockTime: lockData.nextUnlockTime,
       });
 
       return {
         stakingInfo,
         blubBalance,
         polInfo,
+        rewardState,
+        nextUnlockTime: lockData.nextUnlockTime,
+        lockEntries: lockData.entries,
       };
     } catch (error: any) {
       console.error(
@@ -652,6 +712,15 @@ const stakingSlice = createSlice({
             iceVotingPower: payload.polInfo.ice_voting_power_used || "0",
           };
         }
+
+        // Update reward state
+        if (payload.rewardState) {
+          state.rewardState = payload.rewardState;
+        }
+
+        // Update next unlock time and lock entries
+        state.nextUnlockTime = payload.nextUnlockTime ?? null;
+        state.lockEntries = payload.lockEntries || [];
 
         state.lastSyncTime = Date.now();
       })
