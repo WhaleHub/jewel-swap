@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { apiService } from "../../services/api.service";
+import { logOut } from "./userSlice";
 
 // Staking interfaces
 export interface LockInfo {
@@ -671,12 +672,29 @@ const stakingSlice = createSlice({
         state.error = action.error.message || "Failed to sync staking data";
       });
 
+    // Clear all staking data on wallet disconnect
+    builder.addCase(logOut, (state) => {
+      state.lockEntries = [];
+      state.userStats = null;
+      state.nextUnlockTime = null;
+      state.rewardState = null;
+      state.polInfo = null;
+      state.isLoading = false;
+      state.syncStatus = "idle";
+      state.error = null;
+    });
+
     // NEW: Fetch comprehensive staking data
     builder
       .addCase(fetchComprehensiveStakingData.pending, (state) => {
         state.isLoading = true;
         state.syncStatus = "syncing";
         state.error = null;
+        // Clear stale user data so the previous wallet's info never shows
+        // while new data is loading (important on disconnect → reconnect)
+        state.lockEntries = [];
+        state.userStats = null;
+        state.nextUnlockTime = null;
       })
       .addCase(fetchComprehensiveStakingData.fulfilled, (state, action) => {
         state.isLoading = false;
