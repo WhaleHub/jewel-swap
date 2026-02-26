@@ -857,9 +857,20 @@ function Yield() {
                 <div className="font-normal text-[#B1B3B8]">
                   Unstakeable:
                 </div>
-                <div className="font-medium">
-                  {`${poolAndClaimBalance.toFixed(2)} BLUB`}
-                </div>
+                {blubBalanceLoading ? (
+                  <TailSpin
+                    height="14"
+                    width="14"
+                    color="#B1B3B8"
+                    ariaLabel="loading"
+                    radius="1"
+                    visible={true}
+                  />
+                ) : (
+                  <div className="font-medium">
+                    {`${poolAndClaimBalance.toFixed(2)} BLUB`}
+                  </div>
+                )}
               </div>
               {(parseFloat(staking.userStats?.totalAmount || "0") > 0 || parseFloat(blubStakedBalance) > 0) && staking.lockEntries?.length > 0 && (
                 <div className="mt-2">

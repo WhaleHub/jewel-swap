@@ -1362,9 +1362,15 @@ export class SorobanService {
         unlocked: boolean;
         isBlubStake: boolean;
       }> = [];
-      let earliestUnlock: number | null = null;
+      let nextFutureUnlock: number | null = null;
+      const nowSec = Math.floor(Date.now() / 1000);
+
+      const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
       for (let i = 0; i < lockCount; i++) {
+        // Small delay between calls to avoid RPC 429 rate limits
+        if (i > 0) await delay(150);
+
         const lockTx = new TransactionBuilder(account, {
           fee: "100",
           networkPassphrase: this.getNetworkPassphrase(),
@@ -1379,7 +1385,14 @@ export class SorobanService {
           .setTimeout(30)
           .build();
 
-        const lockSim: any = await this.server.simulateTransaction(lockTx);
+        let lockSim: any;
+        try {
+          lockSim = await this.server.simulateTransaction(lockTx);
+        } catch (entryErr: any) {
+          console.warn(`⚠️ [SorobanService] Lock entry ${i} failed (skipping):`, entryErr?.message);
+          continue;
+        }
+
         if (lockSim.result?.retval) {
           const entry = scValToNative(lockSim.result.retval);
           const blubLocked = Number(entry.blub_locked || 0);
@@ -1395,15 +1408,16 @@ export class SorobanService {
             isBlubStake: !!entry.is_blub_stake,
           });
 
-          if (!entry.unlocked && blubLocked > 0) {
-            if (earliestUnlock === null || unlockTime < earliestUnlock) {
-              earliestUnlock = unlockTime;
+          // Track earliest FUTURE unlock (past unlocks are already actionable)
+          if (!entry.unlocked && blubLocked > 0 && unlockTime > nowSec) {
+            if (nextFutureUnlock === null || unlockTime < nextFutureUnlock) {
+              nextFutureUnlock = unlockTime;
             }
           }
         }
       }
 
-      return { entries, nextUnlockTime: earliestUnlock, cooldownSeconds: cooldown };
+      return { entries, nextUnlockTime: nextFutureUnlock, cooldownSeconds: cooldown };
     } catch (error: any) {
       console.error(
         "❌ [SorobanService] Failed to query user lock entries:",
