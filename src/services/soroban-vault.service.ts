@@ -51,7 +51,7 @@ export class SorobanVaultService {
   private networkPassphrase: string;
 
   constructor() {
-    const rpcUrl = process.env.REACT_APP_SOROBAN_RPC_URL || "https://soroban-rpc.stellar.org";
+    const rpcUrl = process.env.REACT_APP_SOROBAN_RPC_URL || "https://mainnet.sorobanrpc.com";
     const network = (process.env.REACT_APP_STELLAR_NETWORK || "PUBLIC").toLowerCase();
 
     this.server = new SorobanRpc.Server(rpcUrl);

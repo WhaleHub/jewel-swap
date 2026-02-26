@@ -8,3 +8,4 @@
   for = "/.well-known/stellar.toml"
   [headers.values]
     Content-Type = "text/plain"
+    Access-Control-Allow-Origin = "*"
