@@ -435,6 +435,8 @@ pub enum DataKey {
     // Compound tracking (v1.3.0)
     PoolCompoundStats(u32),           // Cumulative compound stats per pool
     UserDepositedLp(Address, u32),    // User's total deposited LP (excl. compound gains)
+    // Multisig / manager split (v1.4.0)
+    ManagerAddress,                  // Single-sig backend manager (blub-issuer-v2)
 }
 
 #[contracttype]
@@ -1698,16 +1700,14 @@ impl StakingRegistry {
     /// - Calculates and credits any pending LP rewards
     pub fn record_lp_deposit(
         env: Env,
-        admin: Address,
+        manager: Address,
         user: Address,
         pool_id: Bytes,
         amount_a: i128,
         amount_b: i128,
         tx_hash: Bytes,
     ) -> Result<(), Error> {
-        let cfg = Self::get_config(env.clone())?;
-        admin.require_auth();
-        if cfg.admin != admin { return Err(Error::Unauthorized); }
+        Self::require_manager_auth(&env, &manager)?;
         if amount_a < 0 || amount_b < 0 { return Err(Error::InvalidInput); }
 
         let now = env.ledger().timestamp();
@@ -1865,7 +1865,7 @@ impl StakingRegistry {
     /// - Emits batch reward calculation event
     pub fn record_reward_distribution(
         env: Env,
-        admin: Address,
+        manager: Address,
         kind: u32,
         pool_id: Bytes,
         total_reward: i128,
@@ -1873,9 +1873,7 @@ impl StakingRegistry {
         treasury_amount: i128,
         tx_hash: Bytes,
     ) -> Result<u32, Error> {
-        let cfg = Self::get_config(env.clone())?;
-        admin.require_auth();
-        if cfg.admin != admin { return Err(Error::Unauthorized); }
+        Self::require_manager_auth(&env, &manager)?;
         if total_reward < 0 || distributed_amount < 0 || treasury_amount < 0 { 
             return Err(Error::InvalidInput); 
         }
@@ -1955,16 +1953,14 @@ impl StakingRegistry {
     /// - Updates user's reward totals based on reward kind
     pub fn credit_user_reward(
         env: Env,
-        admin: Address,
+        manager: Address,
         kind: u32,
         user: Address,
         pool_id: Bytes,
         amount: i128,
         tx_hash: Bytes,
     ) -> Result<(), Error> {
-        let cfg = Self::get_config(env.clone())?;
-        admin.require_auth();
-        if cfg.admin != admin { return Err(Error::Unauthorized); }
+        Self::require_manager_auth(&env, &manager)?;
         if amount <= 0 { return Err(Error::InvalidInput); }
 
         let now = env.ledger().timestamp();
@@ -2010,16 +2006,11 @@ impl StakingRegistry {
     /// - Emits POL rewards claimed event
     pub fn record_pol_rewards(
         env: Env,
-        admin: Address,
+        manager: Address,
         reward_amount: i128,
         ice_voting_power: i128,
     ) -> Result<(), Error> {
-        let config = Self::get_config(env.clone())?;
-        admin.require_auth();
-        
-        if config.admin != admin {
-            return Err(Error::Unauthorized);
-        }
+        Self::require_manager_auth(&env, &manager)?;
 
         if reward_amount <= 0 {
             return Err(Error::InvalidInput);
@@ -2527,6 +2518,8 @@ impl StakingRegistry {
     /// - Reduces POL LP position tracking
     /// - Burns LP share tokens
     /// - Transfers withdrawn tokens to contract
+    /// Withdraws LP from the POL pool.
+    /// Protected by admin (multisig) — manager cannot drain LP principal.
     pub fn withdraw_from_pool(
         env: Env,
         admin: Address,
@@ -2536,8 +2529,11 @@ impl StakingRegistry {
     ) -> Result<(i128, i128), Error> {
         let config = Self::get_config(env.clone())?;
         admin.require_auth();
-        
-        if config.admin != admin {
+        let stored_admin = env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::AdminAddress)
+            .ok_or(Error::Unauthorized)?;
+        if stored_admin != admin {
             return Err(Error::Unauthorized);
         }
 
@@ -2546,14 +2542,14 @@ impl StakingRegistry {
         }
 
         let contract_address = env.current_contract_address();
-        
+
         use soroban_sdk::IntoVal;
-        
+
         // Prepare min_amounts vector
         let mut min_amounts = soroban_sdk::Vec::new(&env);
         min_amounts.push_back(min_aqua as u128);
         min_amounts.push_back(min_blub as u128);
-        
+
         // Call withdraw(user: address, share_amount: u128, min_amounts: vec<u128>) -> vec<u128>
         let result = env.try_invoke_contract::<soroban_sdk::Vec<u128>, soroban_sdk::Error>(
             &config.liquidity_contract,
@@ -2630,14 +2626,10 @@ impl StakingRegistry {
     /// - Updates last reward claim timestamp
     pub fn claim_pool_rewards(
         env: Env,
-        admin: Address,
+        manager: Address,
     ) -> Result<i128, Error> {
         let config = Self::get_config(env.clone())?;
-        admin.require_auth();
-        
-        if config.admin != admin {
-            return Err(Error::Unauthorized);
-        }
+        Self::require_manager_auth(&env, &manager)?;
 
         let contract_address = env.current_contract_address();
         
@@ -2739,13 +2731,12 @@ impl StakingRegistry {
     /// - Updates POL LP position tracking
     pub fn manual_deposit_pol(
         env: Env,
-        admin: Address,
+        manager: Address,
         aqua_amount: i128,
         blub_amount: i128,
     ) -> Result<(), Error> {
         let cfg = Self::get_config(env.clone())?;
-        admin.require_auth();
-        if cfg.admin != admin { return Err(Error::Unauthorized); }
+        Self::require_manager_auth(&env, &manager)?;
 
         if aqua_amount <= 0 || blub_amount <= 0 {
             return Err(Error::InvalidInput);
@@ -3041,7 +3032,89 @@ impl StakingRegistry {
         Ok(())
     }
 
+    /// Sets the manager address (admin-only).
+    ///
+    /// The manager is a single-sig backend wallet (e.g. blub-issuer-v2) that handles
+    /// routine backend operations: adding rewards, compounding, claiming POL rewards, etc.
+    /// The admin (multisig cold wallet) retains upgrade/config/pool authority.
+    ///
+    /// # Authorization
+    /// Requires admin authorization (via AdminAddress key).
+    pub fn set_manager(env: Env, admin: Address, new_manager: Address) -> Result<(), Error> {
+        admin.require_auth();
+        let stored_admin = env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::AdminAddress)
+            .ok_or(Error::Unauthorized)?;
+        if stored_admin != admin {
+            return Err(Error::Unauthorized);
+        }
+        env.storage().instance().set(&DataKey::ManagerAddress, &new_manager);
+        env.events().publish((symbol_short!("set_op"),), new_manager);
+        Ok(())
+    }
+
+    /// Returns the current manager address, or None if not yet set.
+    pub fn get_manager_address(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::ManagerAddress)
+    }
+
+    /// Migration from v1.2.0 to v1.4.0: sets ManagerAddress = current admin.
+    ///
+    /// After this migration:
+    /// 1. Transfer admin to the new multisig cold wallet via `set_admin` (or re-initialize).
+    /// 2. The existing blub-issuer-v2 will continue as manager unchanged.
+    ///
+    /// # Authorization
+    /// Requires current admin authorization.
+    pub fn migrate_v1_4_0(env: Env, admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+        let stored_admin = env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::AdminAddress)
+            .ok_or(Error::Unauthorized)?;
+        if stored_admin != admin {
+            return Err(Error::Unauthorized);
+        }
+        // Only set if not already configured — idempotent
+        if !env.storage().instance().has(&DataKey::ManagerAddress) {
+            env.storage().instance().set(&DataKey::ManagerAddress, &admin);
+        }
+        env.events().publish((symbol_short!("migrated"),), 10400u32);
+        Ok(())
+    }
+
     /// Returns the current config version.
+    /// Transfers admin role to a new address (e.g. multisig cold wallet).
+    ///
+    /// Updates both `AdminAddress` (upgrade key) and `Config.admin`.
+    /// After this call, the old admin has no special authority.
+    ///
+    /// # Authorization
+    /// Requires current admin authorization.
+    pub fn transfer_admin(env: Env, admin: Address, new_admin: Address) -> Result<(), Error> {
+        admin.require_auth();
+        let stored_admin = env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::AdminAddress)
+            .ok_or(Error::Unauthorized)?;
+        if stored_admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        // Update stable AdminAddress key
+        env.storage().instance().set(&DataKey::AdminAddress, &new_admin);
+
+        // Update Config.admin
+        if let Ok(mut cfg) = Self::get_config(env.clone()) {
+            cfg.admin = new_admin.clone();
+            env.storage().instance().set(&DataKey::Config, &cfg);
+        }
+
+        env.events().publish((symbol_short!("adm_xfer"),), new_admin);
+        Ok(())
+    }
+
     /// For old config: returns the old version number
     /// For new config: returns encoded version (10100 = v1.1.0)
     pub fn get_version(env: Env) -> Result<u32, Error> {
@@ -3463,6 +3536,33 @@ impl StakingRegistry {
             })
     }
 
+    /// Internal: Require manager authorization.
+    /// Falls back to admin if ManagerAddress is not yet set (pre-migration).
+    fn require_manager_auth(env: &Env, manager: &Address) -> Result<(), Error> {
+        manager.require_auth();
+        let stored = env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::ManagerAddress);
+        match stored {
+            Some(op) => {
+                if op != *manager {
+                    return Err(Error::Unauthorized);
+                }
+            }
+            None => {
+                // Pre-migration: fall back to admin check
+                let stored_admin = env.storage()
+                    .instance()
+                    .get::<DataKey, Address>(&DataKey::AdminAddress)
+                    .ok_or(Error::Unauthorized)?;
+                if stored_admin != *manager {
+                    return Err(Error::Unauthorized);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Internal: Get a user's reward state
     fn get_user_reward_state(env: &Env, user: &Address) -> UserRewardState {
         env.storage()
@@ -3565,13 +3665,9 @@ impl StakingRegistry {
     ///
     /// # Authorization
     /// Requires admin authorization
-    pub fn add_rewards(env: Env, admin: Address, amount: i128) -> Result<(), Error> {
-        admin.require_auth();
-
+    pub fn add_rewards(env: Env, manager: Address, amount: i128) -> Result<(), Error> {
         let config = Self::get_config(env.clone())?;
-        if config.admin != admin {
-            return Err(Error::Unauthorized);
-        }
+        Self::require_manager_auth(&env, &manager)?;
 
         if amount <= 0 {
             return Err(Error::InvalidInput);
@@ -3581,10 +3677,10 @@ impl StakingRegistry {
         let mut reward_state = Self::get_reward_state(&env);
         let now = env.ledger().timestamp();
 
-        // Transfer BLUB from admin to contract
+        // Transfer BLUB from manager to contract
         use soroban_sdk::token;
         let blub_client = token::Client::new(&env, &config.blub_token);
-        let transfer_result = blub_client.try_transfer(&admin, &contract_address, &amount);
+        let transfer_result = blub_client.try_transfer(&manager, &contract_address, &amount);
         if transfer_result.is_err() {
             return Err(Error::InsufficientBalance);
         }
@@ -3641,16 +3737,12 @@ impl StakingRegistry {
     /// * `Err(InsufficientBalance)` if AQUA transfer fails
     pub fn add_rewards_from_aqua(
         env: Env,
-        admin: Address,
+        manager: Address,
         aqua_amount: i128,
         blub_reward_amount: i128,
     ) -> Result<(), Error> {
-        admin.require_auth();
-
         let config = Self::get_config(env.clone())?;
-        if config.admin != admin {
-            return Err(Error::Unauthorized);
-        }
+        Self::require_manager_auth(&env, &manager)?;
 
         if aqua_amount <= 0 || blub_reward_amount <= 0 {
             return Err(Error::InvalidInput);
@@ -3660,17 +3752,17 @@ impl StakingRegistry {
         let mut reward_state = Self::get_reward_state(&env);
         let now = env.ledger().timestamp();
 
-        // Transfer AQUA from admin to contract
+        // Transfer AQUA from manager to contract
         use soroban_sdk::token;
         let aqua_client = token::Client::new(&env, &config.aqua_token);
-        let transfer_result = aqua_client.try_transfer(&admin, &contract_address, &aqua_amount);
+        let transfer_result = aqua_client.try_transfer(&manager, &contract_address, &aqua_amount);
         if transfer_result.is_err() {
             return Err(Error::InsufficientBalance);
         }
 
-        // Transfer BLUB from admin to contract (admin swaps AQUA→BLUB on AMM off-chain)
+        // Transfer BLUB from manager to contract (manager swaps AQUA→BLUB on AMM off-chain)
         let blub_client = token::Client::new(&env, &config.blub_token);
-        let blub_transfer_result = blub_client.try_transfer(&admin, &contract_address, &blub_reward_amount);
+        let blub_transfer_result = blub_client.try_transfer(&manager, &contract_address, &blub_reward_amount);
         if blub_transfer_result.is_err() {
             return Err(Error::InsufficientBalance);
         }
@@ -4024,9 +4116,9 @@ impl StakingRegistry {
     ///
     /// # Authorization
     /// Requires admin authorization
-    pub fn setup_ice_trustlines(env: Env) -> Result<(), Error> {
+    pub fn setup_ice_trustlines(env: Env, manager: Address) -> Result<(), Error> {
         let config = Self::get_config(env.clone())?;
-        config.admin.require_auth();
+        Self::require_manager_auth(&env, &manager)?;
 
         use soroban_sdk::token;
         let contract_address = env.current_contract_address();
@@ -4067,11 +4159,12 @@ impl StakingRegistry {
     /// Requires admin authorization
     pub fn authorize_ice_lock(
         env: Env,
+        manager: Address,
         aqua_amount: i128,
         duration_years: u64,
     ) -> Result<u64, Error> {
         let config = Self::get_config(env.clone())?;
-        config.admin.require_auth();
+        Self::require_manager_auth(&env, &manager)?;
 
         if aqua_amount <= 0 || duration_years == 0 || duration_years > 3 {
             return Err(Error::InvalidInput);
@@ -4123,9 +4216,9 @@ impl StakingRegistry {
     ///
     /// # Authorization
     /// Requires admin authorization
-    pub fn transfer_authorized_aqua(env: Env, lock_id: u64) -> Result<(), Error> {
-        let config = Self::get_config(env.clone())?;
-        config.admin.require_auth();
+    pub fn transfer_authorized_aqua(env: Env, manager: Address, lock_id: u64) -> Result<(), Error> {
+        let config = Self::get_config(env.clone())?; // needed for aqua_token address
+        Self::require_manager_auth(&env, &manager)?;
 
         let mut authorization: IceLockAuthorization = env
             .storage()
@@ -4154,7 +4247,7 @@ impl StakingRegistry {
 
         aqua_client.transfer(
             &contract_address,
-            &config.admin,
+            &manager,
             &authorization.aqua_amount,
         );
 
@@ -4184,9 +4277,9 @@ impl StakingRegistry {
     ///
     /// # Authorization
     /// Requires admin authorization
-    pub fn sync_all_ice_balances(env: Env) -> Result<(), Error> {
+    pub fn sync_all_ice_balances(env: Env, manager: Address) -> Result<(), Error> {
         let config = Self::get_config(env.clone())?;
-        config.admin.require_auth();
+        Self::require_manager_auth(&env, &manager)?;
 
         use soroban_sdk::token;
         let contract_address = env.current_contract_address();
@@ -4242,13 +4335,13 @@ impl StakingRegistry {
     /// Requires admin authorization
     pub fn add_pool(
         env: Env,
+        manager: Address,
         pool_address: Address,
         token_a: Address,
         token_b: Address,
         share_token: Address,
     ) -> Result<u32, Error> {
-        let config = Self::get_config(env.clone())?;
-        config.admin.require_auth();
+        Self::require_manager_auth(&env, &manager)?;
 
         let mut global_state: GlobalState = env
             .storage()
@@ -4754,9 +4847,9 @@ impl StakingRegistry {
     /// `admin_compound_deposit` to complete the compound cycle.
     ///
     /// Returns: (total_rewards, treasury_amount, compound_amount) — all in AQUA raw units.
-    pub fn claim_and_compound(env: Env, pool_id: u32) -> Result<(i128, i128, i128), Error> {
+    pub fn claim_and_compound(env: Env, manager: Address, pool_id: u32) -> Result<(i128, i128, i128), Error> {
         let config = Self::get_config(env.clone())?;
-        config.admin.require_auth();
+        Self::require_manager_auth(&env, &manager)?;
 
         let pool_info: PoolInfo = env
             .storage()
@@ -4799,9 +4892,9 @@ impl StakingRegistry {
             aqua_client.transfer(&contract_address, &config.vault_treasury, &(treasury_amount as i128));
         }
 
-        // STEP 4: Transfer 70% to admin wallet for off-chain swap + compound
+        // STEP 4: Transfer 70% to manager wallet for off-chain swap + compound
         if compound_amount > 0 {
-            aqua_client.transfer(&contract_address, &config.admin, &(compound_amount as i128));
+            aqua_client.transfer(&contract_address, &manager, &(compound_amount as i128));
         }
 
         env.events().publish(
@@ -4822,12 +4915,13 @@ impl StakingRegistry {
     /// * `amount_b` - Amount of token_b to deposit (from admin wallet)
     pub fn admin_compound_deposit(
         env: Env,
+        manager: Address,
         pool_id: u32,
         amount_a: i128,
         amount_b: i128,
     ) -> Result<i128, Error> {
         let config = Self::get_config(env.clone())?;
-        config.admin.require_auth();
+        Self::require_manager_auth(&env, &manager)?;
 
         let mut pool_info: PoolInfo = env
             .storage()

@@ -1021,7 +1021,7 @@ const handleAddTrustline = async () => {
                         <span className="text-[#00CC99]">
                           {staking.userStats?.activeAmount
                             ? parseFloat(
-                                staking.userStats?.activeAmount
+                                staking.userStats?.activeAmount ?? "0"
                               ).toFixed(2)
                             : "0.00"}{" "}
                           BLUB
