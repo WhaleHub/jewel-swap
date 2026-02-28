@@ -4367,34 +4367,52 @@ impl StakingRegistry {
         token_a_client.transfer(&user, &contract_address, &desired_a);
         token_b_client.transfer(&user, &contract_address, &desired_b);
 
-        // STEP 2: Query pool reserves to compute optimal deposit amounts.
+        // STEP 2: Query pool reserves and token order from Aquarius pool.
         let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
         let reserves = aquarius_pool.get_reserves();
 
-        let (deposit_a, deposit_b): (i128, i128) = if reserves.len() >= 2 {
-            let r_a = reserves.get(0).unwrap();
-            let r_b = reserves.get(1).unwrap();
+        // Determine Aquarius pool token ordering so reserves, auth entries, and
+        // deposit amounts all match what the pool expects.
+        // token_a_is_idx0 = true  → Aquarius token[0]=token_a, token[1]=token_b
+        // token_a_is_idx0 = false → Aquarius token[0]=token_b, token[1]=token_a
+        let pool_tokens_result = env.try_invoke_contract::<Vec<Address>, soroban_sdk::Error>(
+            &pool_info.pool_address,
+            &Symbol::new(&env, "get_tokens"),
+            ().into_val(&env),
+        );
+        let token_a_is_idx0 = match pool_tokens_result {
+            Ok(Ok(ref tokens)) if tokens.len() >= 2 => {
+                tokens.get(0).unwrap() == pool_info.token_a
+            }
+            _ => true, // fallback: assume aligned
+        };
 
-            if r_a > 0 && r_b > 0 {
-                // Pool has liquidity – calculate proportional amounts.
-                let optimal_b = (desired_a as u128)
-                    .checked_mul(r_b)
-                    .unwrap_or(0)
-                    .checked_div(r_a)
-                    .unwrap_or(0);
+        // Map reserves to token_a / token_b using Aquarius ordering.
+        let (r_a, r_b): (u128, u128) = if reserves.len() >= 2 {
+            let r0 = reserves.get(0).unwrap();
+            let r1 = reserves.get(1).unwrap();
+            if token_a_is_idx0 { (r0, r1) } else { (r1, r0) }
+        } else {
+            (0, 0)
+        };
 
-                if optimal_b <= desired_b as u128 {
-                    (desired_a, optimal_b as i128)
-                } else {
-                    let optimal_a = (desired_b as u128)
-                        .checked_mul(r_a)
-                        .unwrap_or(0)
-                        .checked_div(r_b)
-                        .unwrap_or(0);
-                    (optimal_a as i128, desired_b)
-                }
+        let (deposit_a, deposit_b): (i128, i128) = if r_a > 0 && r_b > 0 {
+            // Pool has liquidity – calculate proportional amounts.
+            let optimal_b = (desired_a as u128)
+                .checked_mul(r_b)
+                .unwrap_or(0)
+                .checked_div(r_a)
+                .unwrap_or(0);
+
+            if optimal_b <= desired_b as u128 {
+                (desired_a, optimal_b as i128)
             } else {
-                (desired_a, desired_b)
+                let optimal_a = (desired_b as u128)
+                    .checked_mul(r_a)
+                    .unwrap_or(0)
+                    .checked_div(r_b)
+                    .unwrap_or(0);
+                (optimal_a as i128, desired_b)
             }
         } else {
             (desired_a, desired_b)
@@ -4407,29 +4425,34 @@ impl StakingRegistry {
             return Err(Error::InvalidInput);
         }
 
-        // STEP 3: Authorize Aquarius pool to transfer tokens from this contract.
+        // STEP 3: Authorize token transfers in the order Aquarius will call them.
+        let (auth_token_0, auth_amount_0, auth_token_1, auth_amount_1) = if token_a_is_idx0 {
+            (pool_info.token_a.clone(), deposit_a, pool_info.token_b.clone(), deposit_b)
+        } else {
+            (pool_info.token_b.clone(), deposit_b, pool_info.token_a.clone(), deposit_a)
+        };
         let auth_entries = soroban_sdk::vec![
             &env,
             InvokerContractAuthEntry::Contract(SubContractInvocation {
                 context: ContractContext {
-                    contract: pool_info.token_a.clone(),
+                    contract: auth_token_0,
                     fn_name: Symbol::new(&env, "transfer"),
                     args: (
                         contract_address.clone(),
                         pool_info.pool_address.clone(),
-                        deposit_a,
+                        auth_amount_0,
                     ).into_val(&env),
                 },
                 sub_invocations: soroban_sdk::vec![&env],
             }),
             InvokerContractAuthEntry::Contract(SubContractInvocation {
                 context: ContractContext {
-                    contract: pool_info.token_b.clone(),
+                    contract: auth_token_1,
                     fn_name: Symbol::new(&env, "transfer"),
                     args: (
                         contract_address.clone(),
                         pool_info.pool_address.clone(),
-                        deposit_b,
+                        auth_amount_1,
                     ).into_val(&env),
                 },
                 sub_invocations: soroban_sdk::vec![&env],
@@ -4437,10 +4460,15 @@ impl StakingRegistry {
         ];
         env.authorize_as_current_contract(auth_entries);
 
-        // STEP 4: Deposit tokens to Aquarius pool
+        // STEP 4: Deposit tokens to Aquarius pool in Aquarius token order.
         let mut deposit_amounts = Vec::new(&env);
-        deposit_amounts.push_back(deposit_a as u128);
-        deposit_amounts.push_back(deposit_b as u128);
+        if token_a_is_idx0 {
+            deposit_amounts.push_back(deposit_a as u128);
+            deposit_amounts.push_back(deposit_b as u128);
+        } else {
+            deposit_amounts.push_back(deposit_b as u128);
+            deposit_amounts.push_back(deposit_a as u128);
+        }
 
         let (_actual_amounts, lp_shares_minted) = aquarius_pool.deposit(
             &contract_address,
@@ -4593,6 +4621,19 @@ impl StakingRegistry {
         // STEP 2: Authorize Aquarius pool to burn LP tokens from this contract
         let contract_address = env.current_contract_address();
 
+        // Determine Aquarius pool token ordering for min_amounts and withdrawn amounts.
+        let pool_tokens_result = env.try_invoke_contract::<Vec<Address>, soroban_sdk::Error>(
+            &pool_info.pool_address,
+            &Symbol::new(&env, "get_tokens"),
+            ().into_val(&env),
+        );
+        let token_a_is_idx0 = match pool_tokens_result {
+            Ok(Ok(ref tokens)) if tokens.len() >= 2 => {
+                tokens.get(0).unwrap() == pool_info.token_a
+            }
+            _ => true,
+        };
+
         // Note: Aquarius pool calls burn(from, amount), not transfer
         let auth_entries = soroban_sdk::vec![
             &env,
@@ -4613,9 +4654,15 @@ impl StakingRegistry {
         // STEP 3: Withdraw from Aquarius pool
         let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
 
+        // Build min_amounts in Aquarius token order.
         let mut min_amounts = Vec::new(&env);
-        min_amounts.push_back(min_a);
-        min_amounts.push_back(min_b);
+        if token_a_is_idx0 {
+            min_amounts.push_back(min_a);
+            min_amounts.push_back(min_b);
+        } else {
+            min_amounts.push_back(min_b); // token_b at Aquarius idx0
+            min_amounts.push_back(min_a); // token_a at Aquarius idx1
+        }
 
         let withdrawn_amounts = aquarius_pool.withdraw(
             &contract_address,
@@ -4623,13 +4670,21 @@ impl StakingRegistry {
             &min_amounts,
         );
 
-        // STEP 3: Transfer tokens to user
+        // STEP 4: Transfer tokens to user, mapping Aquarius indices back to token_a/token_b.
         use soroban_sdk::token;
         let token_a_client = token::Client::new(&env, &pool_info.token_a);
         let token_b_client = token::Client::new(&env, &pool_info.token_b);
 
-        let amount_a = withdrawn_amounts.get(0).unwrap_or(0);
-        let amount_b = withdrawn_amounts.get(1).unwrap_or(0);
+        let amount_a = if token_a_is_idx0 {
+            withdrawn_amounts.get(0).unwrap_or(0)
+        } else {
+            withdrawn_amounts.get(1).unwrap_or(0)
+        };
+        let amount_b = if token_a_is_idx0 {
+            withdrawn_amounts.get(1).unwrap_or(0)
+        } else {
+            withdrawn_amounts.get(0).unwrap_or(0)
+        };
 
         token_a_client.transfer(&contract_address, &user, &(amount_a as i128));
         token_b_client.transfer(&contract_address, &user, &(amount_b as i128));

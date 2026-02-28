@@ -437,7 +437,20 @@ export class SorobanVaultService {
 
   // Helper methods
 
+  // Known token contract addresses → symbol mapping to avoid RPC calls
+  private static readonly KNOWN_TOKEN_SYMBOLS: Record<string, string> = {
+    "CBMFDIRY5OKI4JJURXC4SMEQPWB4UUADIADJK4NA6CYBNOYK4W4TMLLF": "BLUB",
+    "CAUIKL3IYGMERDRUN6YSCLWVAKIFG5Q4YJHUKM4S4NJZQIA3BAS6OJPK": "AQUA",
+    "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA": "XLM",
+    "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75": "USDC",
+  };
+
   private async getTokenSymbol(tokenAddress: string): Promise<string> {
+    // Check hardcoded map first — avoids RPC calls for all known tokens
+    if (SorobanVaultService.KNOWN_TOKEN_SYMBOLS[tokenAddress]) {
+      return SorobanVaultService.KNOWN_TOKEN_SYMBOLS[tokenAddress];
+    }
+
     try {
       const contract = new Contract(tokenAddress);
       const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
@@ -787,10 +800,10 @@ export class TokenPriceService {
         return price;
       }
 
-      // For AQUA, use Stellar Expert
+      // For AQUA, use Stellar Expert asset endpoint (returns price in USD directly)
       if (tokenCode === "AQUA") {
         const response = await fetch(
-          "https://api.stellar.expert/explorer/public/asset/AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA/price"
+          "https://api.stellar.expert/explorer/public/asset/AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"
         );
         const data = await response.json();
         const price = data?.price || 0;
@@ -826,10 +839,10 @@ export class TokenPriceService {
     reserveA?: number,
     reserveB?: number
   ): Promise<number> {
-    let [priceA, priceB] = await Promise.all([
-      this.getTokenPrice(tokenACode),
-      this.getTokenPrice(tokenBCode),
-    ]);
+    // Sequential fetch: ensures derived prices (e.g. BLUB → AQUA → XLM) hit the cache
+    // on the second call rather than firing duplicate concurrent API requests that can fail.
+    let priceA = await this.getTokenPrice(tokenACode);
+    let priceB = await this.getTokenPrice(tokenBCode);
 
     // Derive missing price from pool reserves ratio
     if (priceA === 0 && priceB > 0 && reserveA && reserveB && reserveA > 0) {

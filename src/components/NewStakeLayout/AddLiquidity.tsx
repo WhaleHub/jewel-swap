@@ -107,7 +107,7 @@ function AddLiquidity() {
         try {
           const poolInfo = await vaultService.getPoolInfo(i);
           console.log(`[AddLiquidity] Pool ${i}:`, poolInfo);
-          if (poolInfo.active && poolInfo.token_a_code !== "UNKNOWN" && poolInfo.token_b_code !== "UNKNOWN") {
+          if (poolInfo.active) {
             loadedPools.push(poolInfo);
           }
         } catch (poolError) {
@@ -372,7 +372,8 @@ function AddLiquidity() {
         parseFloat(reserveB)
       );
 
-      if (totalUsdValue < 1) {
+      // Only enforce minimum if we successfully got a price (0 means price unavailable)
+      if (totalUsdValue > 0 && totalUsdValue < 1) {
         setIsDepositing(false);
         return toast.error(
           `Minimum deposit amount is $1. Your deposit is worth $${totalUsdValue.toFixed(2)}`

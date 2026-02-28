@@ -889,8 +889,8 @@ const handleAddTrustline = async () => {
               </div>
             )}
 
-            {/* Soroban/Legacy Toggle */}
-            <div className="mt-4 flex items-center justify-between p-3 bg-[#1A1E2E] rounded-[8px]">
+            {/* Soroban/Legacy Toggle — temporarily hidden */}
+            {false && <div className="mt-4 flex items-center justify-between p-3 bg-[#1A1E2E] rounded-[8px]">
               <div className="flex items-center space-x-2">
                 <div className="text-sm font-medium text-white">
                   {useSoroban ? "Soroban Staking" : "Legacy Staking"}
@@ -923,7 +923,7 @@ const handleAddTrustline = async () => {
                   )}
                 />
               </button> */}
-            </div>
+            </div>}
 
             <div className="flex items-center text-normal mt-6 space-x-1">
               <div className="font-normal text-[#B1B3B8]">Your balance:</div>
@@ -978,8 +978,8 @@ const handleAddTrustline = async () => {
             </Button>
 
 
-            {/* Display current staking stats for Soroban */}
-            {useSoroban && user.userWalletAddress && (
+            {/* Display current staking stats for Soroban — temporarily hidden */}
+            {false && useSoroban && user.userWalletAddress && (
               <div className="mt-4 p-3 bg-[#1A1E2E] rounded-[8px]">
                 <div className="text-sm font-medium text-white mb-2 flex items-center justify-between">
                   <div>
