@@ -1252,7 +1252,7 @@ const handleAddTrustline = async () => {
                   }
                 />
               </div>
-              <div className="text-xl font-normal text-[#00CC99]">
+              <div className="text-xl font-normal">
                 {staking.isLoading ? "..." : (
                   staking.rewardState?.total_staked != null
                     ? `${Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB`
