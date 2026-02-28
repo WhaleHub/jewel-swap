@@ -1239,6 +1239,28 @@ const handleAddTrustline = async () => {
               </div>
             </div>
 
+            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
+              <div className="text-sm font-normal text-white flex items-center space-x-1">
+                <span>Total Staked</span>
+                <InformationCircleIcon
+                  className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      "Total BLUB currently staked across all users. A larger pool means your share of rewards is smaller, but it reflects broader protocol adoption.",
+                      "Total Staked"
+                    )
+                  }
+                />
+              </div>
+              <div className="text-xl font-normal text-[#00CC99]">
+                {staking.isLoading ? "..." : (
+                  staking.rewardState?.total_staked != null
+                    ? `${Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB`
+                    : "--"
+                )}
+              </div>
+            </div>
+
             {rewardInfo && rewardInfo.last_claim_time > 0 && !rewardInfo.can_claim && (
               <div className="flex items-center text-sm mt-4 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">
