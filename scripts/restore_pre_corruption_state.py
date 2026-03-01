@@ -286,29 +286,49 @@ elif PHASE == "phase2b":
 # ════════════════════════════════════════════════════════════════════════════
 elif PHASE == "phase2c":
     print("=" * 70)
-    print("PHASE 2c: update_sac_admin → staking contract (restore SAC admin)")
+    print("PHASE 2c: BLUB SAC set_admin → staking contract (blub-issuer-v2 direct call)")
     print("=" * 70)
     print(f"  new BLUB SAC admin: {STAKING_CONTRACT} (staking contract)")
+    print(f"  called by: {MANAGER_ACCOUNT} (blub-issuer-v2, current SAC admin)")
     print()
 
-    kp = load_multisig_key()
+    # blub-issuer-v2 is the current BLUB SAC admin (after Phase 2a).
+    # Call set_admin directly on the SAC — no need to go through the staking contract.
+    kp = load_manager_key()
     hf = invoke_fn(
-        STAKING_CONTRACT,
-        "update_sac_admin",
-        [
-            account_scval(MULTISIG_ADMIN),
-            contract_scval(STAKING_CONTRACT),
-        ],
+        BLUB_SAC_CONTRACT,
+        "set_admin",
+        [contract_scval(STAKING_CONTRACT)],
     )
-    xdr_str = build_sign_and_copy(MULTISIG_ADMIN, kp, hf)
-    link = "https://lab.stellar.org/transaction/sign?network=mainnet&xdr=" + urllib.parse.quote(xdr_str)
+
+    server = SorobanServer(RPC_URL)
+    account = server.load_account(MANAGER_ACCOUNT)
+    tx = (
+        TransactionBuilder(account, network_passphrase=NETWORK_PASSPHRASE, base_fee=MAX_FEE)
+        .append_operation(InvokeHostFunction(host_function=hf, auth=[]))
+        .set_timeout(300)
+        .build()
+    )
+    print("Simulating...")
+    try:
+        tx = server.prepare_transaction(tx)
+        print("Simulation OK.")
+    except Exception as e:
+        print(f"Simulation failed: {e}")
+        try:
+            raw = server.simulate_transaction(tx)
+            print(f"Raw sim error: {getattr(raw, 'error', raw)}")
+        except Exception as e2:
+            print(f"Raw sim also failed: {e2}")
+        sys.exit(1)
+    tx.sign(kp)
+    xdr_str = tx.to_xdr()
+    subprocess.run(["pbcopy"], input=xdr_str.encode(), check=True)
     print()
-    print("✅ XDR in clipboard — paste at https://lab.stellar.org/transaction/sign?network=mainnet")
+    print("✅ XDR in clipboard — submit directly (no co-founder needed):")
+    print('  stellar tx send --network mainnet "<paste XDR here>"')
     print()
-    print("Co-founder signing link:")
-    print(f"  {link}")
-    print()
-    print("After co-founder signs and tx confirms, restoration is COMPLETE.")
+    print("After tx confirms, restoration is COMPLETE.")
     print()
     print("Verify final state:")
     print("  python3 scripts/get_pre_corruption_state.py")
