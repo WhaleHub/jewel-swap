@@ -79,6 +79,13 @@ const createWalletConnectKit = () => {
 // Global kit instance - will be recreated when needed
 export let kit = createWalletConnectKit();
 
+// Call this when the WC session is stale/dropped — creates a fresh kit
+// that re-reads any surviving session from localStorage
+export const reconnectWalletConnect = (): StellarWalletsKit => {
+  kit = createWalletConnectKit();
+  return kit;
+};
+
 const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);

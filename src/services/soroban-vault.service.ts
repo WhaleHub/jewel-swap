@@ -17,7 +17,7 @@ import {
   LobstrModule,
 } from "@creit.tech/stellar-wallets-kit";
 import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
-import { kit as walletConnectKit } from "../components/Navbar";
+import { kit as walletConnectKit, reconnectWalletConnect } from "../components/Navbar";
 
 export interface VaultPoolInfo {
   pool_id: number;
@@ -45,18 +45,35 @@ export interface VaultUserPosition {
   percentage: string;
 }
 
+// Detect stale/dropped WalletConnect session errors
+const isWCConnectionError = (e: any): boolean => {
+  const msg = String(e?.message || e).toLowerCase();
+  return (
+    msg.includes("connection key") ||
+    msg.includes("session") ||
+    msg.includes("not connected") ||
+    msg.includes("disconnected") ||
+    msg.includes("no matching key")
+  );
+};
+
 export class SorobanVaultService {
-  private server: SorobanRpc.Server;
+  private server: SorobanRpc.Server;      // reads: getAccount, simulate, getTransaction
+  private sendServer: SorobanRpc.Server;  // writes: sendTransaction only (gateway FM)
   private stakingContractId: string;
   private networkPassphrase: string;
 
   constructor() {
-    const rpcUrl = process.env.REACT_APP_SOROBAN_RPC_URL || "https://mainnet.sorobanrpc.com";
     const network = (process.env.REACT_APP_STELLAR_NETWORK || "PUBLIC").toLowerCase();
 
-    this.server = new SorobanRpc.Server(rpcUrl);
+    // Read RPC: reliable for simulation and tx polling
+    const readRpc = process.env.REACT_APP_SOROBAN_RPC_URL || "https://mainnet.sorobanrpc.com";
+    // Send RPC: gateway FM handles complex tx submission better
+    const sendRpc = process.env.REACT_APP_VAULT_RPC_URL || "https://soroban-rpc.mainnet.stellar.gateway.fm";
+
+    this.server = new SorobanRpc.Server(readRpc);
+    this.sendServer = new SorobanRpc.Server(sendRpc);
     this.stakingContractId = process.env.REACT_APP_STAKING_CONTRACT_ID || "";
-    // Accept "public", "PUBLIC", "mainnet" as mainnet
     this.networkPassphrase = (network === "public" || network === "mainnet")
       ? Networks.PUBLIC
       : Networks.TESTNET;
@@ -231,9 +248,10 @@ export class SorobanVaultService {
 
       const userScVal = nativeToScVal(userAddress, { type: "address" });
       const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
-      const desiredAScVal = nativeToScVal(Math.floor(parseFloat(desiredA) * 1e7), { type: "i128" });
-      const desiredBScVal = nativeToScVal(Math.floor(parseFloat(desiredB) * 1e7), { type: "i128" });
-      const minSharesScVal = nativeToScVal(Math.floor(parseFloat(minShares) * 1e7), { type: "u128" });
+      // Use BigInt to guarantee i128/u128 ScVal encoding — plain Number falls back to i32 for small values ("bad union switch 4")
+      const desiredAScVal = nativeToScVal(BigInt(Math.round(parseFloat(desiredA) * 1e7)), { type: "i128" });
+      const desiredBScVal = nativeToScVal(BigInt(Math.round(parseFloat(desiredB) * 1e7)), { type: "i128" });
+      const minSharesScVal = nativeToScVal(BigInt(Math.round(parseFloat(minShares) * 1e7)), { type: "u128" });
 
       let tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
@@ -262,24 +280,35 @@ export class SorobanVaultService {
       // Prepare transaction with auth
       tx = SorobanRpc.assembleTransaction(tx, simulated).build();
 
-      // Sign transaction
+      // Sign transaction — with WalletConnect reconnect retry on stale session
       const txXdr = tx.toXDR();
-      const { signedTxXdr } = await signKit.signTransaction(txXdr, {
-        address: userAddress,
-        networkPassphrase: this.networkPassphrase,
-      });
+      const signOpts = { address: userAddress, networkPassphrase: this.networkPassphrase };
+      let signedTxXdr: string;
+      try {
+        ({ signedTxXdr } = await signKit.signTransaction(txXdr, signOpts));
+      } catch (signErr: any) {
+        const isWC = walletName === WALLET_CONNECT_ID || walletName === ("wallet_connect" as any);
+        if (isWC && isWCConnectionError(signErr)) {
+          console.warn("[Vault] WC session stale, reconnecting...", signErr.message);
+          signKit = reconnectWalletConnect();
+          await signKit.setWallet(WALLET_CONNECT_ID);
+          ({ signedTxXdr } = await signKit.signTransaction(txXdr, signOpts));
+        } else {
+          throw signErr;
+        }
+      }
 
-      // Submit transaction
+      // Submit via gateway FM (better for complex txs), poll via read RPC
       const signedTx = TransactionBuilder.fromXDR(signedTxXdr, this.networkPassphrase);
       console.log("[Vault] Submitting signed transaction...");
-      const sendResponse = await this.server.sendTransaction(signedTx as any);
+      const sendResponse = await this.sendServer.sendTransaction(signedTx as any);
       console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash);
 
       if (sendResponse.status === "PENDING") {
-        // Wait for confirmation
+        // Poll read RPC — more reliable for getTransaction than gateway FM
         let getResponse = await this.server.getTransaction(sendResponse.hash);
         let attempts = 0;
-        const maxAttempts = 30;
+        const maxAttempts = 60; // 60s — ledger close ~5s, allow extra time
 
         while (getResponse.status === "NOT_FOUND" && attempts < maxAttempts) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -290,21 +319,19 @@ export class SorobanVaultService {
         console.log("[Vault] Final status:", getResponse.status);
 
         if (getResponse.status === "SUCCESS") {
-          return {
-            success: true,
-            transactionHash: sendResponse.hash,
-          };
+          return { success: true, transactionHash: sendResponse.hash };
         } else if (getResponse.status === "FAILED") {
-          const errorResult = (getResponse as any).resultXdr;
-          console.error("[Vault] Transaction failed:", errorResult);
+          console.error("[Vault] Transaction failed:", (getResponse as any).resultXdr);
           throw new Error("Transaction failed on-chain");
+        } else {
+          throw new Error(`Transaction confirmation timed out. Hash: ${sendResponse.hash}`);
         }
       } else if (sendResponse.status === "ERROR") {
         console.error("[Vault] Send error:", (sendResponse as any).errorResult);
         throw new Error("Transaction send error");
+      } else {
+        throw new Error(`Unexpected send status: ${sendResponse.status}`);
       }
-
-      throw new Error(`Transaction failed with status: ${sendResponse.status}`);
     } catch (error: any) {
       console.error("[VaultDeposit] Error:", error);
       return {
@@ -353,8 +380,9 @@ export class SorobanVaultService {
       const userScVal = nativeToScVal(userAddress, { type: "address" });
       const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
       const sharePercentScVal = nativeToScVal(sharePercent, { type: "u32" });
-      const minAScVal = nativeToScVal(Math.floor(parseFloat(minA) * 1e7), { type: "u128" });
-      const minBScVal = nativeToScVal(Math.floor(parseFloat(minB) * 1e7), { type: "u128" });
+      // Use BigInt to guarantee u128 ScVal encoding
+      const minAScVal = nativeToScVal(BigInt(Math.round(parseFloat(minA) * 1e7)), { type: "u128" });
+      const minBScVal = nativeToScVal(BigInt(Math.round(parseFloat(minB) * 1e7)), { type: "u128" });
 
       let tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
@@ -383,24 +411,34 @@ export class SorobanVaultService {
       // Prepare transaction with auth
       tx = SorobanRpc.assembleTransaction(tx, simulated).build();
 
-      // Sign transaction
+      // Sign transaction — with WalletConnect reconnect retry on stale session
       const txXdr = tx.toXDR();
-      const { signedTxXdr } = await signKit.signTransaction(txXdr, {
-        address: userAddress,
-        networkPassphrase: this.networkPassphrase,
-      });
+      const signOpts = { address: userAddress, networkPassphrase: this.networkPassphrase };
+      let signedTxXdr: string;
+      try {
+        ({ signedTxXdr } = await signKit.signTransaction(txXdr, signOpts));
+      } catch (signErr: any) {
+        const isWC = walletName === WALLET_CONNECT_ID || walletName === ("wallet_connect" as any);
+        if (isWC && isWCConnectionError(signErr)) {
+          console.warn("[Vault] WC session stale, reconnecting...", signErr.message);
+          signKit = reconnectWalletConnect();
+          await signKit.setWallet(WALLET_CONNECT_ID);
+          ({ signedTxXdr } = await signKit.signTransaction(txXdr, signOpts));
+        } else {
+          throw signErr;
+        }
+      }
 
-      // Submit transaction
+      // Submit via gateway FM, poll via read RPC
       const signedTx = TransactionBuilder.fromXDR(signedTxXdr, this.networkPassphrase);
       console.log("[Vault] Submitting signed transaction...");
-      const sendResponse = await this.server.sendTransaction(signedTx as any);
+      const sendResponse = await this.sendServer.sendTransaction(signedTx as any);
       console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash);
 
       if (sendResponse.status === "PENDING") {
-        // Wait for confirmation
         let getResponse = await this.server.getTransaction(sendResponse.hash);
         let attempts = 0;
-        const maxAttempts = 30;
+        const maxAttempts = 60;
 
         while (getResponse.status === "NOT_FOUND" && attempts < maxAttempts) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -411,21 +449,19 @@ export class SorobanVaultService {
         console.log("[Vault] Final status:", getResponse.status);
 
         if (getResponse.status === "SUCCESS") {
-          return {
-            success: true,
-            transactionHash: sendResponse.hash,
-          };
+          return { success: true, transactionHash: sendResponse.hash };
         } else if (getResponse.status === "FAILED") {
-          const errorResult = (getResponse as any).resultXdr;
-          console.error("[Vault] Transaction failed:", errorResult);
+          console.error("[Vault] Transaction failed:", (getResponse as any).resultXdr);
           throw new Error("Transaction failed on-chain");
+        } else {
+          throw new Error(`Transaction confirmation timed out. Hash: ${sendResponse.hash}`);
         }
       } else if (sendResponse.status === "ERROR") {
         console.error("[Vault] Send error:", (sendResponse as any).errorResult);
         throw new Error("Transaction send error");
+      } else {
+        throw new Error(`Unexpected send status: ${sendResponse.status}`);
       }
-
-      throw new Error(`Transaction failed with status: ${sendResponse.status}`);
     } catch (error: any) {
       console.error("Vault withdraw error:", error);
       return {
@@ -493,29 +529,42 @@ export class SorobanVaultService {
 
   /**
    * Fetch pool APY from Aquarius public API and compute compound APY.
-   * @param poolHash Aquarius pool hash (32-byte hex string)
+   * @param poolAddress Aquarius pool contract address (C...)
+   * API: https://amm-api.aqua.network/pools/{address}/
+   * APY fields are decimal fractions: total_apy=0.9241 means 92.41%
    */
-  async getAquariusPoolApy(poolHash: string): Promise<{ poolApy: string; compoundApy: string }> {
+  async getAquariusPoolApy(poolAddress: string): Promise<{ poolApy: string; compoundApy: string; totalShare?: string }> {
     try {
-      const res = await fetch(`https://amm-api.aquarius.network/api/v1/pools/${poolHash}/`);
+      const res = await fetch(`https://amm-api.aqua.network/pools/${poolAddress}/`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      // Aquarius API returns APY as a percentage string under various keys
-      const rawApy = data.apy ?? data.rewards_apy ?? data.total_apy ?? data.pool_apy;
-      if (rawApy == null) return { poolApy: "--", compoundApy: "--" };
+      // total_apy = fee APY + AQUA rewards APY (decimal: 0.924 = 92.4%)
+      const rawApy = data.total_apy ?? data.rewards_apy ?? data.apy;
 
-      const baseApy = parseFloat(rawApy);
-      if (isNaN(baseApy)) return { poolApy: "--", compoundApy: "--" };
+      // total_share from API is authoritative for LP supply (avoids inflated on-chain values)
+      let totalShare: string | undefined;
+      if (data.total_share != null) {
+        const ts = Number(data.total_share);
+        if (!isNaN(ts) && ts > 0) {
+          totalShare = (ts / 1e7).toFixed(7);
+        }
+      }
+
+      if (rawApy == null) return { poolApy: "--", compoundApy: "--", totalShare };
+
+      const apyDecimal = parseFloat(rawApy);
+      if (isNaN(apyDecimal)) return { poolApy: "--", compoundApy: "--", totalShare };
 
       // Compound APY: 48 auto-compounds per day × 365 = 17 520 per year
+      // apyDecimal is already the annual rate (e.g. 0.924 for 92.4%)
       const n = 48 * 365;
-      const r = baseApy / 100;
-      const compoundApy = (Math.pow(1 + r / n, n) - 1) * 100;
+      const compoundApy = (Math.pow(1 + apyDecimal / n, n) - 1) * 100;
 
       return {
-        poolApy: baseApy.toFixed(2),
+        poolApy: (apyDecimal * 100).toFixed(2),
         compoundApy: compoundApy.toFixed(2),
+        totalShare,
       };
     } catch (error) {
       console.warn("Failed to fetch Aquarius pool APY:", error);
