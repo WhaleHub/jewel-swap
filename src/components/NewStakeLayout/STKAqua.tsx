@@ -1209,7 +1209,7 @@ const handleAddTrustline = async () => {
                 />
               </div>
               <div className="text-xl font-normal text-[#00CC99]">
-                16802 BLUB
+                {staking.isLoading ? "..." : (staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
               </div>
             </div>
 
@@ -1272,7 +1272,7 @@ const handleAddTrustline = async () => {
               </div>
             )}
 
-            {/* <Button
+            <Button
               className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleClaimRewards}
               disabled={claimingRewards || parseFloat(pendingRewards) <= 0 || (rewardInfo && !rewardInfo.can_claim && rewardInfo.last_claim_time > 0)}
@@ -1294,7 +1294,7 @@ const handleAddTrustline = async () => {
                   />
                 </div>
               )}
-            </Button> */}
+            </Button>
           </div>
         </div>
       </div>

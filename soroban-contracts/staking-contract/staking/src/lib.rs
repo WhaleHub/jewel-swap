@@ -3726,6 +3726,67 @@ impl StakingRegistry {
         Ok(())
     }
 
+    /// Emergency: drain incorrectly added BLUB and reset reward accumulator.
+    ///
+    /// Call this when `add_rewards` was accidentally called with a bad amount
+    /// (e.g. the BLUB issuer's sentinel balance i64::MAX). The function:
+    ///   1. Transfers all BLUB currently held by the contract back to `admin`.
+    ///   2. Resets `reward_per_token_stored` to `correct_reward_per_token`.
+    ///   3. Resets `total_rewards_added` to `correct_total_rewards_added`.
+    ///
+    /// Per-user states (reward_per_token_paid, rewards_earned) are NOT modified.
+    /// Users who had already checkpointed against the corrupted accumulator will
+    /// see 0 pending rewards until new legitimate rewards are added (safe outcome).
+    ///
+    /// # Authorization
+    /// Requires admin (multisig) auth.
+    pub fn admin_emergency_reset_rewards(
+        env: Env,
+        admin: Address,
+        correct_reward_per_token: i128,
+        correct_total_rewards_added: i128,
+    ) -> Result<i128, Error> {
+        admin.require_auth();
+        let stored_admin = env
+            .storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::AdminAddress)
+            .ok_or(Error::Unauthorized)?;
+        if stored_admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let config = Self::get_config(env.clone())?;
+        let contract_address = env.current_contract_address();
+
+        use soroban_sdk::token;
+        let blub_client = token::Client::new(&env, &config.blub_token);
+        let blub_balance = blub_client.balance(&contract_address);
+
+        // Burn BLUB directly from the contract — no trustline required on any account.
+        // The contract self-authorizes the burn since it is the token holder.
+        if blub_balance > 0 {
+            blub_client.burn(&contract_address, &blub_balance);
+        }
+
+        // Reset the global reward accumulator to the correct pre-corruption values
+        let mut reward_state = Self::get_reward_state(&env);
+        reward_state.reward_per_token_stored = correct_reward_per_token;
+        reward_state.total_rewards_added = correct_total_rewards_added;
+        reward_state.last_update_time = env.ledger().timestamp();
+
+        env.storage()
+            .instance()
+            .set(&DataKey::RewardStateV2, &reward_state);
+
+        env.events().publish(
+            (symbol_short!("emrg_rst"),),
+            blub_balance,
+        );
+
+        Ok(blub_balance)
+    }
+
     /// Accepts AQUA protocol revenue and mints equivalent BLUB as staker rewards.
     ///
     /// The admin specifies both the AQUA amount (protocol revenue collected) and

@@ -1275,8 +1275,13 @@ export class SorobanService {
 
       if (simulation.result?.retval) {
         const raw = scValToNative(simulation.result.retval);
+        // Offset preserves the pre-emergency-reset total_rewards_added value.
+        // After the 2026-03-01 emergency reset the on-chain counter was zeroed;
+        // this constant restores the last legitimate accumulated total so the
+        // display continues from where it left off rather than restarting at 0.
+        const REWARDS_ADDED_BASELINE = 56833; // BLUB distributed before 2026-03-01 emergency reset
         const result = {
-          total_rewards_added: Number(raw.total_rewards_added) / 10000000,
+          total_rewards_added: REWARDS_ADDED_BASELINE + Number(raw.total_rewards_added) / 10000000,
           total_rewards_claimed: Number(raw.total_rewards_claimed) / 10000000,
           total_staked: Number(raw.total_staked) / 10000000,
           last_update_time: Number(raw.last_update_time),
@@ -2092,7 +2097,7 @@ export class SorobanService {
 
         return {
           pending_rewards: info.pending_rewards
-            ? (Number(info.pending_rewards) / 10000000).toFixed(7)
+            ? Math.max(0, Number(info.pending_rewards) / 10000000).toFixed(7)
             : "0",
           total_claimed: info.total_claimed
             ? (Number(info.total_claimed) / 10000000).toFixed(7)
