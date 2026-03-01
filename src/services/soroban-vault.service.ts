@@ -492,9 +492,48 @@ export class SorobanVaultService {
   }
 
   /**
-   * Get pool reserves (token amounts in the pool) and total LP supply
+   * Fetch pool APY from Aquarius public API and compute compound APY.
+   * @param poolHash Aquarius pool hash (32-byte hex string)
    */
-  async getPoolReserves(poolAddress: string, lpTokenAddress: string): Promise<{
+  async getAquariusPoolApy(poolHash: string): Promise<{ poolApy: string; compoundApy: string }> {
+    try {
+      const res = await fetch(`https://amm-api.aquarius.network/api/v1/pools/${poolHash}/`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      // Aquarius API returns APY as a percentage string under various keys
+      const rawApy = data.apy ?? data.rewards_apy ?? data.total_apy ?? data.pool_apy;
+      if (rawApy == null) return { poolApy: "--", compoundApy: "--" };
+
+      const baseApy = parseFloat(rawApy);
+      if (isNaN(baseApy)) return { poolApy: "--", compoundApy: "--" };
+
+      // Compound APY: 48 auto-compounds per day × 365 = 17 520 per year
+      const n = 48 * 365;
+      const r = baseApy / 100;
+      const compoundApy = (Math.pow(1 + r / n, n) - 1) * 100;
+
+      return {
+        poolApy: baseApy.toFixed(2),
+        compoundApy: compoundApy.toFixed(2),
+      };
+    } catch (error) {
+      console.warn("Failed to fetch Aquarius pool APY:", error);
+      return { poolApy: "--", compoundApy: "--" };
+    }
+  }
+
+  /**
+   * Get pool reserves (token amounts in the pool) and total LP supply.
+   * tokenA / tokenB are the pool's token_a and token_b contract addresses;
+   * they are used to correct for Aquarius's internal alphabetical token ordering.
+   */
+  async getPoolReserves(
+    poolAddress: string,
+    lpTokenAddress: string,
+    tokenA?: string,
+    tokenB?: string,
+  ): Promise<{
     reserveA: string;
     reserveB: string;
     totalLpSupply: string;
@@ -541,8 +580,18 @@ export class SorobanVaultService {
       if (SorobanRpc.Api.isSimulationSuccess(reservesSim)) {
         const result = reservesSim.result?.retval;
         const reserves = result ? scValToNative(result) : [0, 0];
-        reserveA = (Number(reserves[0] || 0) / 1e7).toFixed(7);
-        reserveB = (Number(reserves[1] || 0) / 1e7).toFixed(7);
+        const raw0 = Number(reserves[0] || 0);
+        const raw1 = Number(reserves[1] || 0);
+        // Aquarius stores tokens in alphabetical order by contract address.
+        // If pool's tokenA comes after tokenB alphabetically, Aquarius has
+        // [tokenB, tokenA] internally → swap so reserveA = tokenA's reserve.
+        if (tokenA && tokenB && tokenA > tokenB) {
+          reserveA = (raw1 / 1e7).toFixed(7);
+          reserveB = (raw0 / 1e7).toFixed(7);
+        } else {
+          reserveA = (raw0 / 1e7).toFixed(7);
+          reserveB = (raw1 / 1e7).toFixed(7);
+        }
       }
 
       // Try get_total_shares from pool

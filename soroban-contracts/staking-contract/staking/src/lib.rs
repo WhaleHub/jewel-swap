@@ -1089,11 +1089,19 @@ impl StakingRegistry {
         // Track as pending instead of sending to ICE contract
         global_state.pending_aqua_for_ice = global_state.pending_aqua_for_ice.saturating_add(ice_aqua);
 
-        // ===== SEND 10% AQUA + 0.1x BLUB TO ADMIN WALLET =====
-        // Backend will deposit these to AQUA/BLUB pool to get ICE boost
+        // ===== SEND 10% AQUA + 0.1x BLUB TO MANAGER WALLET =====
+        // Manager (blub-issuer-v2) will deposit these to AQUA/BLUB pool to get ICE boost.
+        // NOTE: Send to manager (single-sig backend), NOT config.admin (multisig cold wallet),
+        // so the backend can auto-deposit without requiring 2-of-3 signatures.
         if pol_aqua > 0 && blub_to_lp > 0 {
-            // Transfer AQUA to admin wallet
-            let transfer_aqua_result = aqua_client.try_transfer(&contract_address, &config.admin, &pol_aqua);
+            // Resolve manager address (falls back to admin if ManagerAddress not set)
+            let pol_recipient = env.storage()
+                .instance()
+                .get::<DataKey, Address>(&DataKey::ManagerAddress)
+                .unwrap_or_else(|| config.admin.clone());
+
+            // Transfer AQUA to manager wallet
+            let transfer_aqua_result = aqua_client.try_transfer(&contract_address, &pol_recipient, &pol_aqua);
             if transfer_aqua_result.is_err() {
                 global_state.locked = false;
                 env.storage().instance().set(&DataKey::GlobalState, &global_state);
@@ -1104,9 +1112,9 @@ impl StakingRegistry {
                 return Err(Error::InsufficientBalance);
             }
 
-            // Transfer BLUB to admin wallet
+            // Transfer BLUB to manager wallet
             let blub_client = token::Client::new(&env, &config.blub_token);
-            let transfer_blub_result = blub_client.try_transfer(&contract_address, &config.admin, &blub_to_lp);
+            let transfer_blub_result = blub_client.try_transfer(&contract_address, &pol_recipient, &blub_to_lp);
             if transfer_blub_result.is_err() {
                 global_state.locked = false;
                 env.storage().instance().set(&DataKey::GlobalState, &global_state);

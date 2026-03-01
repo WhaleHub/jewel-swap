@@ -71,6 +71,10 @@ function AddLiquidity() {
 
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
 
+  // Pool APY from Aquarius
+  const [poolApy, setPoolApy] = useState<string>("--");
+  const [compoundApy, setCompoundApy] = useState<string>("--");
+
   // Slippage tolerance in percentage (e.g., 0.5 = 0.5%)
   const [slippageTolerance, setSlippageTolerance] = useState<number>(0.5);
   const [showSlippageSettings, setShowSlippageSettings] = useState<boolean>(false);
@@ -176,7 +180,12 @@ function AddLiquidity() {
 
   const loadPoolReserves = useCallback(async (pool: PoolInfo) => {
     try {
-      const data = await vaultService.getPoolReserves(pool.pool_address, pool.share_token);
+      const data = await vaultService.getPoolReserves(
+        pool.pool_address,
+        pool.share_token,
+        pool.token_a,
+        pool.token_b,
+      );
       setReserveA(data.reserveA);
       setReserveB(data.reserveB);
       setTotalLpSupply(data.totalLpSupply);
@@ -186,6 +195,15 @@ function AddLiquidity() {
       setReserveB("0");
       setTotalLpSupply("0");
     }
+  }, [vaultService]);
+
+  // Aquarius pool hash for pool 0 (BLUB-AQUA)
+  const BLUB_AQUA_POOL_HASH = "0240dd5b4021e9373c226b8810d95628a38fa8e46a6356c57655688f0f62b5cf";
+
+  const loadPoolApy = useCallback(async () => {
+    const { poolApy: apy, compoundApy: cApy } = await vaultService.getAquariusPoolApy(BLUB_AQUA_POOL_HASH);
+    setPoolApy(apy);
+    setCompoundApy(cApy);
   }, [vaultService]);
 
   // Refresh wallet balances and update Redux state (like other sections do)
@@ -213,12 +231,13 @@ function AddLiquidity() {
     loadPools();
   }, []);
 
-  // Load pool reserves when pool is selected
+  // Load pool reserves and APY when pool is selected
   useEffect(() => {
     if (selectedPool) {
       loadPoolReserves(selectedPool);
+      loadPoolApy();
     }
-  }, [selectedPool?.pool_id, loadPoolReserves]);
+  }, [selectedPool?.pool_id, loadPoolReserves, loadPoolApy]);
 
   // Load user position and balances when pool or wallet changes
   useEffect(() => {
@@ -245,6 +264,31 @@ function AddLiquidity() {
       return () => clearInterval(refreshInterval);
     }
   }, [userWalletAddress, selectedPool, refreshWalletAndBalances]);
+
+  // Auto-fill second field from pool ratio when user types in first field
+  const handleAmount1Change = (value: string) => {
+    setDepositAmount1(value);
+    const amt = parseFloat(value);
+    const resA = parseFloat(reserveA);
+    const resB = parseFloat(reserveB);
+    if (!isNaN(amt) && amt > 0 && resA > 0 && resB > 0) {
+      setDepositAmount2((amt * (resB / resA)).toFixed(7));
+    } else if (!value) {
+      setDepositAmount2("");
+    }
+  };
+
+  const handleAmount2Change = (value: string) => {
+    setDepositAmount2(value);
+    const amt = parseFloat(value);
+    const resA = parseFloat(reserveA);
+    const resB = parseFloat(reserveB);
+    if (!isNaN(amt) && amt > 0 && resA > 0 && resB > 0) {
+      setDepositAmount1((amt * (resA / resB)).toFixed(7));
+    } else if (!value) {
+      setDepositAmount1("");
+    }
+  };
 
   // Calculate estimated LP shares for deposit based on pool reserves
   const calculateExpectedShares = (amountA: number, amountB: number): string => {
@@ -703,10 +747,34 @@ function AddLiquidity() {
 
         {/* Pool Info Display */}
         {selectedPool && (
-          <div className="mt-4 flex items-center space-x-2">
-            <span className="text-lg">{selectedPool.token_a_code}</span>
-            <span className="text-[#B1B3B8]">/</span>
-            <span className="text-lg">{selectedPool.token_b_code}</span>
+          <div className="mt-4">
+            <div className="flex items-center space-x-2">
+              <span className="text-lg">{selectedPool.token_a_code}</span>
+              <span className="text-[#B1B3B8]">/</span>
+              <span className="text-lg">{selectedPool.token_b_code}</span>
+            </div>
+            <div className="mt-3 bg-[#0E111B] p-4 rounded-[8px] space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-[#B1B3B8]">Pool APY (Aquarius)</span>
+                <span className="text-[#00CC99] font-medium">
+                  {poolApy === "--" ? "--" : `${poolApy}%`}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[#B1B3B8]">Compounded APY (48×/day)</span>
+                <span className="text-[#00CC99] font-medium">
+                  {compoundApy === "--" ? "--" : `${compoundApy}%`}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[#B1B3B8]">Pool Reserves</span>
+                <span className="text-white text-xs">
+                  {parseFloat(reserveA) > 0
+                    ? `${parseFloat(reserveA).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${selectedPool.token_a_code} / ${parseFloat(reserveB).toLocaleString("en-US", { maximumFractionDigits: 2 })} ${selectedPool.token_b_code}`
+                    : "Loading..."}
+                </span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -717,10 +785,7 @@ function AddLiquidity() {
             <div className="flex justify-between items-center">
               <div>
                 <div className="text-white font-medium">
-                  {userPosition.user_lp_amount} LP
-                </div>
-                <div className="text-xs text-[#B1B3B8]">
-                  {userPosition.percentage}% of pool
+                  {parseFloat(userPosition.user_lp_amount).toLocaleString("en-US", { maximumFractionDigits: 4 })} LP
                 </div>
               </div>
               <div className="text-sm text-[#00CC99]">
@@ -773,11 +838,11 @@ function AddLiquidity() {
                     "focus:outline-none focus:ring-0",
                     "w-full p-3"
                   )}
-                  onChange={(e) => setDepositAmount1(e.target.value)}
+                  onChange={(e) => handleAmount1Change(e.target.value)}
                 />
                 <button
                   className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]"
-                  onClick={() => setDepositAmount1(balanceA)}
+                  onClick={() => handleAmount1Change(balanceA)}
                 >
                   Max
                 </button>
@@ -804,11 +869,11 @@ function AddLiquidity() {
                     "focus:outline-none focus:ring-0",
                     "w-full p-3"
                   )}
-                  onChange={(e) => setDepositAmount2(e.target.value)}
+                  onChange={(e) => handleAmount2Change(e.target.value)}
                 />
                 <button
                   className="bg-[#3C404D] p-2 rounded-[4px] text-sm hover:bg-[#4C505D]"
-                  onClick={() => setDepositAmount2(balanceB)}
+                  onClick={() => handleAmount2Change(balanceB)}
                 >
                   Max
                 </button>
