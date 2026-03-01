@@ -1209,7 +1209,7 @@ const handleAddTrustline = async () => {
                 />
               </div>
               <div className="text-xl font-normal text-[#00CC99]">
-                {staking.isLoading ? "..." : (staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
+                16802 BLUB
               </div>
             </div>
 
