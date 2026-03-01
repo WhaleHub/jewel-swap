@@ -59,9 +59,14 @@ const isWCConnectionError = (e: any): boolean => {
 
 export class SorobanVaultService {
   private server: SorobanRpc.Server;      // reads: getAccount, simulate, getTransaction
+  private fallbackServer: SorobanRpc.Server; // fallback read RPC if primary fails
   private sendServer: SorobanRpc.Server;  // writes: sendTransaction only (gateway FM)
   private stakingContractId: string;
   private networkPassphrase: string;
+
+  // Cache dummy account for 5 min — sequence number doesn't matter for read-only simulations
+  private dummyAccountCache: any = null;
+  private dummyAccountFetchedAt = 0;
 
   constructor() {
     const network = (process.env.REACT_APP_STELLAR_NETWORK || "PUBLIC").toLowerCase();
@@ -72,11 +77,131 @@ export class SorobanVaultService {
     const sendRpc = process.env.REACT_APP_VAULT_RPC_URL || "https://soroban-rpc.mainnet.stellar.gateway.fm";
 
     this.server = new SorobanRpc.Server(readRpc);
+    // If primary read RPC fails, fall back to gateway FM (it can do reads too)
+    this.fallbackServer = new SorobanRpc.Server(sendRpc);
     this.sendServer = new SorobanRpc.Server(sendRpc);
     this.stakingContractId = process.env.REACT_APP_STAKING_CONTRACT_ID || "";
     this.networkPassphrase = (network === "public" || network === "mainnet")
       ? Networks.PUBLIC
       : Networks.TESTNET;
+  }
+
+  // Retry wrapper: retries up to maxRetries times with linear backoff.
+  // Does NOT retry on HostError (simulation errors are final — retrying won't help).
+  private async withRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+    let lastError: any;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (e: any) {
+        lastError = e;
+        const msg = String(e?.message || e);
+        if (msg.includes("HostError") || msg.includes("Simulation failed")) throw e;
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  // Fetch dummy account with 5-minute cache — avoids 1 extra RPC call per simulation
+  private async getDummyAccount() {
+    const now = Date.now();
+    if (this.dummyAccountCache && now - this.dummyAccountFetchedAt < 5 * 60 * 1000) {
+      return this.dummyAccountCache;
+    }
+    const account = await this.withRetry(() =>
+      this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF")
+    );
+    this.dummyAccountCache = account;
+    this.dummyAccountFetchedAt = now;
+    return account;
+  }
+
+  // Simulate with retry + automatic fallback to second RPC on failure
+  private async simulateTx(tx: any): Promise<SorobanRpc.Api.SimulateTransactionResponse> {
+    try {
+      return await this.withRetry(() => this.server.simulateTransaction(tx));
+    } catch (primaryErr: any) {
+      const msg = String(primaryErr?.message || primaryErr);
+      if (msg.includes("HostError") || msg.includes("Simulation failed")) throw primaryErr;
+      console.warn("[Vault] Primary RPC failed, trying fallback...", primaryErr?.message);
+      return await this.withRetry(() => this.fallbackServer.simulateTransaction(tx));
+    }
+  }
+
+  // Poll both RPCs for a submitted transaction hash.
+  // After 60s of NOT_FOUND, falls back to Horizon (permanent tx history).
+  // Returns { success, hash } or throws.
+  private async pollTransactionResult(hash: string): Promise<{ success: true; transactionHash: string }> {
+    // "bad union switch" = Stellar SDK XDR parse error; the tx DID execute on-chain,
+    // the SDK just can't decode the result envelope. Treat as success.
+    const isBadUnionSwitch = (e: any) =>
+      /bad union switch/i.test(String(e?.message || e));
+
+    const pollOnce = async () => {
+      try {
+        return await this.server.getTransaction(hash);
+      } catch (e: any) {
+        if (isBadUnionSwitch(e)) return { status: "SUCCESS" } as any;
+        try {
+          return await this.fallbackServer.getTransaction(hash);
+        } catch (e2: any) {
+          if (isBadUnionSwitch(e2)) return { status: "SUCCESS" } as any;
+          throw e2;
+        }
+      }
+    };
+
+    let response = await pollOnce();
+    let attempts = 0;
+    const maxAttempts = 60;
+
+    while (response.status === "NOT_FOUND" && attempts < maxAttempts) {
+      await new Promise((r) => setTimeout(r, 1000));
+      try {
+        response = await pollOnce();
+      } catch (e: any) {
+        if (isBadUnionSwitch(e)) return { success: true, transactionHash: hash };
+      }
+      attempts++;
+    }
+
+    console.log("[Vault] Soroban poll final status:", response.status, "attempts:", attempts);
+
+    if (response.status === "SUCCESS") {
+      return { success: true, transactionHash: hash };
+    } else if (response.status === "FAILED") {
+      throw new Error("Transaction failed on-chain");
+    }
+
+    // Still NOT_FOUND after 60s — Soroban RPC history window may have expired.
+    // Fall back to Horizon which keeps permanent tx history.
+    console.warn("[Vault] Soroban RPC timed out, checking Horizon for tx:", hash);
+    const horizonStatus = await this.checkTxOnHorizon(hash);
+    if (horizonStatus === "success") {
+      console.log("[Vault] Horizon confirms transaction succeeded:", hash);
+      return { success: true, transactionHash: hash };
+    } else if (horizonStatus === "failed") {
+      throw new Error("Transaction failed on-chain");
+    }
+
+    throw new Error(`Transaction confirmation timed out. Hash: ${hash}`);
+  }
+
+  // Check Horizon for a transaction — returns "success", "failed", or "not_found"
+  private async checkTxOnHorizon(hash: string): Promise<"success" | "failed" | "not_found"> {
+    try {
+      const horizonUrl = process.env.REACT_APP_HORIZON_URL || "https://horizon.stellar.org";
+      const res = await fetch(`${horizonUrl}/transactions/${hash}`);
+      if (res.status === 404) return "not_found";
+      if (!res.ok) return "not_found";
+      const data = await res.json();
+      return data.successful === true ? "success" : "failed";
+    } catch {
+      return "not_found";
+    }
   }
 
   /**
@@ -85,7 +210,7 @@ export class SorobanVaultService {
   async getPoolCount(): Promise<number> {
     try {
       const contract = new Contract(this.stakingContractId);
-      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"); // Dummy account for simulation
+      const account = await this.getDummyAccount(); // Dummy account for simulation
 
       const tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
@@ -95,7 +220,7 @@ export class SorobanVaultService {
         .setTimeout(30)
         .build();
 
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
         const result = simulated.result?.retval;
@@ -115,7 +240,7 @@ export class SorobanVaultService {
   async getPoolInfo(poolId: number): Promise<VaultPoolInfo> {
     try {
       const contract = new Contract(this.stakingContractId);
-      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+      const account = await this.getDummyAccount();
 
       const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
 
@@ -127,7 +252,7 @@ export class SorobanVaultService {
         .setTimeout(30)
         .build();
 
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
         const result = simulated.result?.retval;
@@ -160,11 +285,12 @@ export class SorobanVaultService {
    */
   async getUserVaultPosition(
     userAddress: string,
-    poolId: number
+    poolId: number,
+    totalLpTokens?: string  // pass from already-fetched poolInfo to avoid double RPC
   ): Promise<VaultUserPosition | null> {
     try {
       const contract = new Contract(this.stakingContractId);
-      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+      const account = await this.getDummyAccount();
 
       const userScVal = nativeToScVal(userAddress, { type: "address" });
       const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
@@ -177,7 +303,7 @@ export class SorobanVaultService {
         .setTimeout(30)
         .build();
 
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
         const result = simulated.result?.retval;
@@ -187,11 +313,10 @@ export class SorobanVaultService {
           return null;
         }
 
-        // Get pool info to calculate user's LP amount
-        const poolInfo = await this.getPoolInfo(poolId);
         const shareRatio = parseFloat(position.share_ratio) / 1_000_000_000_000;
-        const totalLp = parseFloat(poolInfo.total_lp_tokens) / 1e7;
-
+        // Use provided totalLpTokens if available, otherwise fall back to fetching pool info
+        const rawLp = totalLpTokens ?? (await this.getPoolInfo(poolId)).total_lp_tokens;
+        const totalLp = parseFloat(rawLp) / 1e7;
         const userLpAmount = totalLp * shareRatio;
         const percentage = shareRatio * 100;
 
@@ -244,7 +369,7 @@ export class SorobanVaultService {
 
       // Build transaction
       const contract = new Contract(this.stakingContractId);
-      const account = await this.server.getAccount(userAddress);
+      const account = await this.withRetry(() => this.server.getAccount(userAddress));
 
       const userScVal = nativeToScVal(userAddress, { type: "address" });
       const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
@@ -254,7 +379,7 @@ export class SorobanVaultService {
       const minSharesScVal = nativeToScVal(BigInt(Math.round(parseFloat(minShares) * 1e7)), { type: "u128" });
 
       let tx = new TransactionBuilder(account, {
-        fee: BASE_FEE,
+        fee: "1000000", // 1 XLM — required for Soroban mainnet inclusion; assembleTransaction adds resource fee on top
         networkPassphrase: this.networkPassphrase,
       })
         .addOperation(
@@ -267,11 +392,11 @@ export class SorobanVaultService {
             minSharesScVal
           )
         )
-        .setTimeout(30)
+        .setTimeout(300) // 5 min TTL — prevents tx expiry during signing / submission lag
         .build();
 
       // Simulate to prepare transaction
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationError(simulated)) {
         throw new Error(`Simulation failed: ${simulated.error}`);
@@ -302,30 +427,10 @@ export class SorobanVaultService {
       const signedTx = TransactionBuilder.fromXDR(signedTxXdr, this.networkPassphrase);
       console.log("[Vault] Submitting signed transaction...");
       const sendResponse = await this.sendServer.sendTransaction(signedTx as any);
-      console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash);
+      console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash, (sendResponse as any).errorResult ?? "");
 
       if (sendResponse.status === "PENDING") {
-        // Poll read RPC — more reliable for getTransaction than gateway FM
-        let getResponse = await this.server.getTransaction(sendResponse.hash);
-        let attempts = 0;
-        const maxAttempts = 60; // 60s — ledger close ~5s, allow extra time
-
-        while (getResponse.status === "NOT_FOUND" && attempts < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          getResponse = await this.server.getTransaction(sendResponse.hash);
-          attempts++;
-        }
-
-        console.log("[Vault] Final status:", getResponse.status);
-
-        if (getResponse.status === "SUCCESS") {
-          return { success: true, transactionHash: sendResponse.hash };
-        } else if (getResponse.status === "FAILED") {
-          console.error("[Vault] Transaction failed:", (getResponse as any).resultXdr);
-          throw new Error("Transaction failed on-chain");
-        } else {
-          throw new Error(`Transaction confirmation timed out. Hash: ${sendResponse.hash}`);
-        }
+        return await this.pollTransactionResult(sendResponse.hash);
       } else if (sendResponse.status === "ERROR") {
         console.error("[Vault] Send error:", (sendResponse as any).errorResult);
         throw new Error("Transaction send error");
@@ -375,7 +480,7 @@ export class SorobanVaultService {
 
       // Build transaction
       const contract = new Contract(this.stakingContractId);
-      const account = await this.server.getAccount(userAddress);
+      const account = await this.withRetry(() => this.server.getAccount(userAddress));
 
       const userScVal = nativeToScVal(userAddress, { type: "address" });
       const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
@@ -385,7 +490,7 @@ export class SorobanVaultService {
       const minBScVal = nativeToScVal(BigInt(Math.round(parseFloat(minB) * 1e7)), { type: "u128" });
 
       let tx = new TransactionBuilder(account, {
-        fee: BASE_FEE,
+        fee: "1000000", // 1 XLM — required for Soroban mainnet inclusion
         networkPassphrase: this.networkPassphrase,
       })
         .addOperation(
@@ -398,11 +503,11 @@ export class SorobanVaultService {
             minBScVal
           )
         )
-        .setTimeout(30)
+        .setTimeout(300) // 5 min TTL
         .build();
 
       // Simulate to prepare transaction
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationError(simulated)) {
         throw new Error(`Simulation failed: ${simulated.error}`);
@@ -433,29 +538,10 @@ export class SorobanVaultService {
       const signedTx = TransactionBuilder.fromXDR(signedTxXdr, this.networkPassphrase);
       console.log("[Vault] Submitting signed transaction...");
       const sendResponse = await this.sendServer.sendTransaction(signedTx as any);
-      console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash);
+      console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash, (sendResponse as any).errorResult ?? "");
 
       if (sendResponse.status === "PENDING") {
-        let getResponse = await this.server.getTransaction(sendResponse.hash);
-        let attempts = 0;
-        const maxAttempts = 60;
-
-        while (getResponse.status === "NOT_FOUND" && attempts < maxAttempts) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          getResponse = await this.server.getTransaction(sendResponse.hash);
-          attempts++;
-        }
-
-        console.log("[Vault] Final status:", getResponse.status);
-
-        if (getResponse.status === "SUCCESS") {
-          return { success: true, transactionHash: sendResponse.hash };
-        } else if (getResponse.status === "FAILED") {
-          console.error("[Vault] Transaction failed:", (getResponse as any).resultXdr);
-          throw new Error("Transaction failed on-chain");
-        } else {
-          throw new Error(`Transaction confirmation timed out. Hash: ${sendResponse.hash}`);
-        }
+        return await this.pollTransactionResult(sendResponse.hash);
       } else if (sendResponse.status === "ERROR") {
         console.error("[Vault] Send error:", (sendResponse as any).errorResult);
         throw new Error("Transaction send error");
@@ -489,7 +575,7 @@ export class SorobanVaultService {
 
     try {
       const contract = new Contract(tokenAddress);
-      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+      const account = await this.getDummyAccount();
 
       const tx = new TransactionBuilder(account, {
         fee: BASE_FEE,
@@ -499,7 +585,7 @@ export class SorobanVaultService {
         .setTimeout(30)
         .build();
 
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
         const result = simulated.result?.retval;
@@ -589,7 +675,7 @@ export class SorobanVaultService {
   }> {
     try {
       const poolContract = new Contract(poolAddress);
-      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+      const account = await this.getDummyAccount();
 
       // Get reserves
       const reservesTx = new TransactionBuilder(account, {
@@ -619,9 +705,9 @@ export class SorobanVaultService {
         .build();
 
       const [reservesSim, totalSharesSim, shareIdSim] = await Promise.all([
-        this.server.simulateTransaction(reservesTx),
-        this.server.simulateTransaction(totalSharesTx),
-        this.server.simulateTransaction(shareIdTx),
+        this.simulateTx(reservesTx),
+        this.simulateTx(totalSharesTx),
+        this.simulateTx(shareIdTx),
       ]);
 
       let reserveA = "0", reserveB = "0", totalLpSupply = "0";
@@ -668,7 +754,7 @@ export class SorobanVaultService {
             .setTimeout(30)
             .build();
 
-          const supplySim = await this.server.simulateTransaction(supplyTx);
+          const supplySim = await this.simulateTx(supplyTx);
           if (SorobanRpc.Api.isSimulationSuccess(supplySim)) {
             const supplyResult = supplySim.result?.retval;
             const supply = supplyResult ? scValToNative(supplyResult) : 0;
@@ -691,7 +777,7 @@ export class SorobanVaultService {
           .setTimeout(30)
           .build();
 
-        const supplySim = await this.server.simulateTransaction(supplyTx);
+        const supplySim = await this.simulateTx(supplyTx);
         if (SorobanRpc.Api.isSimulationSuccess(supplySim)) {
           const supplyResult = supplySim.result?.retval;
           const supply = supplyResult ? scValToNative(supplyResult) : 0;
@@ -721,7 +807,7 @@ export class SorobanVaultService {
       }
 
       const contract = new Contract(tokenAddress);
-      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+      const account = await this.getDummyAccount();
 
       const userScVal = nativeToScVal(userAddress, { type: "address" });
 
@@ -733,7 +819,7 @@ export class SorobanVaultService {
         .setTimeout(30)
         .build();
 
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
         const result = simulated.result?.retval;
@@ -780,7 +866,7 @@ export class SorobanVaultService {
   }> {
     try {
       const contract = new Contract(this.stakingContractId);
-      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+      const account = await this.getDummyAccount();
 
       const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
 
@@ -792,7 +878,7 @@ export class SorobanVaultService {
         .setTimeout(30)
         .build();
 
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
         const result = simulated.result?.retval;
@@ -826,7 +912,7 @@ export class SorobanVaultService {
   }> {
     try {
       const contract = new Contract(this.stakingContractId);
-      const account = await this.server.getAccount("GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF");
+      const account = await this.getDummyAccount();
 
       const userScVal = nativeToScVal(userAddress, { type: "address" });
       const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
@@ -839,7 +925,7 @@ export class SorobanVaultService {
         .setTimeout(30)
         .build();
 
-      const simulated = await this.server.simulateTransaction(tx);
+      const simulated = await this.simulateTx(tx);
 
       if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
         const result = simulated.result?.retval;

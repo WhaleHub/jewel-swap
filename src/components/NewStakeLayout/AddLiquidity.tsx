@@ -149,12 +149,12 @@ function AddLiquidity() {
     }
   }, [vaultService]);
 
-  const loadUserPosition = useCallback(async (poolId: number) => {
+  const loadUserPosition = useCallback(async (poolId: number, totalLpTokens?: string) => {
     if (!userWalletAddress) return;
 
     try {
       const [position, poolStats, gains] = await Promise.all([
-        vaultService.getUserVaultPosition(userWalletAddress, poolId),
+        vaultService.getUserVaultPosition(userWalletAddress, poolId, totalLpTokens),
         vaultService.getPoolCompoundStats(poolId),
         vaultService.getUserCompoundGains(userWalletAddress, poolId),
       ]);
@@ -239,7 +239,7 @@ function AddLiquidity() {
 
       // Also refresh local token balances
       await loadBalances(selectedPool);
-      await loadUserPosition(selectedPool.pool_id);
+      await loadUserPosition(selectedPool.pool_id, selectedPool.total_lp_tokens);
       await loadPoolReserves(selectedPool);
     } catch (error) {
       console.error("Failed to refresh wallet balances:", error);
@@ -270,7 +270,7 @@ function AddLiquidity() {
   // Load user position and balances when pool or wallet changes
   useEffect(() => {
     if (selectedPool && userWalletAddress) {
-      loadUserPosition(selectedPool.pool_id);
+      loadUserPosition(selectedPool.pool_id, selectedPool.total_lp_tokens);
       loadBalances(selectedPool);
     } else {
       // Reset balances if no wallet connected
