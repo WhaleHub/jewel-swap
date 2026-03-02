@@ -3681,6 +3681,12 @@ impl StakingRegistry {
             return Err(Error::InvalidInput);
         }
 
+        // Hard cap: 100,000 BLUB (7 decimals) per call
+        const MAX_BLUB_PER_CALL: i128 = 1_000_000_000_000;
+        if amount > MAX_BLUB_PER_CALL {
+            return Err(Error::InvalidInput);
+        }
+
         let contract_address = env.current_contract_address();
         let mut reward_state = Self::get_reward_state(&env);
         let now = env.ledger().timestamp();
@@ -3814,6 +3820,12 @@ impl StakingRegistry {
         Self::require_manager_auth(&env, &manager)?;
 
         if aqua_amount <= 0 || blub_reward_amount <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        // Hard cap: 100,000 BLUB (7 decimals) per call
+        const MAX_BLUB_PER_CALL: i128 = 1_000_000_000_000;
+        if blub_reward_amount > MAX_BLUB_PER_CALL {
             return Err(Error::InvalidInput);
         }
 

@@ -1271,7 +1271,7 @@ const handleAddTrustline = async () => {
                 </div>
               </div>
             )}
-{/* 
+
             <Button
               className="rounded-[12px] py-5 px-4 text-white mt-6 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               onClick={handleClaimRewards}
@@ -1294,7 +1294,7 @@ const handleAddTrustline = async () => {
                   />
                 </div>
               )}
-            </Button> */}
+            </Button>
           </div>
         </div>
       </div>
