@@ -1174,29 +1174,29 @@ const handleAddTrustline = async () => {
               </div>
             </div>
 
-            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-4 rounded-[8px] justify-between">
-              <div className="text-sm font-normal text-white">Pending</div>
-              <div className="flex items-center space-x-2">
+            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-4 rounded-[8px] justify-between gap-2">
+              <div className="text-sm font-normal text-white shrink-0">Pending</div>
+              <div className="flex items-center space-x-2 min-w-0">
                 <img
                   src={"/Blub_logo2.svg"}
                   alt="BLUB"
-                  className="w-5 h-5 rounded-full"
+                  className="w-5 h-5 rounded-full shrink-0"
                 />
-                <span className="text-xl font-normal">
+                <span className="text-base sm:text-xl font-normal truncate">
                   {parseFloat(pendingRewards).toFixed(2)} BLUB
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
-              <div className="text-sm font-normal text-white">Total Claimed</div>
-              <div className="text-xl font-normal">
+            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
+              <div className="text-sm font-normal text-white shrink-0">Total Claimed</div>
+              <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
                 {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toFixed(2) : "0.00"} BLUB
               </div>
             </div>
 
-            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
-              <div className="text-sm font-normal text-white flex items-center space-x-1">
+            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
+              <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
                 <span>Total Distributed</span>
                 <InformationCircleIcon
                   className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
@@ -1208,13 +1208,13 @@ const handleAddTrustline = async () => {
                   }
                 />
               </div>
-              <div className="text-xl font-normal text-[#00CC99]">
+              <div className="text-base sm:text-xl font-normal text-[#00CC99] text-right truncate min-w-0">
                 {staking.isLoading ? "..." : (staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
               </div>
             </div>
 
-            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
-              <div className="text-sm font-normal text-white flex items-center space-x-1">
+            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
+              <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
                 <span>Staking APY</span>
                 <InformationCircleIcon
                   className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
@@ -1226,7 +1226,7 @@ const handleAddTrustline = async () => {
                   }
                 />
               </div>
-              <div className="text-xl font-normal">
+              <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
                 {staking.isLoading ? (
                   "..."
                 ) : (
@@ -1239,8 +1239,8 @@ const handleAddTrustline = async () => {
               </div>
             </div>
 
-            <div className="flex items-center bg-[#0E111B] px-5 py-4 mt-3 rounded-[8px] justify-between">
-              <div className="text-sm font-normal text-white flex items-center space-x-1">
+            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
+              <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
                 <span>Total Staked</span>
                 <InformationCircleIcon
                   className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
@@ -1252,7 +1252,7 @@ const handleAddTrustline = async () => {
                   }
                 />
               </div>
-              <div className="text-xl font-normal">
+              <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
                 {staking.isLoading ? "..." : (
                   staking.rewardState?.total_staked != null
                     ? `${Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB`
