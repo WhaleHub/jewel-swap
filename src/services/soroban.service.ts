@@ -1409,7 +1409,7 @@ export class SorobanService {
           });
 
           // Track earliest FUTURE unlock (past unlocks are already actionable)
-          if (!entry.unlocked && blubLocked > 0 && unlockTime > nowSec) {
+          if (blubLocked > 0 && unlockTime > nowSec) {
             if (nextFutureUnlock === null || unlockTime < nextFutureUnlock) {
               nextFutureUnlock = unlockTime;
             }

@@ -1033,7 +1033,7 @@ const handleAddTrustline = async () => {
                         onClick={() => setLocksExpanded(!locksExpanded)}
                         className="text-[10px] text-[#00CC99] mt-1 hover:underline cursor-pointer"
                       >
-                        {locksExpanded ? "▾ Hide" : "▸ Show"} {staking.lockEntries?.filter(e => !e.unlocked).length ?? 0} lock{staking.lockEntries?.filter(e => !e.unlocked).length !== 1 ? "s" : ""}
+                        {locksExpanded ? "▾ Hide" : "▸ Show"} {staking.lockEntries?.filter(e => parseFloat(e.blubAmount) > 0).length ?? 0} lock{staking.lockEntries?.filter(e => parseFloat(e.blubAmount) > 0).length !== 1 ? "s" : ""}
                       </button>
                     )}
                     {!staking.lockEntries?.length && (
@@ -1094,7 +1094,7 @@ const handleAddTrustline = async () => {
                     <div className="text-[11px] text-[#B1B3B8] mb-2 font-medium">Lock Entries</div>
                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
                       {staking.lockEntries
-                        .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0)
+                        .filter(e => parseFloat(e.blubAmount) > 0)
                         .sort((a, b) => a.unlockTime - b.unlockTime)
                         .map((entry) => {
                           const now = Math.floor(Date.now() / 1000);

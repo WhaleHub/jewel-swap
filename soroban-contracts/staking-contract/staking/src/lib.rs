@@ -3454,14 +3454,26 @@ impl StakingRegistry {
                     let cooldown_end = entry.lock_timestamp.saturating_add(config.unstake_cooldown_seconds);
                     let cooldown_passed = now >= cooldown_end;
 
-                    if entry.blub_locked > 0 && !entry.unlocked && cooldown_passed {
+                    if entry.blub_locked > 0 && cooldown_passed {
                         let unstake_from_entry = remaining_amount.min(entry.blub_locked);
+                        let original_blub = entry.blub_locked;
 
                         total_blub_unstaked = total_blub_unstaked.saturating_add(unstake_from_entry);
-                        total_aqua_unlocked = total_aqua_unlocked.saturating_add(entry.amount);
 
                         entry.blub_locked = entry.blub_locked.saturating_sub(unstake_from_entry);
-                        entry.unlocked = true;
+
+                        // Only mark fully consumed entries as unlocked;
+                        // partial unstakes keep the entry active for the remaining balance
+                        if entry.blub_locked == 0 {
+                            entry.unlocked = true;
+                            total_aqua_unlocked = total_aqua_unlocked.saturating_add(entry.amount);
+                        } else {
+                            // Proportional AQUA unlock for partial unstake
+                            let proportional_aqua = (entry.amount as i128)
+                                .saturating_mul(unstake_from_entry)
+                                / (original_blub as i128).max(1);
+                            total_aqua_unlocked = total_aqua_unlocked.saturating_add(proportional_aqua as i128);
+                        }
 
                         env.storage().persistent().set(&DataKey::UserLockByTxHash(user.clone(), tx_hash), &entry);
 
@@ -4076,7 +4088,7 @@ impl StakingRegistry {
                 let unstake_available_at = entry
                     .lock_timestamp
                     .saturating_add(config.unstake_cooldown_seconds);
-                let can_unstake = now >= unstake_available_at && !entry.unlocked && entry.blub_locked > 0;
+                let can_unstake = now >= unstake_available_at && entry.blub_locked > 0;
 
                 return UnstakeStatus {
                     can_unstake,
@@ -4179,7 +4191,7 @@ impl StakingRegistry {
                     .persistent()
                     .get::<DataKey, LockEntry>(&DataKey::UserLockByTxHash(user.clone(), tx_hash))
                 {
-                    if !entry.unlocked && entry.blub_locked > 0 {
+                    if entry.blub_locked > 0 {
                         total = total.saturating_add(entry.blub_locked);
                     }
                 }

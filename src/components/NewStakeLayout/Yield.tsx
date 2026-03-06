@@ -165,15 +165,13 @@ function Yield() {
   }, [user?.userRecords?.account?.pools]);
 
   // Calculate unstakable BLUB from lock entries directly.
-  // The contract's get_user_staking_info.unstaking_available is always 0 because
-  // unstake() zeros out blub_locked before setting unlocked=true, so the view
-  // adds 0 for each "unlocked" entry. We compute the correct value ourselves:
-  // sum blubAmount for entries where cooldown has passed and not yet unstaked.
+  // Contract v1.6.0+: unstake() checks blub_locked > 0 only (ignores unlocked flag),
+  // so we match that logic here — any entry with BLUB remaining and cooldown passed is unstakeable.
   const poolAndClaimBalance = useMemo(() => {
     if (staking.lockEntries?.length > 0) {
       const now = Math.floor(Date.now() / 1000);
       const available = staking.lockEntries
-        .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0 && e.unlockTime <= now)
+        .filter(e => parseFloat(e.blubAmount) > 0 && e.unlockTime <= now)
         .reduce((sum, e) => sum + parseFloat(e.blubAmount), 0);
       if (available > 0) return available;
     }
@@ -878,12 +876,12 @@ function Yield() {
                     onClick={() => setLocksExpanded(!locksExpanded)}
                     className="text-[11px] text-[#00CC99] hover:underline cursor-pointer"
                   >
-                    {locksExpanded ? "▾ Hide" : "▸ Show"} lock details ({staking.lockEntries?.filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0).length ?? 0} entries)
+                    {locksExpanded ? "▾ Hide" : "▸ Show"} lock details ({staking.lockEntries?.filter(e => parseFloat(e.blubAmount) > 0).length ?? 0} entries)
                   </button>
                   {locksExpanded && (
                     <div className="mt-2 space-y-1 max-h-[180px] overflow-y-auto">
                       {(staking.lockEntries ?? [])
-                        .filter(e => !e.unlocked && parseFloat(e.blubAmount) > 0)
+                        .filter(e => parseFloat(e.blubAmount) > 0)
                         .sort((a, b) => a.unlockTime - b.unlockTime)
                         .map((entry) => {
                           const now = Math.floor(Date.now() / 1000);
