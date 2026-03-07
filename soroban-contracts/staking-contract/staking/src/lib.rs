@@ -5041,30 +5041,42 @@ impl StakingRegistry {
         token_b_client.transfer(&manager, &contract_address, &amount_b);
 
         // STEP 2: Deposit to Aquarius pool
+        // Aquarius pools order tokens by contract address (sorted).
+        // desired_amounts and auth entries must follow the pool's token order,
+        // which may differ from our PoolInfo (token_a, token_b) order.
         let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
+
+        let (first_token, first_amount, second_token, second_amount) =
+            if pool_info.token_a < pool_info.token_b {
+                // token_a comes first in pool order
+                (pool_info.token_a.clone(), amount_a, pool_info.token_b.clone(), amount_b)
+            } else {
+                // token_b comes first in pool order
+                (pool_info.token_b.clone(), amount_b, pool_info.token_a.clone(), amount_a)
+            };
 
         let auth_entries = soroban_sdk::vec![
             &env,
             InvokerContractAuthEntry::Contract(SubContractInvocation {
                 context: ContractContext {
-                    contract: pool_info.token_a.clone(),
+                    contract: first_token,
                     fn_name: Symbol::new(&env, "transfer"),
                     args: (
                         contract_address.clone(),
                         pool_info.pool_address.clone(),
-                        amount_a,
+                        first_amount,
                     ).into_val(&env),
                 },
                 sub_invocations: soroban_sdk::vec![&env],
             }),
             InvokerContractAuthEntry::Contract(SubContractInvocation {
                 context: ContractContext {
-                    contract: pool_info.token_b.clone(),
+                    contract: second_token,
                     fn_name: Symbol::new(&env, "transfer"),
                     args: (
                         contract_address.clone(),
                         pool_info.pool_address.clone(),
-                        amount_b,
+                        second_amount,
                     ).into_val(&env),
                 },
                 sub_invocations: soroban_sdk::vec![&env],
@@ -5073,8 +5085,8 @@ impl StakingRegistry {
         env.authorize_as_current_contract(auth_entries);
 
         let mut desired_amounts = Vec::new(&env);
-        desired_amounts.push_back(amount_a as u128);
-        desired_amounts.push_back(amount_b as u128);
+        desired_amounts.push_back(first_amount as u128);
+        desired_amounts.push_back(second_amount as u128);
 
         let (_actual_amounts, lp_shares_minted) = aquarius_pool.deposit(
             &contract_address,
