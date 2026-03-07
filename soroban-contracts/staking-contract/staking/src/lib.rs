@@ -5037,8 +5037,8 @@ impl StakingRegistry {
         let token_a_client = token::Client::new(&env, &pool_info.token_a);
         let token_b_client = token::Client::new(&env, &pool_info.token_b);
 
-        token_a_client.transfer(&config.admin, &contract_address, &amount_a);
-        token_b_client.transfer(&config.admin, &contract_address, &amount_b);
+        token_a_client.transfer(&manager, &contract_address, &amount_a);
+        token_b_client.transfer(&manager, &contract_address, &amount_b);
 
         // STEP 2: Deposit to Aquarius pool
         let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
