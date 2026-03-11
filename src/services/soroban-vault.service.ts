@@ -1057,6 +1057,118 @@ export class SorobanVaultService {
       return { currentLp: "0", depositedLp: "0", compoundGainLp: "0" };
     }
   }
+
+  /**
+   * ICE boost calculation using Aquarius Curve-style formula:
+   * boost = min(0.4×deposit + 0.6×pool_liquidity×(my_ICE/total_ICE), deposit) / (0.4×deposit)
+   *
+   * - deposit = our LP tokens in the pool (contract + admin)
+   * - pool_liquidity = total LP in the Aquarius pool
+   * - my_ICE = admin wallet's ICE balance
+   * - total_ICE = total ICE supply across all holders
+   *
+   * Returns boost multiplier (1.0 = no boost, 2.5 = max) and supporting data.
+   * Recalculated by Aquarius every hour; we cache for 5 min.
+   */
+  async getIceBoostInfo(
+    poolAddress: string,
+    shareToken: string,
+    totalPoolLp?: string,
+  ): Promise<IceBoostInfo> {
+    try {
+      // Admin wallet that holds ICE
+      const ADMIN_ADDRESS = process.env.REACT_APP_MANAGER_ADDRESS || "GDERSSCKJQPPXUQOZIOXGRVAGNLVPVZCJ2MAX7RCMVMWGRPVAEG7XGTK";
+      // ICE token SAC address
+      const ICE_TOKEN = process.env.REACT_APP_ICE_TOKEN || "CARCKZ66U4AI2545NS4RAF47QVEXG3PRRCDA52H4Q3FDRAGSMP4BRU3W";
+      // ICE classic asset issuer (for total supply from Horizon)
+      const ICE_ISSUER = "GA7YJSQJ4TPSKPM36BTB26B3WBUCUERSA7JCYWPBAA3CWYV7ZYEYLOBS";
+
+      // 1. Get our LP in this pool (contract LP)
+      const contractLpStr = await this.getTokenBalance(shareToken, this.stakingContractId);
+      const contractLp = parseFloat(contractLpStr);
+
+      // 2. Get total pool LP (use provided value or query pool contract)
+      let poolLp = 0;
+      if (totalPoolLp && parseFloat(totalPoolLp) > 0) {
+        poolLp = parseFloat(totalPoolLp);
+      } else {
+        // Query pool contract get_total_shares
+        const poolContract = new Contract(poolAddress);
+        const account = await this.getDummyAccount();
+        const tx = new TransactionBuilder(account, {
+          fee: BASE_FEE,
+          networkPassphrase: this.networkPassphrase,
+        })
+          .addOperation(poolContract.call("get_total_shares"))
+          .setTimeout(30)
+          .build();
+        const sim = await this.simulateTx(tx);
+        if (SorobanRpc.Api.isSimulationSuccess(sim) && sim.result?.retval) {
+          poolLp = Number(scValToNative(sim.result.retval)) / 1e7;
+        }
+      }
+
+      if (poolLp <= 0 || contractLp <= 0) {
+        return { boost: 1.0, myIce: 0, totalIce: 0, ourLp: contractLp, poolLp, lpSharePct: 0, maxLpFor2_5x: 0 };
+      }
+
+      // 3. Get admin's ICE balance
+      const myIceStr = await this.getTokenBalance(ICE_TOKEN, ADMIN_ADDRESS);
+      const myIce = parseFloat(myIceStr);
+
+      // 4. Get total ICE supply from Horizon
+      let totalIce = 0;
+      try {
+        const horizonUrl = process.env.REACT_APP_HORIZON_URL || "https://horizon.stellar.org";
+        const res = await fetch(`${horizonUrl}/assets?asset_code=ICE&asset_issuer=${ICE_ISSUER}`);
+        if (res.ok) {
+          const data = await res.json();
+          const record = data?._embedded?.records?.[0];
+          if (record?.balances?.authorized) {
+            totalIce = parseFloat(record.balances.authorized);
+          }
+        }
+      } catch {
+        // If Horizon fails, we can't compute boost
+      }
+
+      if (totalIce <= 0 || myIce <= 0) {
+        return { boost: 1.0, myIce, totalIce, ourLp: contractLp, poolLp, lpSharePct: (contractLp / poolLp) * 100, maxLpFor2_5x: 0 };
+      }
+
+      // 5. Compute boost
+      const iceShare = myIce / totalIce;
+      const deposit = contractLp;
+      const numerator = Math.min(0.4 * deposit + 0.6 * poolLp * iceShare, deposit);
+      const boost = numerator / (0.4 * deposit);
+
+      // Max LP that would still get 2.5x: when iceShare >= deposit/poolLp
+      const maxLpFor2_5x = iceShare * poolLp;
+
+      return {
+        boost: Math.min(boost, 2.5),
+        myIce,
+        totalIce,
+        ourLp: contractLp,
+        poolLp,
+        lpSharePct: (contractLp / poolLp) * 100,
+        maxLpFor2_5x,
+      };
+    } catch (error) {
+      console.warn("Failed to compute ICE boost:", error);
+      return { boost: 1.0, myIce: 0, totalIce: 0, ourLp: 0, poolLp: 0, lpSharePct: 0, maxLpFor2_5x: 0 };
+    }
+  }
+}
+
+export interface IceBoostInfo {
+  boost: number;         // 1.0 – 2.5
+  myIce: number;         // admin's ICE balance
+  totalIce: number;      // total ICE supply
+  ourLp: number;         // our LP in the pool (contract)
+  poolLp: number;        // total LP in the pool
+  lpSharePct: number;    // our LP share %
+  maxLpFor2_5x: number;  // max LP that still gets full 2.5x
 }
 
 /**

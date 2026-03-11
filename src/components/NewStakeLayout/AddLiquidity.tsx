@@ -8,7 +8,7 @@ import { toast } from "react-toastify";
 import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import DialogC from "./Dialog";
-import { SorobanVaultService, TokenPriceService } from "../../services/soroban-vault.service";
+import { SorobanVaultService, TokenPriceService, IceBoostInfo } from "../../services/soroban-vault.service";
 import { StellarService } from "../../services/stellar.service";
 import { getAccountInfo, storeAccountBalance } from "../../lib/slices/userSlice";
 import aquaLogo from "../../assets/images/aqua_logo.png";
@@ -88,6 +88,7 @@ function AddLiquidity() {
   // Pool APY from Aquarius
   const [poolApy, setPoolApy] = useState<string>("--");
   const [compoundApy, setCompoundApy] = useState<string>("--");
+  const [iceBoost, setIceBoost] = useState<IceBoostInfo | null>(null);
 
   const [singleAsset, setSingleAsset] = useState<boolean>(false);
   const [singleAssetToken, setSingleAssetToken] = useState<"a" | "b">("a");
@@ -223,6 +224,10 @@ function AddLiquidity() {
     if (totalShare && parseFloat(totalShare) > 0) {
       setTotalLpSupply(totalShare);
     }
+    // Fetch ICE boost info (non-blocking — don't delay APY display)
+    vaultService.getIceBoostInfo(pool.pool_address, pool.share_token, totalShare)
+      .then(setIceBoost)
+      .catch(() => setIceBoost(null));
   }, [vaultService]);
 
   // Refresh wallet balances and update Redux state (like other sections do)
@@ -727,6 +732,7 @@ function AddLiquidity() {
                 setBalanceB("0");
                 setDepositAmount1("");
                 setDepositAmount2("");
+                setIceBoost(null);
               }}
             >
               {pools.map((pool) => (
@@ -758,6 +764,35 @@ function AddLiquidity() {
                 <div className="text-[10px] text-[#6B7280] mt-0.5">48× daily auto-compound · <span className="text-[#3B82F6]/80">via Whalehub</span></div>
               </div>
             </div>
+
+            {/* ICE Boost Info */}
+            {iceBoost && iceBoost.ourLp > 0 && (
+              <div className="bg-[#0A0D14] border border-[#8B5CF6]/20 rounded-[10px] p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs text-[#6B7280] mb-1">ICE Boost</div>
+                    <div className={`text-xl font-bold ${iceBoost.boost >= 2.49 ? "text-[#8B5CF6]" : iceBoost.boost > 1.01 ? "text-[#A78BFA]" : "text-[#6B7280]"}`}>
+                      {iceBoost.boost.toFixed(2)}x
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-[#6B7280]">
+                      Pool share: {iceBoost.lpSharePct < 0.01 ? "<0.01" : iceBoost.lpSharePct.toFixed(2)}%
+                    </div>
+                    <div className="text-[10px] text-[#6B7280]">
+                      ICE: {(iceBoost.myIce / 1e6).toFixed(1)}M / {(iceBoost.totalIce / 1e9).toFixed(0)}B
+                    </div>
+                    {iceBoost.boost >= 2.49 ? (
+                      <div className="text-[10px] text-[#8B5CF6] mt-0.5">Max boost active</div>
+                    ) : (
+                      <div className="text-[10px] text-[#6B7280] mt-0.5">
+                        2.5x up to {iceBoost.maxLpFor2_5x.toFixed(0)} LP
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Pool Reserves */}
             <div className="bg-[#0A0D14] border border-[#1C2235] rounded-[10px] p-4">

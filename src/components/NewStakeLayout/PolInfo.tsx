@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { TailSpin } from "react-loader-spinner";
-import { SorobanVaultService, TokenPriceService } from "../../services/soroban-vault.service";
+import { SorobanVaultService, TokenPriceService, IceBoostInfo } from "../../services/soroban-vault.service";
 
 interface PoolStats {
   // POL's share of the pool
@@ -16,6 +16,7 @@ interface PoolStats {
   totalLp: string;
   poolApy: string;
   compoundApy: string;
+  iceBoost: IceBoostInfo | null;
 }
 
 interface PolInfoProps {
@@ -94,6 +95,20 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
 
         if (cancelled) return;
 
+        // Fetch ICE boost info (non-blocking)
+        let iceBoost: IceBoostInfo | null = null;
+        try {
+          iceBoost = await vaultService.getIceBoostInfo(
+            poolInfo.pool_address,
+            poolInfo.share_token,
+            totalPoolLp.toFixed(7),
+          );
+        } catch {
+          // Graceful degradation
+        }
+
+        if (cancelled) return;
+
         setStats({
           polReserveA: polResA.toFixed(2),
           polReserveB: polResB.toFixed(2),
@@ -105,6 +120,7 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
           totalLp: totalPoolLp.toFixed(2),
           poolApy: apyData.poolApy,
           compoundApy: apyData.compoundApy,
+          iceBoost,
         });
       } catch (err) {
         console.warn("[PolInfo] Failed to fetch pool stats:", err);
@@ -182,6 +198,35 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
             </div>
             <div className="text-[10px] text-[#6B7280] mt-0.5">48x daily · via Whalehub</div>
           </div>
+
+          {/* ICE Boost */}
+          {stats?.iceBoost && stats.iceBoost.ourLp > 0 && (
+            <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm text-[#B1B3B8] mb-1">ICE Boost</div>
+                  <div className={`text-lg font-semibold ${stats.iceBoost.boost >= 2.49 ? "text-[#8B5CF6]" : stats.iceBoost.boost > 1.01 ? "text-[#A78BFA]" : "text-[#6B7280]"}`}>
+                    {stats.iceBoost.boost.toFixed(2)}x
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-[#6B7280]">
+                    Pool share: {stats.iceBoost.lpSharePct < 0.01 ? "<0.01" : stats.iceBoost.lpSharePct.toFixed(2)}%
+                  </div>
+                  <div className="text-[10px] text-[#6B7280]">
+                    ICE: {(stats.iceBoost.myIce / 1e6).toFixed(1)}M / {(stats.iceBoost.totalIce / 1e9).toFixed(0)}B
+                  </div>
+                  {stats.iceBoost.boost >= 2.49 ? (
+                    <div className="text-[10px] text-[#8B5CF6] mt-0.5">Max boost active</div>
+                  ) : (
+                    <div className="text-[10px] text-[#6B7280] mt-0.5">
+                      2.5x up to {fmtNum(stats.iceBoost.maxLpFor2_5x, 0)} LP
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
