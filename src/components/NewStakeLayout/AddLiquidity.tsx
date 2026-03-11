@@ -89,9 +89,8 @@ function AddLiquidity() {
   const [poolApy, setPoolApy] = useState<string>("--");
   const [compoundApy, setCompoundApy] = useState<string>("--");
 
-  // Single-asset deposit mode — disabled: contract does not support single-asset yet (Error #4)
-  // const [singleAsset, setSingleAsset] = useState<boolean>(false);
-  const singleAsset = false;
+  const [singleAsset, setSingleAsset] = useState<boolean>(false);
+  const [singleAssetToken, setSingleAssetToken] = useState<"a" | "b">("a");
 
   // Slippage tolerance in percentage (e.g., 0.5 = 0.5%)
   const [slippageTolerance, setSlippageTolerance] = useState<number>(0.5);
@@ -410,50 +409,67 @@ function AddLiquidity() {
     const amount1 = parseFloat(depositAmount1);
     let amount2 = parseFloat(depositAmount2);
 
-    if (!amount1 || amount1 <= 0) {
-      return toast.warn(`Please enter ${selectedPool.token_a_code} amount`);
-    }
+    // In single-asset mode, validate against the selected token's balance
+    if (singleAsset) {
+      const selectedCode = singleAssetToken === "a" ? selectedPool.token_a_code : selectedPool.token_b_code;
+      const selectedBal = parseFloat(singleAssetToken === "a" ? balanceA : balanceB);
 
-    // If the second field is empty/zero and NOT in single-asset mode, auto-calculate from pool ratio
-    if ((!amount2 || amount2 <= 0) && !singleAsset) {
-      const resA = parseFloat(reserveA);
-      const resB = parseFloat(reserveB);
-      if (resA > 0 && resB > 0) {
-        amount2 = amount1 * (resB / resA);
-        setDepositAmount2(amount2.toFixed(7));
-      } else {
-        return toast.warn(`Please enter ${selectedPool.token_b_code} amount`);
+      if (!amount1 || amount1 <= 0) {
+        return toast.warn(`Please enter ${selectedCode} amount`);
       }
-    }
+      if (amount1 > selectedBal) {
+        return toast.warn(
+          `Insufficient ${selectedCode} balance. You have ${selectedBal.toFixed(4)}`
+        );
+      }
+      amount2 = 0;
+    } else {
+      if (!amount1 || amount1 <= 0) {
+        return toast.warn(`Please enter ${selectedPool.token_a_code} amount`);
+      }
 
-    // In single-asset mode with no amount2, default to 0
-    if (!amount2 || amount2 < 0) amount2 = 0;
+      // If the second field is empty/zero, auto-calculate from pool ratio
+      if (!amount2 || amount2 <= 0) {
+        const resA = parseFloat(reserveA);
+        const resB = parseFloat(reserveB);
+        if (resA > 0 && resB > 0) {
+          amount2 = amount1 * (resB / resA);
+          setDepositAmount2(amount2.toFixed(7));
+        } else {
+          return toast.warn(`Please enter ${selectedPool.token_b_code} amount`);
+        }
+      }
 
-    // Balance validation
-    const balA = parseFloat(balanceA);
-    const balB = parseFloat(balanceB);
+      // Balance validation
+      const balA = parseFloat(balanceA);
+      const balB = parseFloat(balanceB);
 
-    if (amount1 > balA) {
-      return toast.warn(
-        `Insufficient ${selectedPool.token_a_code} balance. You have ${balA.toFixed(4)}`
-      );
-    }
+      if (amount1 > balA) {
+        return toast.warn(
+          `Insufficient ${selectedPool.token_a_code} balance. You have ${balA.toFixed(4)}`
+        );
+      }
 
-    if (amount2 > 0 && amount2 > balB) {
-      return toast.warn(
-        `Insufficient ${selectedPool.token_b_code} balance. You have ${balB.toFixed(4)}`
-      );
+      if (amount2 > 0 && amount2 > balB) {
+        return toast.warn(
+          `Insufficient ${selectedPool.token_b_code} balance. You have ${balB.toFixed(4)}`
+        );
+      }
     }
 
     // Minimum $1 deposit validation
     setIsDepositing(true);
 
     try {
+      const usdTokenACode = singleAsset && singleAssetToken === "b" ? selectedPool.token_b_code : selectedPool.token_a_code;
+      const usdAmountA = singleAsset && singleAssetToken === "b" ? 0 : amount1;
+      const usdTokenBCode = singleAsset && singleAssetToken === "b" ? selectedPool.token_a_code : selectedPool.token_b_code;
+      const usdAmountB = singleAsset ? (singleAssetToken === "b" ? amount1 : 0) : amount2;
       const totalUsdValue = await TokenPriceService.calculateTotalUsdValue(
-        selectedPool.token_a_code,
-        amount1,
-        selectedPool.token_b_code,
-        amount2,
+        usdTokenACode,
+        usdAmountA,
+        usdTokenBCode,
+        usdAmountB,
         parseFloat(reserveA),
         parseFloat(reserveB)
       );
@@ -471,14 +487,28 @@ function AddLiquidity() {
     }
 
     try {
-      const result = await vaultService.vaultDeposit({
-        userAddress: user.userWalletAddress,
-        poolId: selectedPool.pool_id,
-        desiredA: amount1.toString(),
-        desiredB: amount2.toString(),
-        minShares: "0",
-        walletName: user.walletName,
-      });
+      let result;
+
+      if (singleAsset) {
+        const tokenIn = singleAssetToken === "a" ? selectedPool.token_a : selectedPool.token_b;
+        result = await vaultService.vaultDepositSingle({
+          userAddress: user.userWalletAddress,
+          poolId: selectedPool.pool_id,
+          tokenIn,
+          amountIn: amount1.toString(),
+          minShares: "0",
+          walletName: user.walletName,
+        });
+      } else {
+        result = await vaultService.vaultDeposit({
+          userAddress: user.userWalletAddress,
+          poolId: selectedPool.pool_id,
+          desiredA: amount1.toString(),
+          desiredB: amount2.toString(),
+          minShares: "0",
+          walletName: user.walletName,
+        });
+      }
 
       if (result.success) {
         toast.success("Deposit successful!");
@@ -818,15 +848,15 @@ function AddLiquidity() {
         {/* Deposit Tab */}
         {activeTab === "deposit" && selectedPool && (
           <div className="mt-5 space-y-4">
-            {/* Single-asset toggle — disabled: contract does not support single-asset deposit yet (Error #4)
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-sm text-[#B1B3B8]">Single asset deposit</span>
-                <div className="text-[10px] text-[#6B7280]">Disable auto-fill of second token</div>
+                <div className="text-[10px] text-[#6B7280]">Deposit only one token — AMM handles the rest</div>
               </div>
               <button
                 onClick={() => {
                   setSingleAsset(!singleAsset);
+                  setDepositAmount1("");
                   setDepositAmount2("");
                 }}
                 className={clsx(
@@ -841,77 +871,152 @@ function AddLiquidity() {
                   )}
                 />
               </button>
-            </div> */}
-
-            {/* Token A */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs text-[#6B7280] uppercase tracking-wider">{selectedPool.token_a_code}</label>
-                <span className="text-xs text-[#6B7280]">
-                  Balance: {isLoadingBalances ? "..." : fmtNum(balanceA)}
-                </span>
-              </div>
-              <div className="flex items-center bg-[#0A0D14] border border-[#1C2235] rounded-[10px] px-3 py-2 focus-within:border-[#00CC99] transition-colors">
-                {TOKEN_LOGOS[selectedPool.token_a_code] && (
-                  <img src={TOKEN_LOGOS[selectedPool.token_a_code]} alt={selectedPool.token_a_code} className="w-5 h-5 rounded-full mr-2 flex-shrink-0" />
-                )}
-                <Input
-                  placeholder="0"
-                  value={depositAmount1}
-                  type="text"
-                  inputMode="decimal"
-                  className="flex-1 bg-transparent text-white text-sm focus:outline-none focus:ring-0 border-none min-w-0"
-                  onChange={(e) => handleAmount1Change(e.target.value)}
-                />
-                <button
-                  className="ml-2 text-xs text-[#00CC99] hover:text-white transition-colors font-medium flex-shrink-0"
-                  onClick={() => handleAmount1Change(balanceA)}
-                >
-                  MAX
-                </button>
-              </div>
             </div>
 
-            {/* Token B */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="text-xs text-[#6B7280] uppercase tracking-wider">{selectedPool.token_b_code}</label>
-                <span className="text-xs text-[#6B7280]">
-                  Balance: {isLoadingBalances ? "..." : fmtNum(balanceB)}
-                </span>
+            {singleAsset ? (
+              /* Single-asset mode: token selector + single input */
+              <div>
+                {/* Token selector */}
+                <div className="flex items-center gap-2 mb-2">
+                  {[
+                    { key: "a" as const, code: selectedPool.token_a_code, bal: balanceA },
+                    { key: "b" as const, code: selectedPool.token_b_code, bal: balanceB },
+                  ].map((t) => (
+                    <button
+                      key={t.key}
+                      onClick={() => {
+                        setSingleAssetToken(t.key);
+                        setDepositAmount1("");
+                      }}
+                      className={clsx(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-sm font-medium transition-colors border",
+                        singleAssetToken === t.key
+                          ? "border-[#00CC99] bg-[#00CC99]/10 text-white"
+                          : "border-[#1C2235] bg-[#0A0D14] text-[#6B7280] hover:border-[#2A3050]"
+                      )}
+                    >
+                      {TOKEN_LOGOS[t.code] && (
+                        <img src={TOKEN_LOGOS[t.code]} alt={t.code} className="w-4 h-4 rounded-full" />
+                      )}
+                      {t.code}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs text-[#6B7280] uppercase tracking-wider">
+                    {singleAssetToken === "a" ? selectedPool.token_a_code : selectedPool.token_b_code}
+                  </label>
+                  <span className="text-xs text-[#6B7280]">
+                    Balance: {isLoadingBalances ? "..." : fmtNum(singleAssetToken === "a" ? balanceA : balanceB)}
+                  </span>
+                </div>
+                <div className="flex items-center bg-[#0A0D14] border border-[#1C2235] rounded-[10px] px-3 py-2 focus-within:border-[#00CC99] transition-colors">
+                  {TOKEN_LOGOS[singleAssetToken === "a" ? selectedPool.token_a_code : selectedPool.token_b_code] && (
+                    <img
+                      src={TOKEN_LOGOS[singleAssetToken === "a" ? selectedPool.token_a_code : selectedPool.token_b_code]}
+                      alt={singleAssetToken === "a" ? selectedPool.token_a_code : selectedPool.token_b_code}
+                      className="w-5 h-5 rounded-full mr-2 flex-shrink-0"
+                    />
+                  )}
+                  <Input
+                    placeholder="0"
+                    value={depositAmount1}
+                    type="text"
+                    inputMode="decimal"
+                    className="flex-1 bg-transparent text-white text-sm focus:outline-none focus:ring-0 border-none min-w-0"
+                    onChange={(e) => handleAmount1Change(e.target.value)}
+                  />
+                  <button
+                    className="ml-2 text-xs text-[#00CC99] hover:text-white transition-colors font-medium flex-shrink-0"
+                    onClick={() => handleAmount1Change(singleAssetToken === "a" ? balanceA : balanceB)}
+                  >
+                    MAX
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center bg-[#0A0D14] border border-[#1C2235] rounded-[10px] px-3 py-2 focus-within:border-[#00CC99] transition-colors">
-                {TOKEN_LOGOS[selectedPool.token_b_code] && (
-                  <img src={TOKEN_LOGOS[selectedPool.token_b_code]} alt={selectedPool.token_b_code} className="w-5 h-5 rounded-full mr-2 flex-shrink-0" />
-                )}
-                <Input
-                  placeholder="0"
-                  value={depositAmount2}
-                  type="text"
-                  inputMode="decimal"
-                  className="flex-1 bg-transparent text-white text-sm focus:outline-none focus:ring-0 border-none min-w-0"
-                  onChange={(e) => handleAmount2Change(e.target.value)}
-                />
-                <button
-                  className="ml-2 text-xs text-[#00CC99] hover:text-white transition-colors font-medium flex-shrink-0"
-                  onClick={() => handleAmount2Change(balanceB)}
-                >
-                  MAX
-                </button>
-              </div>
-            </div>
+            ) : (
+              /* Dual-asset mode: Token A + Token B inputs */
+              <>
+                {/* Token A */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-xs text-[#6B7280] uppercase tracking-wider">{selectedPool.token_a_code}</label>
+                    <span className="text-xs text-[#6B7280]">
+                      Balance: {isLoadingBalances ? "..." : fmtNum(balanceA)}
+                    </span>
+                  </div>
+                  <div className="flex items-center bg-[#0A0D14] border border-[#1C2235] rounded-[10px] px-3 py-2 focus-within:border-[#00CC99] transition-colors">
+                    {TOKEN_LOGOS[selectedPool.token_a_code] && (
+                      <img src={TOKEN_LOGOS[selectedPool.token_a_code]} alt={selectedPool.token_a_code} className="w-5 h-5 rounded-full mr-2 flex-shrink-0" />
+                    )}
+                    <Input
+                      placeholder="0"
+                      value={depositAmount1}
+                      type="text"
+                      inputMode="decimal"
+                      className="flex-1 bg-transparent text-white text-sm focus:outline-none focus:ring-0 border-none min-w-0"
+                      onChange={(e) => handleAmount1Change(e.target.value)}
+                    />
+                    <button
+                      className="ml-2 text-xs text-[#00CC99] hover:text-white transition-colors font-medium flex-shrink-0"
+                      onClick={() => handleAmount1Change(balanceA)}
+                    >
+                      MAX
+                    </button>
+                  </div>
+                </div>
+
+                {/* Token B */}
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-xs text-[#6B7280] uppercase tracking-wider">{selectedPool.token_b_code}</label>
+                    <span className="text-xs text-[#6B7280]">
+                      Balance: {isLoadingBalances ? "..." : fmtNum(balanceB)}
+                    </span>
+                  </div>
+                  <div className="flex items-center bg-[#0A0D14] border border-[#1C2235] rounded-[10px] px-3 py-2 focus-within:border-[#00CC99] transition-colors">
+                    {TOKEN_LOGOS[selectedPool.token_b_code] && (
+                      <img src={TOKEN_LOGOS[selectedPool.token_b_code]} alt={selectedPool.token_b_code} className="w-5 h-5 rounded-full mr-2 flex-shrink-0" />
+                    )}
+                    <Input
+                      placeholder="0"
+                      value={depositAmount2}
+                      type="text"
+                      inputMode="decimal"
+                      className="flex-1 bg-transparent text-white text-sm focus:outline-none focus:ring-0 border-none min-w-0"
+                      onChange={(e) => handleAmount2Change(e.target.value)}
+                    />
+                    <button
+                      className="ml-2 text-xs text-[#00CC99] hover:text-white transition-colors font-medium flex-shrink-0"
+                      onClick={() => handleAmount2Change(balanceB)}
+                    >
+                      MAX
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Transaction Summary */}
-            {depositAmount1 && parseFloat(depositAmount1) > 0 && depositAmount2 && parseFloat(depositAmount2) > 0 && (
+            {depositAmount1 && parseFloat(depositAmount1) > 0 && (singleAsset || (depositAmount2 && parseFloat(depositAmount2) > 0)) && (
               <div className="bg-[#070910] border border-[#1C2235] rounded-[10px] p-4">
                 <div className="text-xs text-[#6B7280] uppercase tracking-wider mb-3">Transaction Summary</div>
                 <div className="space-y-2.5 text-sm">
                   <div className="flex justify-between">
                     <span className="text-[#B1B3B8]">You deposit</span>
                     <div className="text-right">
-                      <div className="text-white">{fmtNum(depositAmount1)} {selectedPool.token_a_code}</div>
-                      {depositAmount2 && parseFloat(depositAmount2) > 0 && (
-                        <div className="text-white">{fmtNum(depositAmount2)} {selectedPool.token_b_code}</div>
+                      {singleAsset ? (
+                        <div className="text-white">
+                          {fmtNum(depositAmount1)} {singleAssetToken === "a" ? selectedPool.token_a_code : selectedPool.token_b_code}
+                        </div>
+                      ) : (
+                        <>
+                          <div className="text-white">{fmtNum(depositAmount1)} {selectedPool.token_a_code}</div>
+                          {depositAmount2 && parseFloat(depositAmount2) > 0 && (
+                            <div className="text-white">{fmtNum(depositAmount2)} {selectedPool.token_b_code}</div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

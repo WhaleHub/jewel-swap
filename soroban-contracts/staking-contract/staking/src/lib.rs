@@ -4740,6 +4740,174 @@ impl StakingRegistry {
         Ok(())
     }
 
+    /// Single-asset vault deposit.
+    /// Deposits a single token into an Aquarius pool. The AMM handles the
+    /// internal swap to balance the deposit across both pool tokens.
+    ///
+    /// # Arguments
+    /// * `user` - User address
+    /// * `pool_id` - Pool ID
+    /// * `token_in` - Address of the token being deposited (must be token_a or token_b of the pool)
+    /// * `amount_in` - Amount of token_in to deposit (in raw units, 7 decimals)
+    /// * `min_shares` - Minimum LP shares to receive (slippage protection)
+    pub fn vault_deposit_single(
+        env: Env,
+        user: Address,
+        pool_id: u32,
+        token_in: Address,
+        amount_in: i128,
+        min_shares: u128,
+    ) -> Result<(), Error> {
+        user.require_auth();
+
+        if amount_in <= 0 {
+            return Err(Error::InvalidInput);
+        }
+
+        let mut pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)?;
+
+        if !pool_info.active {
+            return Err(Error::PoolNotActive);
+        }
+
+        // Verify token_in is one of the pool tokens
+        let is_token_a = token_in == pool_info.token_a;
+        let is_token_b = token_in == pool_info.token_b;
+        if !is_token_a && !is_token_b {
+            return Err(Error::InvalidInput);
+        }
+
+        let contract_address = env.current_contract_address();
+
+        // STEP 1: Transfer input token from user to contract
+        use soroban_sdk::token;
+        let token_client = token::Client::new(&env, &token_in);
+        token_client.transfer(&user, &contract_address, &amount_in);
+
+        // STEP 2: Determine Aquarius pool token ordering
+        let pool_tokens_result = env.try_invoke_contract::<Vec<Address>, soroban_sdk::Error>(
+            &pool_info.pool_address,
+            &Symbol::new(&env, "get_tokens"),
+            ().into_val(&env),
+        );
+        let token_a_is_idx0 = match pool_tokens_result {
+            Ok(Ok(ref tokens)) if tokens.len() >= 2 => {
+                tokens.get(0).unwrap() == pool_info.token_a
+            }
+            _ => true,
+        };
+
+        // STEP 3: Build deposit amounts — input token gets amount, other is 0
+        let (amount_a, amount_b): (u128, u128) = if is_token_a {
+            (amount_in as u128, 0u128)
+        } else {
+            (0u128, amount_in as u128)
+        };
+
+        // STEP 4: Authorize only the non-zero token transfer to the pool
+        let auth_entries = soroban_sdk::vec![
+            &env,
+            InvokerContractAuthEntry::Contract(SubContractInvocation {
+                context: ContractContext {
+                    contract: token_in.clone(),
+                    fn_name: Symbol::new(&env, "transfer"),
+                    args: (
+                        contract_address.clone(),
+                        pool_info.pool_address.clone(),
+                        amount_in,
+                    ).into_val(&env),
+                },
+                sub_invocations: soroban_sdk::vec![&env],
+            }),
+        ];
+        env.authorize_as_current_contract(auth_entries);
+
+        // STEP 5: Deposit to Aquarius pool (single-asset — AMM handles internal swap)
+        let aquarius_pool = AquariusPoolClient::new(&env, &pool_info.pool_address);
+        let mut deposit_amounts = Vec::new(&env);
+        if token_a_is_idx0 {
+            deposit_amounts.push_back(amount_a);
+            deposit_amounts.push_back(amount_b);
+        } else {
+            deposit_amounts.push_back(amount_b);
+            deposit_amounts.push_back(amount_a);
+        }
+
+        let (_actual_amounts, lp_shares_minted) = aquarius_pool.deposit(
+            &contract_address,
+            &deposit_amounts,
+            &min_shares,
+        );
+
+        // STEP 6: Update pool's total LP tokens
+        let old_total = pool_info.total_lp_tokens;
+        pool_info.total_lp_tokens = old_total.saturating_add(lp_shares_minted as i128);
+
+        // STEP 7: Get or create user position
+        let mut user_position: UserVaultPosition = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserVaultPosition(user.clone(), pool_id))
+            .unwrap_or(UserVaultPosition {
+                user: user.clone(),
+                pool_id,
+                share_ratio: 0,
+                deposited_at: env.ledger().timestamp(),
+                active: true,
+            });
+
+        // STEP 8: Calculate user's new share ratio
+        let user_old_lp = if old_total > 0 && user_position.share_ratio > 0 {
+            (old_total as i128)
+                .checked_mul(user_position.share_ratio)
+                .unwrap_or(0)
+                .checked_div(1_000_000_000_000)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        let user_new_lp = user_old_lp.saturating_add(lp_shares_minted as i128);
+
+        if pool_info.total_lp_tokens > 0 {
+            user_position.share_ratio = (user_new_lp as i128)
+                .checked_mul(1_000_000_000_000)
+                .unwrap_or(0)
+                .checked_div(pool_info.total_lp_tokens)
+                .unwrap_or(0);
+        }
+
+        user_position.active = true;
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolInfo(pool_id), &pool_info);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserVaultPosition(user.clone(), pool_id), &user_position);
+
+        // Track user's deposited LP (excludes compound gains)
+        let prev_deposited: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserDepositedLp(user.clone(), pool_id))
+            .unwrap_or(0);
+        env.storage()
+            .persistent()
+            .set(&DataKey::UserDepositedLp(user.clone(), pool_id), &prev_deposited.saturating_add(lp_shares_minted as i128));
+
+        env.events().publish(
+            (symbol_short!("vault_dep"), user.clone(), pool_id),
+            (amount_in, 0i128, lp_shares_minted, user_position.share_ratio),
+        );
+
+        Ok(())
+    }
+
     /// Withdraws tokens from a vault pool.
     /// User withdraws their share, contract removes liquidity from Aquarius pool.
     ///

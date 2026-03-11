@@ -447,6 +447,117 @@ export class SorobanVaultService {
   }
 
   /**
+   * Single-asset deposit to vault pool.
+   * Deposits one token; the Aquarius AMM handles the internal swap.
+   */
+  async vaultDepositSingle(params: {
+    userAddress: string;
+    poolId: number;
+    tokenIn: string;      // contract address of the token being deposited
+    amountIn: string;      // human-readable amount (e.g. "100.5")
+    minShares: string;
+    walletName: string;
+  }): Promise<{ success: boolean; error?: string; transactionHash?: string }> {
+    try {
+      const { userAddress, poolId, tokenIn, amountIn, minShares, walletName } = params;
+      console.log("[VaultDepositSingle] Starting deposit...", { userAddress, poolId, tokenIn, amountIn, walletName });
+
+      // Setup wallet
+      let signKit: StellarWalletsKit;
+
+      if (walletName === WALLET_CONNECT_ID || walletName === ("wallet_connect" as any)) {
+        signKit = walletConnectKit;
+        await signKit.setWallet(WALLET_CONNECT_ID);
+      } else {
+        const selectedModule = walletName === LOBSTR_ID ? new LobstrModule() : new FreighterModule();
+        const walletId = walletName === LOBSTR_ID ? LOBSTR_ID : FREIGHTER_ID;
+        signKit = new StellarWalletsKit({
+          network: WalletNetwork.PUBLIC,
+          selectedWalletId: walletId,
+          modules: [selectedModule],
+        });
+        await signKit.setWallet(walletId);
+      }
+
+      // Build transaction
+      const contract = new Contract(this.stakingContractId);
+      const account = await this.withRetry(() => this.server.getAccount(userAddress));
+
+      const userScVal = nativeToScVal(userAddress, { type: "address" });
+      const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
+      const tokenInScVal = nativeToScVal(tokenIn, { type: "address" });
+      const amountInScVal = nativeToScVal(BigInt(Math.round(parseFloat(amountIn) * 1e7)), { type: "i128" });
+      const minSharesScVal = nativeToScVal(BigInt(Math.round(parseFloat(minShares) * 1e7)), { type: "u128" });
+
+      let tx = new TransactionBuilder(account, {
+        fee: "1000000",
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(
+          contract.call(
+            "vault_deposit_single",
+            userScVal,
+            poolIdScVal,
+            tokenInScVal,
+            amountInScVal,
+            minSharesScVal
+          )
+        )
+        .setTimeout(300)
+        .build();
+
+      // Simulate to prepare transaction
+      const simulated = await this.simulateTx(tx);
+
+      if (SorobanRpc.Api.isSimulationError(simulated)) {
+        throw new Error(`Simulation failed: ${simulated.error}`);
+      }
+
+      // Prepare transaction with auth
+      tx = SorobanRpc.assembleTransaction(tx, simulated).build();
+
+      // Sign transaction
+      const txXdr = tx.toXDR();
+      const signOpts = { address: userAddress, networkPassphrase: this.networkPassphrase };
+      let signedTxXdr: string;
+      try {
+        ({ signedTxXdr } = await signKit.signTransaction(txXdr, signOpts));
+      } catch (signErr: any) {
+        const isWC = walletName === WALLET_CONNECT_ID || walletName === ("wallet_connect" as any);
+        if (isWC && isWCConnectionError(signErr)) {
+          console.warn("[Vault] WC session stale, reconnecting...", signErr.message);
+          signKit = reconnectWalletConnect();
+          await signKit.setWallet(WALLET_CONNECT_ID);
+          ({ signedTxXdr } = await signKit.signTransaction(txXdr, signOpts));
+        } else {
+          throw signErr;
+        }
+      }
+
+      // Submit via gateway FM, poll via read RPC
+      const signedTx = TransactionBuilder.fromXDR(signedTxXdr, this.networkPassphrase);
+      console.log("[Vault] Submitting signed transaction...");
+      const sendResponse = await this.sendServer.sendTransaction(signedTx as any);
+      console.log("[Vault] Send response:", sendResponse.status, sendResponse.hash, (sendResponse as any).errorResult ?? "");
+
+      if (sendResponse.status === "PENDING") {
+        return await this.pollTransactionResult(sendResponse.hash);
+      } else if (sendResponse.status === "ERROR") {
+        console.error("[Vault] Send error:", (sendResponse as any).errorResult);
+        throw new Error("Transaction send error");
+      } else {
+        throw new Error(`Unexpected send status: ${sendResponse.status}`);
+      }
+    } catch (error: any) {
+      console.error("[VaultDepositSingle] Error:", error);
+      return {
+        success: false,
+        error: error.message || "Single-asset deposit failed",
+      };
+    }
+  }
+
+  /**
    * Withdraw from vault pool
    */
   async vaultWithdraw(params: {
