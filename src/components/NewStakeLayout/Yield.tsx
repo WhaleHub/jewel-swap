@@ -62,7 +62,7 @@ function Yield() {
   const [rewardInfo, setRewardInfo] = useState<any>(null);
 
   // Soroban BLUB balance state
-  const [sorobanBlubBalance, setSorobanBlubBalance] = useState<string>("0.00");
+  const [sorobanBlubBalance, setSorobanBlubBalance] = useState<string>("0");
   const [blubStakedBalance, setBlubStakedBalance] = useState<string>("0.00");
   const [lpPositionData, setLpPositionData] = useState<any>(null);
   const [polData, setPolData] = useState<any>(null);
@@ -230,14 +230,16 @@ function Yield() {
 
       // PRIORITIZE Horizon API balance over Soroban contract balance
       // Horizon API is the source of truth for actual wallet balance
+      // Store full 7-decimal precision — .toFixed(2) rounds UP and can exceed
+      // the real on-chain balance, causing "InsufficientBalance" (#6) when
+      // the user clicks Max and the contract tries to transfer the full amount.
       if (freshBlubRecord?.balance) {
-        const horizonBalance = parseFloat(freshBlubRecord.balance);
-        setSorobanBlubBalance(horizonBalance.toFixed(2));
+        setSorobanBlubBalance(freshBlubRecord.balance);
       } else if (blubBalanceNumber > 0) {
         // Only use Soroban if Horizon is not available
-        setSorobanBlubBalance(blubBalanceNumber.toFixed(2));
+        setSorobanBlubBalance(blubBalanceNumber.toFixed(7));
       } else {
-        setSorobanBlubBalance("0.00");
+        setSorobanBlubBalance("0");
       }
 
       // Set staked BLUB amount from the comprehensive staking info
@@ -271,14 +273,13 @@ function Yield() {
         );
 
         if (freshBlubRecord?.balance) {
-          const horizonBalance = parseFloat(freshBlubRecord.balance);
-          setSorobanBlubBalance(horizonBalance.toFixed(2));
+          setSorobanBlubBalance(freshBlubRecord.balance);
         } else {
-          setSorobanBlubBalance("0.00");
+          setSorobanBlubBalance("0");
         }
       } catch (horizonError) {
         console.error("❌ [Yield] Horizon fallback failed:", horizonError);
-        setSorobanBlubBalance("0.00");
+        setSorobanBlubBalance("0");
       }
 
       // Don't reset blubStakedBalance to "0.00" on error - keep previous value
@@ -310,13 +311,10 @@ function Yield() {
   };
 
   const handleSetMaxStakeBlub = () => {
-    // const depositAmount =
-    //   typeof blubBalance === "number" &&
-    //   !isNaN(blubBalance)
-    //     ? Number(blubBalance)
-    //     : 0;
-
-    setBlubStakeAmount(Number(blubBalance));
+    // Floor to 7 decimals (stroops) to never exceed on-chain balance
+    const raw = parseFloat(blubBalance || "0");
+    const floored = Math.floor(raw * 1e7) / 1e7;
+    setBlubStakeAmount(floored);
   };
 
   const handleSetMaxDepositForUnstakeBlub = () => {
