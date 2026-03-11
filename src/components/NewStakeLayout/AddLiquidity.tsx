@@ -765,7 +765,7 @@ function AddLiquidity() {
               </div>
             </div>
 
-            {/* ICE Boost Info */}
+            {/* ICE Boost Info — hidden until boost is routed through admin
             {iceBoost && iceBoost.ourLp > 0 && (
               <div className="bg-[#0A0D14] border border-[#8B5CF6]/20 rounded-[10px] p-4">
                 <div className="flex items-center justify-between">
@@ -793,6 +793,7 @@ function AddLiquidity() {
                 </div>
               </div>
             )}
+            */}
 
             {/* Pool Reserves */}
             <div className="bg-[#0A0D14] border border-[#1C2235] rounded-[10px] p-4">

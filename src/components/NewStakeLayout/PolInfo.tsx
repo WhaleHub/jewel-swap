@@ -199,7 +199,7 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
             <div className="text-[10px] text-[#6B7280] mt-0.5">48x daily · via Whalehub</div>
           </div>
 
-          {/* ICE Boost */}
+          {/* ICE Boost — hidden until boost is routed through admin
           {stats?.iceBoost && stats.iceBoost.ourLp > 0 && (
             <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
               <div className="flex items-center justify-between">
@@ -227,6 +227,7 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
               </div>
             </div>
           )}
+          */}
         </div>
       )}
     </div>
