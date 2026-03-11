@@ -1,11 +1,16 @@
 import { useEffect, useState, useMemo } from "react";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { TailSpin } from "react-loader-spinner";
-import { SorobanVaultService } from "../../services/soroban-vault.service";
+import { SorobanVaultService, TokenPriceService } from "../../services/soroban-vault.service";
 
 interface PoolStats {
-  reserveA: string;
-  reserveB: string;
+  // POL's share of the pool
+  polReserveA: string;
+  polReserveB: string;
+  polUsdValue: string;
+  polLp: string;
+  polSharePercent: string;
+  // Pool-level info
   tokenACode: string;
   tokenBCode: string;
   totalLp: string;
@@ -16,6 +21,13 @@ interface PoolStats {
 interface PolInfoProps {
   onDialogOpen: (msg: string, title: string) => void;
 }
+
+// Format number with comma separators and specified decimals
+const fmtNum = (val: string | number, decimals = 2): string => {
+  const n = typeof val === "string" ? parseFloat(val) : val;
+  if (isNaN(n)) return "0";
+  return n.toFixed(decimals).replace(/,/g, ".").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+};
 
 function PolInfo({ onDialogOpen }: PolInfoProps) {
   const [stats, setStats] = useState<PoolStats | null>(null);
@@ -28,11 +40,13 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
 
     const fetchPoolStats = async () => {
       try {
-        // Pool 0 is the BLUB-AQUA POL pool — get its address from the contract
+        // Pool 0 is the BLUB-AQUA POL pool
         const poolInfo = await vaultService.getPoolInfo(0);
         if (cancelled) return;
 
-        const [apyData, reservesData] = await Promise.all([
+        const stakingContractId = process.env.REACT_APP_STAKING_CONTRACT_ID || "";
+
+        const [apyData, reservesData, contractLpBalance] = await Promise.all([
           vaultService.getAquariusPoolApy(poolInfo.pool_address),
           vaultService.getPoolReserves(
             poolInfo.pool_address,
@@ -40,15 +54,55 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
             poolInfo.token_a,
             poolInfo.token_b,
           ),
+          // Contract's total LP token balance (POL + vault users)
+          vaultService.getTokenBalance(poolInfo.share_token, stakingContractId),
         ]);
         if (cancelled) return;
 
+        // total_lp_tokens from PoolInfo = vault user LP tracked by contract
+        const vaultLp = parseFloat(poolInfo.total_lp_tokens) / 1e7;
+        const contractTotalLp = parseFloat(contractLpBalance);
+        // POL LP = contract's LP balance - vault LP
+        const polLp = Math.max(0, contractTotalLp - vaultLp);
+
+        // Total LP in the entire Aquarius pool
+        const totalPoolLp = parseFloat(apyData.totalShare ?? reservesData.totalLpSupply);
+
+        // POL's share of the pool
+        const polShare = totalPoolLp > 0 ? polLp / totalPoolLp : 0;
+
+        // POL's portion of reserves
+        const totalResA = parseFloat(reservesData.reserveA);
+        const totalResB = parseFloat(reservesData.reserveB);
+        const polResA = totalResA * polShare;
+        const polResB = totalResB * polShare;
+
+        // USD value
+        let usdValue = 0;
+        try {
+          usdValue = await TokenPriceService.calculateTotalUsdValue(
+            poolInfo.token_a_code,
+            polResA,
+            poolInfo.token_b_code,
+            polResB,
+            totalResA,
+            totalResB,
+          );
+        } catch {
+          // Graceful degradation — show 0 if price unavailable
+        }
+
+        if (cancelled) return;
+
         setStats({
-          reserveA: parseFloat(reservesData.reserveA).toFixed(2),
-          reserveB: parseFloat(reservesData.reserveB).toFixed(2),
+          polReserveA: polResA.toFixed(2),
+          polReserveB: polResB.toFixed(2),
+          polUsdValue: usdValue.toFixed(2),
+          polLp: polLp.toFixed(2),
+          polSharePercent: (polShare * 100).toFixed(2),
           tokenACode: poolInfo.token_a_code,
           tokenBCode: poolInfo.token_b_code,
-          totalLp: parseFloat(apyData.totalShare ?? reservesData.totalLpSupply).toFixed(2),
+          totalLp: totalPoolLp.toFixed(2),
           poolApy: apyData.poolApy,
           compoundApy: apyData.compoundApy,
         });
@@ -88,16 +142,27 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
-          {/* Token A reserve */}
+          {/* POL Token A */}
           <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
-            <div className="text-sm text-[#B1B3B8] mb-1">Pool {stats?.tokenACode} Reserve</div>
-            <div className="text-lg font-semibold text-white">{stats?.reserveA ?? "--"}</div>
+            <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenACode}</div>
+            <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveA ?? "0")}</div>
           </div>
 
-          {/* Token B reserve */}
+          {/* POL Token B */}
           <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
-            <div className="text-sm text-[#B1B3B8] mb-1">Pool {stats?.tokenBCode} Reserve</div>
-            <div className="text-lg font-semibold text-white">{stats?.reserveB ?? "--"}</div>
+            <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenBCode}</div>
+            <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveB ?? "0")}</div>
+          </div>
+
+          {/* USD Value */}
+          <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
+            <div className="text-sm text-[#B1B3B8] mb-1">POL Total Value</div>
+            <div className="text-lg font-semibold text-[#00CC99]">
+              ${fmtNum(stats?.polUsdValue ?? "0")}
+            </div>
+            <div className="text-[10px] text-[#6B7280] mt-0.5">
+              {fmtNum(stats?.polLp ?? "0")} LP · {stats?.polSharePercent ?? "0"}% of pool
+            </div>
           </div>
 
           {/* Pool APY */}
@@ -115,16 +180,7 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
             <div className="text-lg font-semibold text-[#3B82F6]">
               {stats?.compoundApy === "--" ? "--" : `${stats?.compoundApy}%`}
             </div>
-            <div className="text-[10px] text-[#6B7280] mt-0.5">48× daily · via Whalehub</div>
-          </div>
-
-          {/* Total LP supply */}
-          <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
-            <div className="text-sm text-[#B1B3B8] mb-1">Total LP Supply</div>
-            <div className="text-lg font-semibold text-white">{stats?.totalLp ?? "--"}</div>
-            <div className="text-[10px] text-[#6B7280] mt-0.5">
-              {stats?.tokenACode}-{stats?.tokenBCode} pool · live from Aquarius
-            </div>
+            <div className="text-[10px] text-[#6B7280] mt-0.5">48x daily · via Whalehub</div>
           </div>
         </div>
       )}
