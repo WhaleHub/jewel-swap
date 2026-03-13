@@ -1207,13 +1207,13 @@ export class TokenPriceService {
         return price;
       }
 
-      // For AQUA, use Stellar Expert asset endpoint (returns price in USD directly)
+      // For AQUA, use CoinGecko (Stellar Expert has CORS issues in browser)
       if (tokenCode === "AQUA") {
         const response = await fetch(
-          "https://api.stellar.expert/explorer/public/asset/AQUA-GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA"
+          "https://api.coingecko.com/api/v3/simple/price?ids=aquarius&vs_currencies=usd"
         );
         const data = await response.json();
-        const price = data?.price || 0;
+        const price = data?.aquarius?.usd || 0;
         this.priceCache.set(tokenCode, { price, timestamp: now });
         return price;
       }

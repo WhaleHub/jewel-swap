@@ -170,16 +170,18 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
             <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveB ?? "0")}</div>
           </div>
 
-          {/* USD Value */}
-          <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
-            <div className="text-sm text-[#B1B3B8] mb-1">POL Total Value</div>
-            <div className="text-lg font-semibold text-[#00CC99]">
-              ${fmtNum(stats?.polUsdValue ?? "0")}
+          {/* USD Value — hidden when price unavailable */}
+          {parseFloat(stats?.polUsdValue ?? "0") > 0 && (
+            <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
+              <div className="text-sm text-[#B1B3B8] mb-1">POL Total Value</div>
+              <div className="text-lg font-semibold text-[#00CC99]">
+                ${fmtNum(stats?.polUsdValue ?? "0")}
+              </div>
+              <div className="text-[10px] text-[#6B7280] mt-0.5">
+                {fmtNum(stats?.polLp ?? "0")} LP · {stats?.polSharePercent ?? "0"}% of pool
+              </div>
             </div>
-            <div className="text-[10px] text-[#6B7280] mt-0.5">
-              {fmtNum(stats?.polLp ?? "0")} LP · {stats?.polSharePercent ?? "0"}% of pool
-            </div>
-          </div>
+          )}
 
           {/* Pool APY */}
           <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
