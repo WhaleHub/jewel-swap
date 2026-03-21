@@ -33,6 +33,7 @@ const fmtNum = (val: string | number, decimals = 2): string => {
 function PolInfo({ onDialogOpen }: PolInfoProps) {
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const vaultService = useMemo(() => new SorobanVaultService(), []);
 
@@ -78,17 +79,15 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
         const polResA = totalResA * polShare;
         const polResB = totalResB * polShare;
 
-        // USD value
+        // USD value — BLUB is pegged 1:1 to AQUA, so use AQUA price for both
+        // to avoid the reserve-ratio fallback giving a wrong price (stableswap pool
+        // has imbalanced reserves that don't reflect the 1:1 peg)
         let usdValue = 0;
         try {
-          usdValue = await TokenPriceService.calculateTotalUsdValue(
-            poolInfo.token_a_code,
-            polResA,
-            poolInfo.token_b_code,
-            polResB,
-            totalResA,
-            totalResB,
-          );
+          const aquaPrice = await TokenPriceService.getTokenPrice("AQUA");
+          if (aquaPrice > 0) {
+            usdValue = (polResA + polResB) * aquaPrice;
+          }
         } catch {
           // Graceful degradation — show 0 if price unavailable
         }
@@ -137,100 +136,95 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
     };
   }, [vaultService]);
 
+  // Collapse by default if POL total value < $25,000
+  const polUsd = parseFloat(stats?.polUsdValue ?? "0");
+  const isSmallPol = polUsd < 25000;
+  const showStats = !isSmallPol || expanded;
+
   return (
     <div className="bg-[#0E111BCC] p-6 rounded-[16px]">
-      <div className="flex items-center space-x-2 mb-4">
-        <div className="text-xl font-medium text-white">Protocol Owned Liquidity</div>
+      <div className="flex items-center space-x-2 mb-2">
+        <div className="text-xl font-medium text-white">Protocol Treasury</div>
         <InformationCircleIcon
           className="h-[15px] w-[15px] text-white cursor-pointer"
           onClick={() =>
             onDialogOpen(
-              "Protocol Owned Liquidity (POL) is created when 10% of staked AQUA is automatically added to the AQUA-BLUB liquidity pool. This generates fees for the protocol and ICE token holders receive voting power to direct these rewards.",
-              "Protocol Owned Liquidity"
+              "Unlike external liquidity that leaves when incentives drop, protocol-owned liquidity is permanent. Revenue from this position buys BLUB from the open market, creating consistent demand for all stakers.",
+              "Protocol Treasury"
             )
           }
         />
+      </div>
+      <div className="text-sm text-[#B1B3B8] font-medium mb-4">
+        Protocol-owned liquidity. Earns fees. Buys BLUB. Grows the floor.
       </div>
 
       {loading ? (
         <div className="flex justify-center items-center py-8">
           <TailSpin height="32" width="32" color="#00CC99" ariaLabel="loading" radius="1" visible={true} />
         </div>
+      ) : isSmallPol && !expanded ? (
+        <button
+          onClick={() => setExpanded(true)}
+          className="text-sm text-[#00CC99] hover:underline cursor-pointer"
+        >
+          View protocol stats &#9662;
+        </button>
       ) : (
-        <div className="grid grid-cols-2 gap-4">
-          {/* POL Token A */}
-          <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
-            <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenACode}</div>
-            <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveA ?? "0")}</div>
-          </div>
+        <>
+          {isSmallPol && (
+            <button
+              onClick={() => setExpanded(false)}
+              className="text-sm text-[#00CC99] hover:underline cursor-pointer mb-3"
+            >
+              Hide protocol stats &#9652;
+            </button>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            {/* POL Token A */}
+            <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
+              <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenACode}</div>
+              <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveA ?? "0")}</div>
+            </div>
 
-          {/* POL Token B */}
-          <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
-            <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenBCode}</div>
-            <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveB ?? "0")}</div>
-          </div>
+            {/* POL Token B */}
+            <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
+              <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenBCode}</div>
+              <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveB ?? "0")}</div>
+            </div>
 
-          {/* USD Value — hidden when price unavailable */}
-          {parseFloat(stats?.polUsdValue ?? "0") > 0 && (
-            <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
-              <div className="text-sm text-[#B1B3B8] mb-1">POL Total Value</div>
+            {/* USD Value — hidden when price unavailable */}
+            {polUsd > 0 && (
+              <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
+                <div className="text-sm text-[#B1B3B8] mb-1">POL Total Value</div>
+                <div className="text-lg font-semibold text-[#00CC99]">
+                  ${fmtNum(stats?.polUsdValue ?? "0")}
+                </div>
+                <div className="text-[10px] text-[#6B7280] mt-0.5">
+                  {fmtNum(stats?.polLp ?? "0")} LP · {stats?.polSharePercent ?? "0"}% of pool
+                </div>
+              </div>
+            )}
+
+            {/* Pool APY */}
+            <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
+              <div className="text-sm text-[#B1B3B8] mb-1">Pool APY</div>
               <div className="text-lg font-semibold text-[#00CC99]">
-                ${fmtNum(stats?.polUsdValue ?? "0")}
+                {stats?.poolApy === "--" ? "--" : `${stats?.poolApy}%`}
               </div>
-              <div className="text-[10px] text-[#6B7280] mt-0.5">
-                {fmtNum(stats?.polLp ?? "0")} LP · {stats?.polSharePercent ?? "0"}% of pool
-              </div>
+              <div className="text-[10px] text-[#6B7280] mt-0.5">via Aquarius</div>
             </div>
-          )}
 
-          {/* Pool APY */}
-          <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
-            <div className="text-sm text-[#B1B3B8] mb-1">Pool APY</div>
-            <div className="text-lg font-semibold text-[#00CC99]">
-              {stats?.poolApy === "--" ? "--" : `${stats?.poolApy}%`}
+            {/* Compounded APY */}
+            <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
+              <div className="text-sm text-[#B1B3B8] mb-1">Compounded APY</div>
+              <div className="text-lg font-semibold text-[#3B82F6]">
+                {stats?.compoundApy === "--" ? "--" : `${stats?.compoundApy}%`}
+              </div>
+              <div className="text-[10px] text-[#6B7280] mt-0.5">48x daily · via Whalehub</div>
             </div>
-            <div className="text-[10px] text-[#6B7280] mt-0.5">via Aquarius</div>
           </div>
-
-          {/* Compounded APY */}
-          <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
-            <div className="text-sm text-[#B1B3B8] mb-1">Compounded APY</div>
-            <div className="text-lg font-semibold text-[#3B82F6]">
-              {stats?.compoundApy === "--" ? "--" : `${stats?.compoundApy}%`}
-            </div>
-            <div className="text-[10px] text-[#6B7280] mt-0.5">48x daily · via Whalehub</div>
-          </div>
-
-          {/* ICE Boost — hidden until boost is routed through admin
-          {stats?.iceBoost && stats.iceBoost.ourLp > 0 && (
-            <div className="bg-[#1A1E2E] p-4 rounded-[12px] col-span-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm text-[#B1B3B8] mb-1">ICE Boost</div>
-                  <div className={`text-lg font-semibold ${stats.iceBoost.boost >= 2.49 ? "text-[#8B5CF6]" : stats.iceBoost.boost > 1.01 ? "text-[#A78BFA]" : "text-[#6B7280]"}`}>
-                    {stats.iceBoost.boost.toFixed(2)}x
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] text-[#6B7280]">
-                    Pool share: {stats.iceBoost.lpSharePct < 0.01 ? "<0.01" : stats.iceBoost.lpSharePct.toFixed(2)}%
-                  </div>
-                  <div className="text-[10px] text-[#6B7280]">
-                    ICE: {(stats.iceBoost.myIce / 1e6).toFixed(1)}M / {(stats.iceBoost.totalIce / 1e9).toFixed(0)}B
-                  </div>
-                  {stats.iceBoost.boost >= 2.49 ? (
-                    <div className="text-[10px] text-[#8B5CF6] mt-0.5">Max boost active</div>
-                  ) : (
-                    <div className="text-[10px] text-[#6B7280] mt-0.5">
-                      2.5x up to {fmtNum(stats.iceBoost.maxLpFor2_5x, 0)} LP
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-          */}
-        </div>
+        </>
       )}
     </div>
   );

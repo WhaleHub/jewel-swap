@@ -48,6 +48,7 @@ import DialogC from "./Dialog";
 import { kit } from "../Navbar";
 import { WALLET_CONNECT_ID } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { ensureTrustline } from "../../utils/trustline.helper";
+import { useTokenPrice, formatUsd } from "../../hooks/useTokenPrice";
 
 function Yield() {
   const dispatch = useAppDispatch();
@@ -72,6 +73,7 @@ function Yield() {
 
   const user = useSelector((state: RootState) => state.user);
   const staking = useSelector((state: RootState) => state.staking);
+  const blubPrice = useTokenPrice("BLUB");
 
   const blubRecord = user?.userRecords?.balances?.find(
     (balance) =>
@@ -729,14 +731,13 @@ function Yield() {
     <div id="Yield_section">
       <div className="max-w-[912px] mx-auto">
         <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
-          Make Smart Yield Decisions to Maximize Returns
+          Reinvest Your Earnings
         </div>
-        <div className="text-[#B1B3B8] text-base font-normal text-center">
-          Stay ahead of the curve with rewards designed to keep you competitive
-          and thriving.
+        <div className="text-[#B1B3B8] text-base font-normal text-center max-w-[720px] mx-auto">
+          Re-stake for compounding or provide liquidity for extra yield.
         </div>
       </div>
-      <div className="mt-10 md:grid gap-5 grid-cols-2 mb-10">
+      <div className="mt-10 md:grid gap-5 grid-cols-1 max-w-[450px] mx-auto mb-10">
         <div>
           <div className="bg-[#0E111BCC] p-10 rounded-[16px] space-y-10">
             <div>
@@ -751,18 +752,19 @@ function Yield() {
                 </div>
               </div>
               <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
-                <div>Manage your earnings</div>
+                <div>Re-stake & Compound</div>
                 <InformationCircleIcon
                   className="h-[15px] w-[15px] text-white cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      `Unstake: Free up your BLUB tokens to either restake them, use them in a liquidity pool to generate yield or withdraw it to your connected wallet where you later can exchange it to other tokens or stablecoins.
-                        \n
-                      Stake Back: Reinvest your BLUB to continue earning rewards.`,
-                      "Manage your earnings"
+                      "Every BLUB you re-stake increases your proportional share of the pool. Your next reward distribution will be larger. This is compounding — your earnings earn more earnings.",
+                      "Re-stake & Compound"
                     )
                   }
                 />
+              </div>
+              <div className="text-xs text-[#B1B3B8] mt-2">
+                Re-stake your earned BLUB. Bigger position = bigger share of next reward.
               </div>
 
               <div className="flex items-center bg-[#0E111B] py-2 space-x-2 mt-2 rounded-[8px]">
@@ -789,13 +791,16 @@ function Yield() {
               </div>
 
               <div className="flex items-center text-normal mt-6 space-x-1">
-                <div className="font-normal text-[#B1B3B8]">BLUB Balance:</div>
+                <div className="font-normal text-[#B1B3B8]">Your BLUB Balance:</div>
                 <div className="font-medium">
                   {`${
                     isNaN(Number(blubBalance))
                       ? 0
                       : Number(blubBalance).toFixed(2)
                   } BLUB`}
+                  {blubPrice > 0 && Number(blubBalance) > 0 && (
+                    <span className="text-[#6B7280] text-sm ml-1">{formatUsd(blubBalance, blubPrice)}</span>
+                  )}
                 </div>
               </div>
 
@@ -804,7 +809,7 @@ function Yield() {
                 onClick={handleRestake}
               >
                 {!user?.restaking ? (
-                  <span>Stake </span>
+                  <span>Re-stake</span>
                 ) : (
                   <div className="flex justify-center items-center gap-[10px]">
                     <span className="text-white">Processing...</span>
@@ -851,7 +856,7 @@ function Yield() {
 
               <div className="flex items-center text-normal mt-6 space-x-1">
                 <div className="font-normal text-[#B1B3B8]">
-                  Unstakeable:
+                  Available to Unstake:
                 </div>
                 {blubBalanceLoading ? (
                   <TailSpin
@@ -865,6 +870,9 @@ function Yield() {
                 ) : (
                   <div className="font-medium">
                     {`${poolAndClaimBalance.toFixed(2)} BLUB`}
+                    {blubPrice > 0 && poolAndClaimBalance > 0 && (
+                      <span className="text-[#6B7280] text-sm ml-1">{formatUsd(poolAndClaimBalance, blubPrice)}</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -960,6 +968,18 @@ function Yield() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Section 3 — MAXIMIZE */}
+      <div id="Vault_section" className="max-w-[912px] mx-auto mt-16">
+        <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
+          Provide Liquidity. Earn Extra Yield.
+        </div>
+        <div className="text-[#B1B3B8] text-base font-normal text-center max-w-[720px] mx-auto">
+          Deposit into the AQUA-BLUB pool. Earn swap fees and rewards — auto-compounded daily.
+        </div>
+      </div>
+      <div className="mt-10 max-w-[550px] mx-auto mb-10">
         <AddLiquidity />
       </div>
 

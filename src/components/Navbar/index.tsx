@@ -302,6 +302,13 @@ const Navbar = () => {
       block: "start",
     });
   };
+  const onScrollToVaults = () => {
+    // @ts-expect-error: ignore
+    document.getElementById("Vault_section").scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
 
   return (
     <nav className="fixed top-0 right-0 z-30 w-full bg-[#090C0E]/50 backdrop-blur-[9px] shadow-[0_2px_3px_rgba(0,0,0,.3)] py-[32px] px-[15px] md:px-[32px] transition-all duration-300 font-inter">
@@ -317,10 +324,13 @@ const Navbar = () => {
 
         <div className="flex items-center gap-8 xs:hidden lg:block space-x-4">
           <button className="font-medium text-base" onClick={onScrollToRwards}>
-            Boost rewards
+            Stake
           </button>
           <button className="font-medium text-base" onClick={onScrollToYield}>
-            Generate Yield
+            Compound
+          </button>
+          <button className="font-medium text-base" onClick={onScrollToVaults}>
+            Vaults
           </button>
         </div>
 

@@ -23,7 +23,7 @@ function NewStakelayout() {
 
   return (
     <div className="font-inter mx-auto">
-      <div className="md:w-[914px] mx-auto">
+      <div className="md:w-[860px] mx-auto px-4">
         <Wrapper>
           <STKAqua />
           <Yield />
@@ -32,7 +32,7 @@ function NewStakelayout() {
       
       {/* POL Information Section - Only show if Soroban is enabled */}
       {isFeatureEnabled('useSoroban') && (
-        <div className="md:w-[914px] mx-auto mt-8">
+        <div className="md:w-[860px] mx-auto mt-8 px-4">
           <PolInfo onDialogOpen={onDialogOpen} />
         </div>
       )}

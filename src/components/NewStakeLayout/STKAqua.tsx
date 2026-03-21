@@ -60,12 +60,14 @@ import {
 } from "@creit.tech/stellar-wallets-kit/modules/walletconnect.module";
 import { kit } from "../Navbar";
 import { enhancedBalanceRefresh } from "../../utils/helpers";
+import { useTokenPrice, formatUsd } from "../../hooks/useTokenPrice";
 
 function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const staking = useSelector((state: RootState) => state.staking);
   const stakingAPY = useMemo(() => calculateAPY(staking.rewardState), [staking.rewardState]);
+  const blubPrice = useTokenPrice("BLUB");
 
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
   const [dialogMsg, setDialogMsg] = useState<string>("");
@@ -787,14 +789,16 @@ const handleAddTrustline = async () => {
     <div id="reward_section">
       <div className="mx-auto">
         <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
-          Elevate Rewards to Rise Above the Curve
+          Daily Growth Staking on Aquarius
         </div>
-        <div className="text-[#B1B3B8] text-base font-normal text-center">
-          Unlock exclusive opportunities to boost your rewards and gain a
-          strategic advantage.
+        <div className="text-[#B1B3B8] text-base font-medium text-center max-w-[720px] mx-auto mt-2">
+          Convert AQUA to BLUB 1 : 1 with enhanced protocol staking
+        </div>
+        <div className="text-[#B1B3B8] text-sm font-normal text-center max-w-[720px] mx-auto mt-1 italic">
+          No lockups, no vote management.
         </div>
       </div>
-      <div className="mt-10 md:grid gap-5 grid-cols-2 mb-10">
+      <div className="mt-10 md:grid gap-5 grid-cols-1 md:grid-cols-[5fr_6fr] mb-10">
         <div>
           <div className="bg-[#0E111BCC] p-10 rounded-[16px]">
             <div className="flex items-center space-x-4">
@@ -817,26 +821,19 @@ const handleAddTrustline = async () => {
               </div>
             </div>
             <div className="flex items-center space-x-2 mt-5 text-2xl">
-              <div className="font-medium text-white xs:text-2xl">
-                Convert & Stake
+              <div className="font-medium text-white xs:text-2xl text-3xl tracking-wide">
+                Deposit AQUA → Get BLUB
               </div>
               <div className="relative group">
                 <InformationCircleIcon
                   className="h-[15px] w-[15px] text-white cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      "After you connected your wallet and have AQUA in it select the amount of AQUA tokens you wish to convert to BLUB. Once converted, your BLUB will be automatically staked to start earning boosted rewards.",
-                      "Convert & Stake"
+                      "1 AQUA = 1 BLUB. Your BLUB represents your share of the staking pool. Rewards are distributed proportionally to all BLUB holders based on how long you hold. You're earning from the moment you deposit.",
+                      "Deposit AQUA → Get BLUB"
                     )
                   }
                 />
-
-                {/* <div className="absolute bottom-full mb-2 hidden w-48 rounded bg-black text-white text-xs p-2 opacity-0 group-hover:opacity-100 group-hover:block">
-                  Mint BLUB token by locking AQUA token and receive the share of
-                  AQUA governance and yield farming rewards. BLUB is
-                  automatically staked with an option to unstake and add
-                  liquidity in the AQUA-BLUB pool.
-                </div> */}
               </div>
             </div>
 
@@ -879,12 +876,12 @@ const handleAddTrustline = async () => {
                 <div className="flex items-center space-x-2 mb-1">
                   <InformationCircleIcon className="h-[15px] w-[15px] text-[#00CC99]" />
                   <div className="text-sm font-medium text-white">
-                    Time-Based Rewards
+                    Time-weighted rewards
                   </div>
                 </div>
                 <div className="text-xs text-[#B1B3B8]">
-                  Your rewards increase the longer you keep your BLUB staked.
-                  Unstake after 10-day cooldown, no penalty.
+                  The longer you hold BLUB, the larger your share of each distribution.
+                  Unstake after a 10-day cooldown. No penalties.
                 </div>
               </div>
             )}
@@ -956,7 +953,7 @@ const handleAddTrustline = async () => {
                     />
                   </div>
                 ) : (
-                  "Stake AQUA"
+                  "Deposit AQUA"
                 )
               ) : user?.lockingAqua ? (
                 <div className="flex justify-center items-center gap-[10px]">
@@ -1160,62 +1157,24 @@ const handleAddTrustline = async () => {
             </div>
 
             <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
-              <div>Accumulated rewards</div>
+              <div>Accumulated Rewards</div>
               <div className="relative group">
                 <InformationCircleIcon
                   className="h-[15px] w-[15px] text-white cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      "Your accumulated BLUB rewards from staking. Rewards are distributed proportionally based on your staked amount. There is a 7-day cooldown between claims.",
-                      "Accumulated rewards"
+                      "Your accumulated BLUB rewards from staking. Rewards are distributed proportionally based on your staked amount and how long you've held. There is a 7-day cooldown between claims.",
+                      "Accumulated Rewards"
                     )
                   }
                 />
               </div>
             </div>
 
+            {/* Current APY — moved to top of card */}
             <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-4 rounded-[8px] justify-between gap-2">
-              <div className="text-sm font-normal text-white shrink-0">Pending</div>
-              <div className="flex items-center space-x-2 min-w-0">
-                <img
-                  src={"/Blub_logo2.svg"}
-                  alt="BLUB"
-                  className="w-5 h-5 rounded-full shrink-0"
-                />
-                <span className="text-base sm:text-xl font-normal truncate">
-                  {parseFloat(pendingRewards).toFixed(2)} BLUB
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
-              <div className="text-sm font-normal text-white shrink-0">Total Claimed</div>
-              <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
-                {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toFixed(2) : "0.00"} BLUB
-              </div>
-            </div>
-
-            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
               <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
-                <span>Total Distributed</span>
-                <InformationCircleIcon
-                  className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
-                  onClick={() =>
-                    onDialogOpen(
-                      "Total BLUB rewards distributed to all stakers from POL (Protocol-Owned Liquidity) yield. Rewards are added automatically by the backend when AQUA is claimed from the BLUB-AQUA pool and swapped to BLUB.",
-                      "Total Distributed"
-                    )
-                  }
-                />
-              </div>
-              <div className="text-base sm:text-xl font-normal text-[#00CC99] text-right truncate min-w-0">
-                {staking.isLoading ? "..." : (staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
-              </div>
-            </div>
-
-            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
-              <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
-                <span>Staking APY</span>
+                <span>Current APY</span>
                 <InformationCircleIcon
                   className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
                   onClick={() =>
@@ -1226,7 +1185,7 @@ const handleAddTrustline = async () => {
                   }
                 />
               </div>
-              <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
+              <div className="text-base sm:text-xl font-semibold text-right truncate min-w-0">
                 {staking.isLoading ? (
                   "..."
                 ) : (
@@ -1240,14 +1199,66 @@ const handleAddTrustline = async () => {
             </div>
 
             <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
-              <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
-                <span>Total Staked</span>
+              <div className="text-sm font-normal text-white shrink-0">Pending Rewards</div>
+              <div className="flex items-center space-x-2 min-w-0">
+                <img
+                  src={"/Blub_logo2.svg"}
+                  alt="BLUB"
+                  className="w-5 h-5 rounded-full shrink-0"
+                />
+                <span className="text-base sm:text-xl font-normal truncate">
+                  {parseFloat(pendingRewards).toFixed(2)} BLUB
+                  {blubPrice > 0 && parseFloat(pendingRewards) > 0 && (
+                    <span className="text-[#6B7280] text-sm ml-1">{formatUsd(pendingRewards, blubPrice)}</span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
+              <div className="text-sm font-normal text-white shrink-0">Total Claimed</div>
+              <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
+                {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toFixed(2) : "0.00"} BLUB
+                {blubPrice > 0 && rewardInfo && parseFloat(rewardInfo.total_claimed || "0") > 0 && (
+                  <span className="text-[#6B7280] text-sm ml-1">{formatUsd(rewardInfo.total_claimed || "0", blubPrice)}</span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-3">
+              <div className="text-sm font-normal text-white flex items-center space-x-1">
+                <span>Total Distributed to All Stakers</span>
+                <InformationCircleIcon
+                  className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      "Total BLUB rewards distributed to all stakers from POL (Protocol-Owned Liquidity) yield. Rewards are added automatically by the backend when AQUA is claimed from the BLUB-AQUA pool and swapped to BLUB.",
+                      "Total Distributed"
+                    )
+                  }
+                />
+              </div>
+              <div className="text-base sm:text-xl font-normal text-[#00CC99] text-right truncate min-w-0">
+                {staking.isLoading ? "..." : (
+                  <>
+                    {(staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
+                    {blubPrice > 0 && (staking.rewardState?.total_rewards_added ?? 0) > 0 && (
+                      <span className="text-[#6B7280] text-sm ml-1">{formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}</span>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-3">
+              <div className="text-sm font-normal text-white flex items-center space-x-1">
+                <span>Total BLUB Staked (All Users)</span>
                 <InformationCircleIcon
                   className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
                       "Total BLUB currently staked across all users. A larger pool means your share of rewards is smaller, but it reflects broader protocol adoption.",
-                      "Total Staked"
+                      "Total BLUB Staked"
                     )
                   }
                 />
@@ -1255,7 +1266,12 @@ const handleAddTrustline = async () => {
               <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
                 {staking.isLoading ? "..." : (
                   staking.rewardState?.total_staked != null
-                    ? `${Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB`
+                    ? <>
+                        {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB
+                        {blubPrice > 0 && Number(staking.rewardState.total_staked) > 0 && (
+                          <span className="text-[#6B7280] text-sm ml-1">{formatUsd(staking.rewardState.total_staked, blubPrice)}</span>
+                        )}
+                      </>
                     : "--"
                 )}
               </div>
@@ -1278,7 +1294,7 @@ const handleAddTrustline = async () => {
               disabled={claimingRewards || parseFloat(pendingRewards) <= 0 || (rewardInfo && !rewardInfo.can_claim && rewardInfo.last_claim_time > 0)}
             >
               {!claimingRewards ? (
-                <span>Claim Rewards</span>
+                <span>Claim BLUB</span>
               ) : (
                 <div className="flex justify-center items-center gap-[10px]">
                   <span className="text-white">Processing...</span>

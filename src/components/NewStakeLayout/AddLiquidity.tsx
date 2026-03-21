@@ -9,6 +9,7 @@ import { TailSpin } from "react-loader-spinner";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import DialogC from "./Dialog";
 import { SorobanVaultService, TokenPriceService, IceBoostInfo } from "../../services/soroban-vault.service";
+import { useTokenPrice, formatUsd } from "../../hooks/useTokenPrice";
 import { StellarService } from "../../services/stellar.service";
 import { getAccountInfo, storeAccountBalance } from "../../lib/slices/userSlice";
 import aquaLogo from "../../assets/images/aqua_logo.png";
@@ -53,6 +54,8 @@ interface UserPosition {
 }
 
 function AddLiquidity() {
+  const aquaPrice = useTokenPrice("AQUA");
+  const blubPrice = useTokenPrice("BLUB");
   const [pools, setPools] = useState<PoolInfo[]>([]);
   const [selectedPool, setSelectedPool] = useState<PoolInfo | null>(null);
   const [userPositions, setUserPositions] = useState<UserPosition[]>([]);
@@ -627,13 +630,13 @@ function AddLiquidity() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <h2 className="text-xl font-semibold text-white">Boost Liquidity</h2>
+            <h2 className="text-xl font-semibold text-white">AQUA-BLUB Liquidity Vault</h2>
             <InformationCircleIcon
               className="h-4 w-4 text-[#6B7280] cursor-pointer hover:text-white transition-colors"
               onClick={() =>
                 onDialogOpen(
-                  `Deposit tokens into Aquarius AMM pools and earn boosted rewards using WhaleHub's ICE balance. The vault automatically claims rewards 4x daily and auto-compounds 70% back into the pool, increasing your position value. 30% goes to treasury.`,
-                  "Boost Liquidity Pool for Yield"
+                  `Providing liquidity means depositing both AQUA and BLUB into a trading pool. You earn a share of every swap fee plus AQUA rewards from Aquarius. WhaleHub auto-compounds these back into your LP position. Use "Single asset deposit" if you only have one token.`,
+                  "AQUA-BLUB Liquidity Vault"
                 )
               }
             />
@@ -807,7 +810,13 @@ function AddLiquidity() {
                 </div>
                 <span className="text-white font-medium">
                   {parseFloat(reserveA) > 0
-                    ? fmtNum(reserveA, 2)
+                    ? <>
+                        {fmtNum(reserveA, 2)}
+                        {(() => {
+                          const p = selectedPool.token_a_code === "BLUB" ? blubPrice : selectedPool.token_a_code === "AQUA" ? aquaPrice : 0;
+                          return p > 0 && parseFloat(reserveA) > 0 ? <span className="text-[#6B7280] text-xs ml-1">{formatUsd(reserveA, p)}</span> : null;
+                        })()}
+                      </>
                     : <span className="text-[#6B7280]">Loading...</span>}
                 </span>
               </div>
@@ -820,7 +829,13 @@ function AddLiquidity() {
                 </div>
                 <span className="text-white font-medium">
                   {parseFloat(reserveB) > 0
-                    ? fmtNum(reserveB, 2)
+                    ? <>
+                        {fmtNum(reserveB, 2)}
+                        {(() => {
+                          const p = selectedPool.token_b_code === "BLUB" ? blubPrice : selectedPool.token_b_code === "AQUA" ? aquaPrice : 0;
+                          return p > 0 && parseFloat(reserveB) > 0 ? <span className="text-[#6B7280] text-xs ml-1">{formatUsd(reserveB, p)}</span> : null;
+                        })()}
+                      </>
                     : <span className="text-[#6B7280]">Loading...</span>}
                 </span>
               </div>
@@ -884,6 +899,9 @@ function AddLiquidity() {
         {/* Deposit Tab */}
         {activeTab === "deposit" && selectedPool && (
           <div className="mt-5 space-y-4">
+            <div className="text-xs text-[#B1B3B8] italic mb-1">
+              Auto-compounded — swap fees and rewards are reinvested into your position automatically. No manual claiming.
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-sm text-[#B1B3B8]">Single asset deposit</span>
@@ -1090,7 +1108,7 @@ function AddLiquidity() {
                   <TailSpin height="18" width="18" color="#ffffff" ariaLabel="loading" radius="1" visible={true} />
                 </div>
               ) : (
-                <span>Deposit & Start Earning</span>
+                <span>Deposit & Earn</span>
               )}
             </Button>
           </div>

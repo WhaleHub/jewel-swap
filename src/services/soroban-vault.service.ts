@@ -1196,10 +1196,15 @@ export class TokenPriceService {
         return 1;
       }
 
+      // CoinGecko proxy: use Netlify proxy in production, direct URL for local dev
+      const cgBase = window.location.hostname === "localhost"
+        ? "https://api.coingecko.com/api/v3"
+        : "/api/coingecko";
+
       // For XLM, use CoinGecko
       if (tokenCode === "XLM") {
         const response = await fetch(
-          "https://api.coingecko.com/api/v3/simple/price?ids=stellar&vs_currencies=usd"
+          `${cgBase}/simple/price?ids=stellar&vs_currencies=usd`
         );
         const data = await response.json();
         const price = data?.stellar?.usd || 0;
@@ -1207,10 +1212,10 @@ export class TokenPriceService {
         return price;
       }
 
-      // For AQUA, use CoinGecko (Stellar Expert has CORS issues in browser)
+      // For AQUA, use CoinGecko
       if (tokenCode === "AQUA") {
         const response = await fetch(
-          "https://api.coingecko.com/api/v3/simple/price?ids=aquarius&vs_currencies=usd"
+          `${cgBase}/simple/price?ids=aquarius&vs_currencies=usd`
         );
         const data = await response.json();
         const price = data?.aquarius?.usd || 0;
