@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { useState } from "react";
 import { useAppDispatch } from "../../lib/hooks";
 import {
@@ -90,6 +90,27 @@ const Navbar = () => {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const isMobile = isMobileDevice();
+  const [activeSection, setActiveSection] = useState<string>("");
+
+  useEffect(() => {
+    const sectionIds = ["reward_section", "Yield_section", "Vault_section"];
+    const observers: IntersectionObserver[] = [];
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) setActiveSection(id);
+        },
+        { threshold: 0.3 }
+      );
+      observer.observe(el);
+      observers.push(observer);
+    });
+
+    return () => observers.forEach((o) => o.disconnect());
+  }, []);
 
   const handleWalletConnections = useCallback(
     async (walletType: walletTypes) => {
@@ -323,13 +344,37 @@ const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-8 xs:hidden lg:block space-x-4">
-          <button className="font-medium text-base" onClick={onScrollToRwards}>
+          <button
+            className={clsx(
+              "font-medium text-base py-2 px-5 rounded-lg border transition-all duration-200",
+              activeSection === "reward_section"
+                ? "border-[#00CC99]/70 bg-[#00CC99]/10 text-[#00CC99]"
+                : "border-white/20 text-white hover:border-white/40"
+            )}
+            onClick={onScrollToRwards}
+          >
             Stake
           </button>
-          <button className="font-medium text-base" onClick={onScrollToYield}>
+          <button
+            className={clsx(
+              "font-medium text-base py-2 px-5 rounded-lg border transition-all duration-200",
+              activeSection === "Yield_section"
+                ? "border-[#00CC99]/70 bg-[#00CC99]/10 text-[#00CC99]"
+                : "border-white/20 text-white hover:border-white/40"
+            )}
+            onClick={onScrollToYield}
+          >
             Compound
           </button>
-          <button className="font-medium text-base" onClick={onScrollToVaults}>
+          <button
+            className={clsx(
+              "font-medium text-base py-2 px-5 rounded-lg border transition-all duration-200",
+              activeSection === "Vault_section"
+                ? "border-[#00CC99]/70 bg-[#00CC99]/10 text-[#00CC99]"
+                : "border-white/20 text-white hover:border-white/40"
+            )}
+            onClick={onScrollToVaults}
+          >
             Vaults
           </button>
         </div>

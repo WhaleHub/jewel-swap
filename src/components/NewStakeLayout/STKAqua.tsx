@@ -1158,14 +1158,14 @@ const handleAddTrustline = async () => {
             </div>
 
             <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
-              <div>Accumulated Rewards</div>
+              <div>Your Earned Rewards</div>
               <div className="relative group">
                 <InformationCircleIcon
                   className="h-[15px] w-[15px] text-white cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
                       "Your accumulated BLUB rewards from staking. Rewards are distributed proportionally based on your staked amount and how long you've held. There is a 7-day cooldown between claims.",
-                      "Accumulated Rewards"
+                      "Your Earned Rewards"
                     )
                   }
                 />

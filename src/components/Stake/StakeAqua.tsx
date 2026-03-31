@@ -457,7 +457,7 @@ function StakeAqua() {
 
                 <div className="col-span-12 md:col-span-4 px-[10.5px]">
                   <div className="flex justify-start md:justify-center relative group">
-                    <div>Total accumulated rewards</div>
+                    <div>Your Earned Rewards</div>
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 max-w-xs bg-gray-700 text-white text-sm rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity break-words">
                       A total accumulated BLUB rewards, distributed
                       automatically for all stakers of WhaleHub

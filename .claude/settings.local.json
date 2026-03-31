@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm start:*)",
+      "Bash(cmd.exe /c \"node --version && npm --version\")",
+      "Bash(cmd.exe /c \"where node\")",
+      "Bash(cmd.exe /c \"cd /d C:\\\\Users\\\\rober\\\\Documents\\\\GitHub\\\\jewel-swap && node --version 2>&1 & npm --version 2>&1\")",
+      "Bash(export PATH=\"$PATH:/c/Program Files/nodejs\")",
+      "Bash(npm install:*)",
+      "WebFetch(domain:whalehub-1.gitbook.io)"
+    ]
+  }
+}

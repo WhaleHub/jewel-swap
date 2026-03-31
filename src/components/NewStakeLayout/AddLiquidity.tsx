@@ -753,14 +753,32 @@ function AddLiquidity() {
             {/* APY Row — two cards side by side */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-[#0A0D14] border border-[#00CC99]/20 rounded-[10px] p-4">
-                <div className="text-xs text-[#6B7280] mb-1">Pool APY</div>
+                <div className="flex items-center gap-1 mb-1">
+                  <div className="text-xs text-[#6B7280]">Pool APY</div>
+                  <InformationCircleIcon
+                    className="h-[13px] w-[13px] text-[#6B7280] cursor-pointer flex-shrink-0"
+                    onClick={() => onDialogOpen(
+                      "The base annualized yield earned from trading fees and AQUA rewards in the Aquarius liquidity pool. Reflects real-time pool performance.",
+                      "Pool APY"
+                    )}
+                  />
+                </div>
                 <div className="text-xl font-bold text-[#00CC99]">
                   {poolApy === "--" ? "--" : `${poolApy}%`}
                 </div>
                 <div className="text-[10px] text-[#6B7280] mt-0.5">via Aquarius</div>
               </div>
               <div className="bg-[#0A0D14] border border-[#3B82F6]/20 rounded-[10px] p-4">
-                <div className="text-xs text-[#6B7280] mb-1">Compounded APY</div>
+                <div className="flex items-center gap-1 mb-1">
+                  <div className="text-xs text-[#6B7280]">Compounded APY</div>
+                  <InformationCircleIcon
+                    className="h-[13px] w-[13px] text-[#6B7280] cursor-pointer flex-shrink-0"
+                    onClick={() => onDialogOpen(
+                      "Your boosted yield after Whalehub auto-compounds rewards 48 times per day. 70% of rewards are reinvested back into the pool, maximizing your returns through the power of compounding.",
+                      "Compounded APY"
+                    )}
+                  />
+                </div>
                 <div className="text-xl font-bold text-[#3B82F6]">
                   {compoundApy === "--" ? "--" : `${compoundApy}%`}
                 </div>

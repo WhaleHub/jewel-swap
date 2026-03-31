@@ -208,7 +208,13 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
 
             {/* Pool APY */}
             <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
-              <div className="text-sm text-[#B1B3B8] mb-1">Pool APY</div>
+              <div className="flex items-center gap-1 mb-1 relative group">
+                <div className="text-sm text-[#B1B3B8]">Pool APY</div>
+                <InformationCircleIcon className="h-[14px] w-[14px] text-[#6B7280] cursor-pointer flex-shrink-0" />
+                <div className="absolute bottom-full left-0 mb-2 w-56 bg-gray-800 text-white text-xs rounded px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                  The base annualized yield earned from trading fees and AQUA rewards in the Aquarius liquidity pool. Reflects real-time pool performance.
+                </div>
+              </div>
               <div className="text-lg font-semibold text-[#00CC99]">
                 {stats?.poolApy === "--" ? "--" : `${stats?.poolApy}%`}
               </div>
@@ -217,7 +223,13 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
 
             {/* Compounded APY */}
             <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
-              <div className="text-sm text-[#B1B3B8] mb-1">Compounded APY</div>
+              <div className="flex items-center gap-1 mb-1 relative group">
+                <div className="text-sm text-[#B1B3B8]">Compounded APY</div>
+                <InformationCircleIcon className="h-[14px] w-[14px] text-[#6B7280] cursor-pointer flex-shrink-0" />
+                <div className="absolute bottom-full left-0 mb-2 w-64 bg-gray-800 text-white text-xs rounded px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
+                  Your boosted yield after Whalehub auto-compounds rewards 48 times per day. 70% of rewards are reinvested back into the pool, maximizing your returns through the power of compounding.
+                </div>
+              </div>
               <div className="text-lg font-semibold text-[#3B82F6]">
                 {stats?.compoundApy === "--" ? "--" : `${stats?.compoundApy}%`}
               </div>
