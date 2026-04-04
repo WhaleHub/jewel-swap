@@ -1023,6 +1023,9 @@ const handleAddTrustline = async () => {
                               ).toFixed(2)
                             : "0.00"}{" "}
                           BLUB
+                          {blubPrice > 0 && parseFloat(staking.userStats?.activeAmount ?? "0") > 0 && (
+                            <span className="text-[#6B7280] text-xs ml-1">{formatUsd(staking.userStats?.activeAmount ?? "0", blubPrice)}</span>
+                          )}
                         </span>
                       )}
                     </div>
@@ -1053,6 +1056,9 @@ const handleAddTrustline = async () => {
                       ) : (
                         <span className="text-[#4169E1]">
                           {blubBalance} BLUB
+                          {blubPrice > 0 && parseFloat(blubBalance) > 0 && (
+                            <span className="text-[#6B7280] text-xs ml-1">{formatUsd(blubBalance, blubPrice)}</span>
+                          )}
                         </span>
                       )}
                     </div>
@@ -1071,6 +1077,9 @@ const handleAddTrustline = async () => {
                             staking.userStats?.unstakingAvailable || "0"
                           ).toFixed(2)}{" "}
                       BLUB
+                      {!staking.isLoading && blubPrice > 0 && parseFloat(staking.userStats?.unstakingAvailable || "0") > 0 && (
+                        <span className="text-[#6B7280] text-xs ml-1">{formatUsd(staking.userStats?.unstakingAvailable || "0", blubPrice)}</span>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -1082,6 +1091,9 @@ const handleAddTrustline = async () => {
                     </div>
                     <div className="text-white font-medium">
                       {staking.isLoading ? "..." : parseFloat(pendingRewards).toFixed(2)} BLUB
+                      {!staking.isLoading && blubPrice > 0 && parseFloat(pendingRewards) > 0 && (
+                        <span className="text-[#6B7280] text-xs ml-1">{formatUsd(pendingRewards, blubPrice)}</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1111,6 +1123,9 @@ const handleAddTrustline = async () => {
                                 </span>
                                 <span className="text-white font-medium">
                                   {entry.blubAmount} BLUB
+                                  {blubPrice > 0 && parseFloat(entry.blubAmount) > 0 && (
+                                    <span className="text-[#6B7280] text-[10px] ml-1">{formatUsd(entry.blubAmount, blubPrice)}</span>
+                                  )}
                                 </span>
                                 {entry.isBlubStake && (
                                   <span className="text-[9px] text-[#4169E1] bg-[#4169E1]/10 px-1 rounded">

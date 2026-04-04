@@ -906,6 +906,9 @@ function Yield() {
                                 </span>
                                 <span className="text-white font-medium">
                                   {entry.blubAmount} BLUB
+                                  {blubPrice > 0 && parseFloat(entry.blubAmount) > 0 && (
+                                    <span className="text-[#6B7280] text-[10px] ml-1">{formatUsd(entry.blubAmount, blubPrice)}</span>
+                                  )}
                                 </span>
                               </div>
                               <div className="text-right">
