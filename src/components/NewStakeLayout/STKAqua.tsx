@@ -793,10 +793,10 @@ const handleAddTrustline = async () => {
           Daily Growth Staking on Aquarius
         </div>
         <div className="text-[#B1B3B8] text-base font-medium text-center max-w-[720px] mx-auto mt-2">
-          Convert AQUA to BLUB 1 : 1 with enhanced protocol staking
+          Convert AQUA to BLUB 1 : 1 and start earning now
         </div>
         <div className="text-[#B1B3B8] text-sm font-normal text-center max-w-[720px] mx-auto mt-1 italic">
-          No lockups, no vote management.
+          No lockups, no vote management, no hassle
         </div>
       </div>
       <div className="mt-10 md:grid gap-5 grid-cols-1 md:grid-cols-2 mb-10">
