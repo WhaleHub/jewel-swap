@@ -627,46 +627,42 @@ function AddLiquidity() {
     <div>
       <div className="bg-[#0E111BCC] p-6 md:p-8 rounded-[16px]">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <h2 className="text-base md:text-xl font-semibold text-white">AQUA-BLUB Liquidity Vault</h2>
-            <div className="flex items-center space-x-2">
-              <InformationCircleIcon
-                className="h-4 w-4 text-[#6B7280] cursor-pointer hover:text-white transition-colors"
-                onClick={() =>
-                  onDialogOpen(
-                    `Providing liquidity means depositing both AQUA and BLUB into a trading pool. You earn a share of every swap fee plus AQUA rewards from Aquarius. WhaleHub auto-compounds these back into your LP position. Use "Single asset deposit" if you only have one token.`,
-                    "AQUA-BLUB Liquidity Vault"
-                  )
-                }
-              />
-              {/* Manual refresh — re-loads pools and wallet data */}
-              <button
-                onClick={async () => {
-                  await loadPools();
-                  if (selectedPool && userWalletAddress) await refreshWalletAndBalances();
-                }}
-                disabled={isLoadingPools}
-                title="Refresh"
-                className="text-[#6B7280] hover:text-white transition-colors disabled:opacity-40"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isLoadingPools ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              </button>
-            </div>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-base md:text-xl font-semibold text-white">AQUA-BLUB Liquidity Vault</h2>
+          <div className="flex items-center gap-2 shrink-0">
+            <InformationCircleIcon
+              className="h-4 w-4 text-[#6B7280] cursor-pointer hover:text-white transition-colors"
+              onClick={() =>
+                onDialogOpen(
+                  `Providing liquidity means depositing both AQUA and BLUB into a trading pool. You earn a share of every swap fee plus AQUA rewards from Aquarius. WhaleHub auto-compounds these back into your LP position. Use "Single asset deposit" if you only have one token.`,
+                  "AQUA-BLUB Liquidity Vault"
+                )
+              }
+            />
+            <button
+              onClick={async () => {
+                await loadPools();
+                if (selectedPool && userWalletAddress) await refreshWalletAndBalances();
+              }}
+              disabled={isLoadingPools}
+              title="Refresh"
+              className="text-[#6B7280] hover:text-white transition-colors disabled:opacity-40"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isLoadingPools ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+            <button
+              className="flex items-center space-x-1.5 text-xs text-[#6B7280] hover:text-white transition-colors border border-[#2A3050] rounded-[6px] px-2.5 py-1.5"
+              onClick={() => setShowSlippageSettings(!showSlippageSettings)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>Slippage: {slippageTolerance}%</span>
+            </button>
           </div>
-          {/* Slippage Settings inline */}
-          <button
-            className="flex items-center space-x-1.5 text-xs text-[#6B7280] hover:text-white transition-colors border border-[#2A3050] rounded-[6px] px-2.5 py-1.5"
-            onClick={() => setShowSlippageSettings(!showSlippageSettings)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <span>Slippage: {slippageTolerance}%</span>
-          </button>
         </div>
 
         {/* Slippage panel */}
