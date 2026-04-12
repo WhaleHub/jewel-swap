@@ -730,7 +730,7 @@ function Yield() {
   return (
     <div id="Yield_section">
       <div className="max-w-[912px] mx-auto">
-        <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
+        <div className="text-white text-xl md:text-4xl-custom1 font-medium text-center">
           Reinvest Your Earnings
         </div>
         <div className="text-[#B1B3B8] text-base font-normal text-center max-w-[720px] mx-auto">
@@ -751,7 +751,7 @@ function Yield() {
                   <span className="text-lg">BLUB</span>
                 </div>
               </div>
-              <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
+              <div className="text-lg md:text-2xl font-medium text-white mt-5 flex items-center space-x-2">
                 <div>Re-stake & Compound</div>
                 <InformationCircleIcon
                   className="h-[15px] w-[15px] text-white cursor-pointer"
@@ -803,6 +803,18 @@ function Yield() {
                   )}
                 </div>
               </div>
+
+              {rewardInfo && parseFloat(rewardInfo.pending_rewards) > 0 && (
+                <div className="mt-3 bg-[#0A0D14] rounded-[8px] px-3 py-2 flex flex-col">
+                  <span className="text-[11px] text-[#B1B3B8] leading-tight">Rewards to be distributed</span>
+                  <span className="text-[12px] font-medium text-[#00CC99] leading-tight mt-1">
+                    {parseFloat(rewardInfo.pending_rewards).toFixed(2)} BLUB
+                  </span>
+                  <span className="text-[11px] text-[#6B7280] leading-tight">
+                    {formatUsd(rewardInfo.pending_rewards, blubPrice)}
+                  </span>
+                </div>
+              )}
 
               <Button
                 className="rounded-[12px] py-5 px-4 text-white mt-10 w-full bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)] text-base font-semibold"
@@ -975,7 +987,7 @@ function Yield() {
 
       {/* Section 3 — MAXIMIZE */}
       <div id="Vault_section" className="max-w-[912px] mx-auto mt-16">
-        <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
+        <div className="text-white text-xl md:text-4xl-custom1 font-medium text-center">
           Provide Liquidity. Earn Extra Yield.
         </div>
         <div className="text-[#B1B3B8] text-base font-normal text-center max-w-[720px] mx-auto">

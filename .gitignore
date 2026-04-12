@@ -25,3 +25,5 @@ yarn-debug.log*
 yarn-error.log*
 docs/planning/prd.md
 /_bmad
+scripts/
+deploy-contracts.sh

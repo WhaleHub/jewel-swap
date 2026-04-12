@@ -789,7 +789,7 @@ const handleAddTrustline = async () => {
   return (
     <div id="reward_section">
       <div className="mx-auto">
-        <div className="text-white xs:text-2xl md:text-4xl-custom1 font-medium text-center">
+        <div className="text-white text-xl md:text-4xl-custom1 font-medium text-center">
           Daily Growth Staking on Aquarius
         </div>
         <div className="text-[#B1B3B8] text-base font-medium text-center max-w-[720px] mx-auto mt-2">
@@ -821,8 +821,8 @@ const handleAddTrustline = async () => {
                 <span className="text-lg">BLUB</span>
               </div>
             </div>
-            <div className="flex items-center space-x-2 mt-5 text-2xl">
-              <div className="font-medium text-white xs:text-2xl text-3xl tracking-wide">
+            <div className="flex items-center space-x-2 mt-5">
+              <div className="font-medium text-white text-lg md:text-2xl tracking-wide">
                 Deposit AQUA → Get BLUB
               </div>
               <div className="relative group">
@@ -1172,7 +1172,7 @@ const handleAddTrustline = async () => {
               </div>
             </div>
 
-            <div className="text-2xl font-medium text-white mt-5 flex items-center space-x-2">
+            <div className="text-lg md:text-2xl font-medium text-white mt-5 flex items-center space-x-2">
               <div>Your Earned Rewards</div>
               <div className="relative group">
                 <InformationCircleIcon
@@ -1216,28 +1216,32 @@ const handleAddTrustline = async () => {
 
             <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
               <div className="text-sm font-normal text-white shrink-0">Pending Rewards</div>
-              <div className="flex items-center space-x-2 min-w-0">
-                <img
-                  src={"/Blub_logo2.svg"}
-                  alt="BLUB"
-                  className="w-5 h-5 rounded-full shrink-0"
-                />
-                <span className="text-base sm:text-xl font-normal truncate">
-                  {parseFloat(pendingRewards).toFixed(2)} BLUB
-                  {blubPrice > 0 && parseFloat(pendingRewards) > 0 && (
-                    <span className="text-[#6B7280] text-sm ml-1">{formatUsd(pendingRewards, blubPrice)}</span>
-                  )}
+              <div className="flex flex-col items-end min-w-0">
+                <div className="flex items-center space-x-2">
+                  <img
+                    src={"/Blub_logo2.svg"}
+                    alt="BLUB"
+                    className="w-4 h-4 rounded-full shrink-0"
+                  />
+                  <span className="text-sm sm:text-base font-normal truncate">
+                    {parseFloat(pendingRewards).toFixed(2)} BLUB
+                  </span>
+                </div>
+                <span className="text-[11px] text-[#6B7280]">
+                  {formatUsd(pendingRewards, blubPrice)}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-2">
               <div className="text-sm font-normal text-white shrink-0">Total Claimed</div>
-              <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
-                {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toFixed(2) : "0.00"} BLUB
-                {blubPrice > 0 && rewardInfo && parseFloat(rewardInfo.total_claimed || "0") > 0 && (
-                  <span className="text-[#6B7280] text-sm ml-1">{formatUsd(rewardInfo.total_claimed || "0", blubPrice)}</span>
-                )}
+              <div className="flex flex-col items-end min-w-0">
+                <span className="text-sm sm:text-base font-normal truncate">
+                  {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toFixed(2) : "0.00"} BLUB
+                </span>
+                <span className="text-[11px] text-[#6B7280]">
+                  {formatUsd(rewardInfo?.total_claimed || "0", blubPrice)}
+                </span>
               </div>
             </div>
 
@@ -1251,8 +1255,8 @@ const handleAddTrustline = async () => {
             {showProtocolStats && (
               <>
                 <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-2 rounded-[8px] justify-between gap-3">
-                  <div className="text-sm font-normal text-white flex items-center space-x-1">
-                    <span>Total Distributed to All Stakers</span>
+                  <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
+                    <span>Total Distributed</span>
                     <InformationCircleIcon
                       className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
                       onClick={() =>
@@ -1263,21 +1267,23 @@ const handleAddTrustline = async () => {
                       }
                     />
                   </div>
-                  <div className="text-base sm:text-xl font-normal text-[#00CC99] text-right truncate min-w-0">
-                    {staking.isLoading ? "..." : (
+                  <div className="flex flex-col items-end min-w-0">
+                    {staking.isLoading ? <span>...</span> : (
                       <>
-                        {(staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
-                        {blubPrice > 0 && (staking.rewardState?.total_rewards_added ?? 0) > 0 && (
-                          <span className="text-[#6B7280] text-sm ml-1">{formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}</span>
-                        )}
+                        <span className="text-sm sm:text-base font-normal text-[#00CC99] truncate">
+                          {(staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
+                        </span>
+                        <span className="text-[11px] text-[#6B7280]">
+                          {formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}
+                        </span>
                       </>
                     )}
                   </div>
                 </div>
 
                 <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-3">
-                  <div className="text-sm font-normal text-white flex items-center space-x-1">
-                    <span>Total BLUB Staked (All Users)</span>
+                  <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
+                    <span>Total Staked</span>
                     <InformationCircleIcon
                       className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
                       onClick={() =>
@@ -1288,16 +1294,18 @@ const handleAddTrustline = async () => {
                       }
                     />
                   </div>
-                  <div className="text-base sm:text-xl font-normal text-right truncate min-w-0">
-                    {staking.isLoading ? "..." : (
+                  <div className="flex flex-col items-end min-w-0">
+                    {staking.isLoading ? <span>...</span> : (
                       staking.rewardState?.total_staked != null
                         ? <>
-                            {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB
-                            {blubPrice > 0 && Number(staking.rewardState.total_staked) > 0 && (
-                              <span className="text-[#6B7280] text-sm ml-1">{formatUsd(staking.rewardState.total_staked, blubPrice)}</span>
-                            )}
+                            <span className="text-sm sm:text-base font-normal truncate">
+                              {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB
+                            </span>
+                            <span className="text-[11px] text-[#6B7280]">
+                              {formatUsd(staking.rewardState.total_staked, blubPrice)}
+                            </span>
                           </>
-                        : "--"
+                        : <span>--</span>
                     )}
                   </div>
                 </div>

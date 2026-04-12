@@ -128,16 +128,15 @@ function AddLiquidity() {
       }
 
       const loadedPools: PoolInfo[] = [];
-      for (let i = 0; i < poolCount; i++) {
-        try {
-          const poolInfo = await vaultService.getPoolInfo(i);
-          console.log(`[AddLiquidity] Pool ${i}:`, poolInfo);
-          if (poolInfo.active) {
-            loadedPools.push(poolInfo);
-          }
-        } catch (poolError) {
-          console.error(`[AddLiquidity] Failed to load pool ${i}:`, poolError);
+      // Only load pool 0 (BLUB-AQUA) — other pools are hidden
+      try {
+        const poolInfo = await vaultService.getPoolInfo(0);
+        console.log(`[AddLiquidity] Pool 0:`, poolInfo);
+        if (poolInfo.active) {
+          loadedPools.push(poolInfo);
         }
+      } catch (poolError) {
+        console.error(`[AddLiquidity] Failed to load pool 0:`, poolError);
       }
 
       setPools(loadedPools);
@@ -629,31 +628,33 @@ function AddLiquidity() {
       <div className="bg-[#0E111BCC] p-6 md:p-8 rounded-[16px]">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <h2 className="text-xl font-semibold text-white">AQUA-BLUB Liquidity Vault</h2>
-            <InformationCircleIcon
-              className="h-4 w-4 text-[#6B7280] cursor-pointer hover:text-white transition-colors"
-              onClick={() =>
-                onDialogOpen(
-                  `Providing liquidity means depositing both AQUA and BLUB into a trading pool. You earn a share of every swap fee plus AQUA rewards from Aquarius. WhaleHub auto-compounds these back into your LP position. Use "Single asset deposit" if you only have one token.`,
-                  "AQUA-BLUB Liquidity Vault"
-                )
-              }
-            />
-            {/* Manual refresh — re-loads pools and wallet data */}
-            <button
-              onClick={async () => {
-                await loadPools();
-                if (selectedPool && userWalletAddress) await refreshWalletAndBalances();
-              }}
-              disabled={isLoadingPools}
-              title="Refresh"
-              className="text-[#6B7280] hover:text-white transition-colors disabled:opacity-40"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isLoadingPools ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
+          <div className="flex items-center space-x-3">
+            <h2 className="text-base md:text-xl font-semibold text-white">AQUA-BLUB Liquidity Vault</h2>
+            <div className="flex items-center space-x-2">
+              <InformationCircleIcon
+                className="h-4 w-4 text-[#6B7280] cursor-pointer hover:text-white transition-colors"
+                onClick={() =>
+                  onDialogOpen(
+                    `Providing liquidity means depositing both AQUA and BLUB into a trading pool. You earn a share of every swap fee plus AQUA rewards from Aquarius. WhaleHub auto-compounds these back into your LP position. Use "Single asset deposit" if you only have one token.`,
+                    "AQUA-BLUB Liquidity Vault"
+                  )
+                }
+              />
+              {/* Manual refresh — re-loads pools and wallet data */}
+              <button
+                onClick={async () => {
+                  await loadPools();
+                  if (selectedPool && userWalletAddress) await refreshWalletAndBalances();
+                }}
+                disabled={isLoadingPools}
+                title="Refresh"
+                className="text-[#6B7280] hover:text-white transition-colors disabled:opacity-40"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isLoadingPools ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </div>
           </div>
           {/* Slippage Settings inline */}
           <button
@@ -717,33 +718,20 @@ function AddLiquidity() {
           </div>
         )}
 
-        {/* Pool Selection */}
+        {/* Pool Selection — only BLUB-AQUA, no dropdown needed */}
         <div className="mt-5">
-          <label className="text-xs text-[#6B7280] uppercase tracking-wider mb-2 block">Select Pool</label>
           {pools.length === 0 ? (
             <div className="w-full bg-[#0A0D14] text-[#6B7280] p-6 rounded-[10px] text-center border border-[#1C2235]">
               <span className="text-sm">No liquidity pools available</span>
             </div>
           ) : (
-            <select
-              className="w-full bg-[#0A0D14] text-white p-3 rounded-[10px] border border-[#1C2235] focus:outline-none focus:border-[#00CC99] transition-colors text-sm"
-              value={selectedPool?.pool_id ?? ""}
-              onChange={(e) => {
-                const pool = pools.find((p) => p.pool_id === parseInt(e.target.value));
-                setSelectedPool(pool || null);
-                setBalanceA("0");
-                setBalanceB("0");
-                setDepositAmount1("");
-                setDepositAmount2("");
-                setIceBoost(null);
-              }}
-            >
-              {pools.map((pool) => (
-                <option key={pool.pool_id} value={pool.pool_id}>
-                  {pool.token_a_code} / {pool.token_b_code}
-                </option>
-              ))}
-            </select>
+            <div className="w-full bg-[#0A0D14] text-white p-3 rounded-[10px] border border-[#1C2235] text-sm flex items-center gap-3">
+              <div className="flex items-center -space-x-1">
+                <img src={TOKEN_LOGOS["BLUB"]} alt="BLUB" className="w-5 h-5 rounded-full" />
+                <img src={TOKEN_LOGOS["AQUA"]} alt="AQUA" className="w-5 h-5 rounded-full" />
+              </div>
+              <span>BLUB / AQUA</span>
+            </div>
           )}
         </div>
 

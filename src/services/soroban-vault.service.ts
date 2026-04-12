@@ -1179,7 +1179,8 @@ export class TokenPriceService {
   private static CACHE_TTL = 60000; // 1 minute cache
 
   /**
-   * Get token price in USD
+   * Get token price in USD.
+   * On fetch failure, returns stale cached price rather than 0.
    */
   static async getTokenPrice(tokenCode: string): Promise<number> {
     const now = Date.now();
@@ -1208,8 +1209,8 @@ export class TokenPriceService {
         );
         const data = await response.json();
         const price = data?.stellar?.usd || 0;
-        this.priceCache.set(tokenCode, { price, timestamp: now });
-        return price;
+        if (price > 0) this.priceCache.set(tokenCode, { price, timestamp: now });
+        return price || cached?.price || 0;
       }
 
       // For AQUA, use CoinGecko
@@ -1219,22 +1220,23 @@ export class TokenPriceService {
         );
         const data = await response.json();
         const price = data?.aquarius?.usd || 0;
-        this.priceCache.set(tokenCode, { price, timestamp: now });
-        return price;
+        if (price > 0) this.priceCache.set(tokenCode, { price, timestamp: now });
+        return price || cached?.price || 0;
       }
 
       // BLUB is pegged 1:1 to AQUA, use AQUA price
       if (tokenCode === "BLUB") {
         const aquaPrice = await this.getTokenPrice("AQUA");
-        this.priceCache.set(tokenCode, { price: aquaPrice, timestamp: now });
-        return aquaPrice;
+        if (aquaPrice > 0) this.priceCache.set(tokenCode, { price: aquaPrice, timestamp: now });
+        return aquaPrice || cached?.price || 0;
       }
 
       // Default: return 0 for unknown tokens
       return 0;
     } catch (error) {
       console.error(`Failed to fetch price for ${tokenCode}:`, error);
-      return 0;
+      // Return stale cached price on error instead of 0
+      return cached?.price || 0;
     }
   }
 

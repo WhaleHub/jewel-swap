@@ -30,10 +30,10 @@ export function useTokenPrice(tokenCode: string): number {
 
 /**
  * Format a token amount as USD string.
- * Returns empty string if price is 0 (loading/unavailable).
+ * Returns "(...)" while price is loading (0).
  */
 export function formatUsd(amount: number | string, price: number): string {
-  if (price <= 0) return "";
+  if (price <= 0) return "(...)";
   const val = (typeof amount === "string" ? parseFloat(amount) : amount) * price;
   if (isNaN(val) || val <= 0) return "($0.00)";
   if (val < 0.01) return "(<$0.01)";

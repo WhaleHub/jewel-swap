@@ -15,7 +15,7 @@ import { isAllowed, setAllowed } from "@stellar/freighter-api";
 import { useSelector } from "react-redux";
 import { RootState } from "../../lib/store";
 import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
-import { XMarkIcon } from "@heroicons/react/16/solid";
+import { XMarkIcon, ArrowRightStartOnRectangleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { getPublicKey } from "@lobstrco/signer-extension-api";
 import {
@@ -390,7 +390,8 @@ const Navbar = () => {
                   }
                 }}
                 className={clsx(
-                  `inline-flex items-center gap-2 py-3 px-8 text-sm/6 font-semibold text-white shadow-inner shadow-white/10 focus:outline-none data-[hover]:bg-gray-700 data-[open]:bg-gray-700 data-[focus]:outline-1 data-[focus]:outline-white rounded-lg text-base`,
+                  `inline-flex items-center gap-2 py-3 text-sm/6 font-semibold text-white shadow-inner shadow-white/10 focus:outline-none data-[hover]:bg-gray-700 data-[open]:bg-gray-700 data-[focus]:outline-1 data-[focus]:outline-white rounded-lg`,
+                  user?.userWalletAddress ? "px-3 md:px-8" : "px-8",
                   `${
                     !user?.userWalletAddress && !user?.walletConnected
                       ? "bg-[linear-gradient(180deg,_#00CC99_0%,_#005F99_100%)]"
@@ -399,9 +400,14 @@ const Navbar = () => {
                   `${user?.userWalletAddress ? "border border-[#B1B3B8]" : ""}`
                 )}
               >
-                {user?.userWalletAddress
-                  ? "Disconnect Wallet"
-                  : "Connect Wallet"}
+                {user?.userWalletAddress ? (
+                  <>
+                    <ArrowRightStartOnRectangleIcon className="w-5 h-5 md:hidden" />
+                    <span className="hidden md:inline text-base">Disconnect Wallet</span>
+                  </>
+                ) : (
+                  <span className="text-base">Connect Wallet</span>
+                )}
               </MenuButton>
 
               <MenuItems

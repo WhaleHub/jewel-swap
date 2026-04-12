@@ -14,7 +14,7 @@ from stellar_sdk import xdr as xdr_
 # ── Config ───────────────────────────────────────────────────────────────
 STAKING_CONTRACT   = "CC72BEVVKHQ57PB5FCKAZYRXCSR6DOQSTN46QR7RZMMM64YWNRPDS24S"
 MULTISIG_ADMIN     = "GALE4XON37AQ4KFTJKB3W32BUQGXFE46TQLKUIGBSIHSOEHTDBMKEI3M"
-NEW_WASM_HASH      = "93162653c1f8ae5f68b8bcf7ee2387313377bdfaf1e768e6608f821c81860490"
+NEW_WASM_HASH      = "b97f7deed3ed7d8e86f84ac89dd7d0b7b6ca348a0d60dc4eacb8c73fec772da1"
 RPC_URL            = "https://soroban-rpc.mainnet.stellar.gateway.fm"
 NETWORK_PASSPHRASE = Network.PUBLIC_NETWORK_PASSPHRASE
 MAX_FEE            = 1_000_000
