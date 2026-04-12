@@ -12,7 +12,10 @@
       "Bash(git checkout:*)",
       "Bash(git reset:*)",
       "Bash(git add:*)",
-      "Bash(git apply:*)"
+      "Bash(git apply:*)",
+      "WebFetch(domain:aave.com)",
+      "WebFetch(domain:pro.aave.com)",
+      "Bash(curl -s http://localhost:3000)"
     ]
   }
 }

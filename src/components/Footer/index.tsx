@@ -7,6 +7,16 @@ const Footer = () => {
           <a href="/terms">Terms & Conditions</a>
           <a href="/privacy">Privacy Policy</a>
           <a href="https://whalehub-1.gitbook.io/whalehub" target="_blank" rel="noopener noreferrer">Docs</a>
+          <button
+            onClick={() => {
+              if (typeof (window as any).Cookiebot !== "undefined") {
+                (window as any).Cookiebot.renew();
+              }
+            }}
+            className="text-[#B1B3B8] hover:text-white transition-colors cursor-pointer"
+          >
+            Cookie Settings
+          </button>
         </div>
       </div>
     </footer>
