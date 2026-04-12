@@ -1197,30 +1197,25 @@ export class TokenPriceService {
         return 1;
       }
 
-      // CoinGecko proxy: use Netlify proxy in production, direct URL for local dev
-      const cgBase = window.location.hostname === "localhost"
-        ? "https://api.coingecko.com/api/v3"
-        : "/api/coingecko";
+      // CoinGecko public API (supports CORS, no proxy needed)
+      const cgBase = "https://api.coingecko.com/api/v3";
 
-      // For XLM, use CoinGecko
-      if (tokenCode === "XLM") {
+      // Batch fetch XLM + AQUA in one call to reduce rate-limit hits
+      if (tokenCode === "XLM" || tokenCode === "AQUA") {
         const response = await fetch(
-          `${cgBase}/simple/price?ids=stellar&vs_currencies=usd`
+          `${cgBase}/simple/price?ids=stellar,aquarius&vs_currencies=usd`
         );
-        const data = await response.json();
-        const price = data?.stellar?.usd || 0;
-        if (price > 0) this.priceCache.set(tokenCode, { price, timestamp: now });
-        return price || cached?.price || 0;
-      }
+        if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
+        const text = await response.text();
+        if (text.startsWith("<")) throw new Error("CoinGecko returned HTML");
+        const data = JSON.parse(text);
 
-      // For AQUA, use CoinGecko
-      if (tokenCode === "AQUA") {
-        const response = await fetch(
-          `${cgBase}/simple/price?ids=aquarius&vs_currencies=usd`
-        );
-        const data = await response.json();
-        const price = data?.aquarius?.usd || 0;
-        if (price > 0) this.priceCache.set(tokenCode, { price, timestamp: now });
+        const xlmPrice = data?.stellar?.usd || 0;
+        const aquaPrice = data?.aquarius?.usd || 0;
+        if (xlmPrice > 0) this.priceCache.set("XLM", { price: xlmPrice, timestamp: now });
+        if (aquaPrice > 0) this.priceCache.set("AQUA", { price: aquaPrice, timestamp: now });
+
+        const price = tokenCode === "XLM" ? xlmPrice : aquaPrice;
         return price || cached?.price || 0;
       }
 
