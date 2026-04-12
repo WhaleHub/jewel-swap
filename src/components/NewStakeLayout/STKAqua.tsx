@@ -95,7 +95,6 @@ function STKAqua() {
   const [pendingRewards, setPendingRewards] = useState<string>("0.00");
   const [rewardInfo, setRewardInfo] = useState<any>(null);
   const [claimingRewards, setClaimingRewards] = useState<boolean>(false);
-  const [showProtocolStats, setShowProtocolStats] = useState<boolean>(false);
 
   //get user aqua record
   const aquaRecord = user?.userRecords?.balances?.find(
@@ -1244,73 +1243,6 @@ const handleAddTrustline = async () => {
                 </span>
               </div>
             </div>
-
-            <button
-              onClick={() => setShowProtocolStats(!showProtocolStats)}
-              className="text-xs text-[#00CC99] hover:underline cursor-pointer mt-3"
-            >
-              {showProtocolStats ? "Hide" : "Show"} protocol stats {showProtocolStats ? "\u25B4" : "\u25BE"}
-            </button>
-
-            {showProtocolStats && (
-              <>
-                <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-2 rounded-[8px] justify-between gap-3">
-                  <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
-                    <span>Total Distributed</span>
-                    <InformationCircleIcon
-                      className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
-                      onClick={() =>
-                        onDialogOpen(
-                          "Total BLUB rewards distributed to all stakers from POL (Protocol-Owned Liquidity) yield. Rewards are added automatically by the backend when AQUA is claimed from the BLUB-AQUA pool and swapped to BLUB.",
-                          "Total Distributed"
-                        )
-                      }
-                    />
-                  </div>
-                  <div className="flex flex-col items-end min-w-0">
-                    {staking.isLoading ? <span>...</span> : (
-                      <>
-                        <span className="text-sm sm:text-base font-normal text-[#00CC99] truncate">
-                          {(staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
-                        </span>
-                        <span className="text-[11px] text-[#6B7280]">
-                          {formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-3 rounded-[8px] justify-between gap-3">
-                  <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
-                    <span>Total Staked</span>
-                    <InformationCircleIcon
-                      className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
-                      onClick={() =>
-                        onDialogOpen(
-                          "Total BLUB currently staked across all users. A larger pool means your share of rewards is smaller, but it reflects broader protocol adoption.",
-                          "Total BLUB Staked"
-                        )
-                      }
-                    />
-                  </div>
-                  <div className="flex flex-col items-end min-w-0">
-                    {staking.isLoading ? <span>...</span> : (
-                      staking.rewardState?.total_staked != null
-                        ? <>
-                            <span className="text-sm sm:text-base font-normal truncate">
-                              {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB
-                            </span>
-                            <span className="text-[11px] text-[#6B7280]">
-                              {formatUsd(staking.rewardState.total_staked, blubPrice)}
-                            </span>
-                          </>
-                        : <span>--</span>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
 
             {rewardInfo && rewardInfo.last_claim_time > 0 && !rewardInfo.can_claim && (
               <div className="flex items-center text-sm mt-4 space-x-1">

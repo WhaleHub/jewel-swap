@@ -1,7 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
+import { useSelector } from "react-redux";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { TailSpin } from "react-loader-spinner";
 import { SorobanVaultService, TokenPriceService, IceBoostInfo } from "../../services/soroban-vault.service";
+import { useTokenPrice, formatUsd } from "../../hooks/useTokenPrice";
+import { RootState } from "../../lib/store";
 
 interface PoolStats {
   // POL's share of the pool
@@ -34,6 +37,8 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
   const [stats, setStats] = useState<PoolStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const staking = useSelector((state: RootState) => state.staking);
+  const blubPrice = useTokenPrice("BLUB");
 
   const vaultService = useMemo(() => new SorobanVaultService(), []);
 
@@ -234,6 +239,65 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
                 {stats?.compoundApy === "--" ? "--" : `${stats?.compoundApy}%`}
               </div>
               <div className="text-[10px] text-[#6B7280] mt-0.5">48x daily · via Whalehub</div>
+            </div>
+          </div>
+
+          {/* Protocol Stats — Total Distributed & Total Staked */}
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center bg-[#1A1E2E] px-4 py-3 rounded-[12px] justify-between gap-3">
+              <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
+                <span>Total Distributed</span>
+                <InformationCircleIcon
+                  className="h-[14px] w-[14px] text-[#6B7280] cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      "Total BLUB rewards distributed to all stakers from POL (Protocol-Owned Liquidity) yield. Rewards are added automatically by the backend when AQUA is claimed from the BLUB-AQUA pool and swapped to BLUB.",
+                      "Total Distributed"
+                    )
+                  }
+                />
+              </div>
+              <div className="flex flex-col items-end min-w-0">
+                {staking.isLoading ? <span>...</span> : (
+                  <>
+                    <span className="text-sm sm:text-base font-normal text-[#00CC99] truncate">
+                      {(staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
+                    </span>
+                    <span className="text-[11px] text-[#6B7280]">
+                      {formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center bg-[#1A1E2E] px-4 py-3 rounded-[12px] justify-between gap-3">
+              <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
+                <span>Total Staked</span>
+                <InformationCircleIcon
+                  className="h-[14px] w-[14px] text-[#6B7280] cursor-pointer"
+                  onClick={() =>
+                    onDialogOpen(
+                      "Total BLUB currently staked across all users. A larger pool means your share of rewards is smaller, but it reflects broader protocol adoption.",
+                      "Total BLUB Staked"
+                    )
+                  }
+                />
+              </div>
+              <div className="flex flex-col items-end min-w-0">
+                {staking.isLoading ? <span>...</span> : (
+                  staking.rewardState?.total_staked != null
+                    ? <>
+                        <span className="text-sm sm:text-base font-normal truncate">
+                          {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB
+                        </span>
+                        <span className="text-[11px] text-[#6B7280]">
+                          {formatUsd(staking.rewardState.total_staked, blubPrice)}
+                        </span>
+                      </>
+                    : <span>--</span>
+                )}
+              </div>
             </div>
           </div>
         </>
