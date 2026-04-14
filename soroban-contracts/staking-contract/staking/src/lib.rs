@@ -373,7 +373,7 @@ pub struct PoolInfo {
 pub struct UserVaultPosition {
     pub user: Address,
     pub pool_id: u32,
-    pub share_ratio: i128, // User's share in basis points × 1000000 (10 decimals precision)
+    pub share_ratio: i128, // Vault shares (v1.8.0+). User LP = share_ratio * total_lp / total_shares
     pub deposited_at: u64,
     pub active: bool,
 }
@@ -437,6 +437,8 @@ pub enum DataKey {
     UserDepositedLp(Address, u32),    // User's total deposited LP (excl. compound gains)
     // Multisig / manager split (v1.4.0)
     ManagerAddress,                  // Single-sig backend manager (blub-issuer-v2)
+    // Vault share model (v1.8.0) — sum of all user shares per pool
+    VaultTotalShares(u32),
 }
 
 #[contracttype]
@@ -3092,6 +3094,183 @@ impl StakingRegistry {
         Ok(())
     }
 
+    /// Migrate vault from broken ratio system to vault-share model (v1.8.0).
+    ///
+    /// Fixes critical bug where share_ratios could sum to >100%, causing LP
+    /// double-counting. Converts to ERC-4626-style shares where:
+    ///   user_lp = user_shares * total_lp / total_shares
+    ///
+    /// Compensates affected_user with LP from POL if their fair LP > current LP.
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (requires auth)
+    /// * `primary_user` - User with inflated 100% share (GAO3EX)
+    /// * `affected_user` - User who lost LP due to the bug (GBTU)
+    ///
+    /// Must be called ONCE after upgrading to v1.8.0 WASM.
+    pub fn migrate_v1_8_0(
+        env: Env,
+        admin: Address,
+        primary_user: Address,
+        affected_user: Address,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+        let stored_admin = env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::AdminAddress)
+            .ok_or(Error::Unauthorized)?;
+        if stored_admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let pool_id: u32 = 0;
+        let mut pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)?;
+
+        let old_total_lp = pool_info.total_lp_tokens;
+
+        // Read affected user's position (old ratio-based)
+        let affected_key = DataKey::UserVaultPosition(affected_user.clone(), pool_id);
+        let affected_pos: Option<UserVaultPosition> = env.storage().persistent().get(&affected_key);
+
+        let primary_key = DataKey::UserVaultPosition(primary_user.clone(), pool_id);
+        let primary_pos: Option<UserVaultPosition> = env.storage().persistent().get(&primary_key);
+
+        // Calculate fair LP amounts
+        let affected_current_lp = if let Some(ref a) = affected_pos {
+            old_total_lp
+                .checked_mul(a.share_ratio)
+                .unwrap_or(0)
+                .checked_div(1_000_000_000_000)
+                .unwrap_or(0)
+        } else {
+            0
+        };
+
+        // Affected user's deposited LP (net of withdrawals) = fair minimum
+        let affected_deposited: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::UserDepositedLp(affected_user.clone(), pool_id))
+            .unwrap_or(0);
+
+        // Fair LP = max(current calculated LP, net deposits)
+        let affected_fair_lp = if affected_deposited > affected_current_lp {
+            affected_deposited
+        } else {
+            affected_current_lp
+        };
+
+        // Primary user gets remainder of old total
+        let primary_fair_lp = old_total_lp.saturating_sub(affected_fair_lp);
+
+        // If compensation needed, increase total_lp with LP from POL
+        if affected_fair_lp > affected_current_lp {
+            let extra = affected_fair_lp - affected_current_lp;
+            pool_info.total_lp_tokens = old_total_lp.saturating_add(extra);
+        }
+
+        // Set up vault share model: initial shares = LP amounts (1:1)
+        // After migration: total_shares = primary_lp + affected_lp = total_lp
+        let new_total_shares = primary_fair_lp.saturating_add(affected_fair_lp);
+
+        // Update primary user position: shares = fair LP
+        if let Some(mut p_pos) = primary_pos {
+            p_pos.share_ratio = primary_fair_lp;
+            env.storage().persistent().set(&primary_key, &p_pos);
+        }
+
+        // Update affected user position: shares = fair LP
+        if let Some(mut a_pos) = affected_pos {
+            a_pos.share_ratio = affected_fair_lp;
+            env.storage().persistent().set(&affected_key, &a_pos);
+        }
+
+        // Store total shares
+        env.storage()
+            .persistent()
+            .set(&DataKey::VaultTotalShares(pool_id), &new_total_shares);
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolInfo(pool_id), &pool_info);
+
+        env.events().publish(
+            (symbol_short!("v180_fix"),),
+            (affected_fair_lp, affected_current_lp, primary_fair_lp, new_total_shares, pool_info.total_lp_tokens),
+        );
+
+        env.events().publish((symbol_short!("migrated"),), 10800u32);
+        Ok(())
+    }
+
+    /// Admin function to adjust a user's vault shares and LP.
+    /// Used for one-time corrections. Adjusts both user shares and total shares/LP.
+    /// Extra LP comes from POL (protocol-owned liquidity).
+    pub fn admin_adjust_vault_position(
+        env: Env,
+        admin: Address,
+        user: Address,
+        pool_id: u32,
+        new_shares: i128,
+        lp_delta: i128,
+    ) -> Result<(), Error> {
+        admin.require_auth();
+        let stored_admin = env.storage()
+            .instance()
+            .get::<DataKey, Address>(&DataKey::AdminAddress)
+            .ok_or(Error::Unauthorized)?;
+        if stored_admin != admin {
+            return Err(Error::Unauthorized);
+        }
+
+        let mut pool_info: PoolInfo = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PoolInfo(pool_id))
+            .ok_or(Error::PoolNotFound)?;
+
+        let pos_key = DataKey::UserVaultPosition(user.clone(), pool_id);
+        let mut user_position: UserVaultPosition = env
+            .storage()
+            .persistent()
+            .get(&pos_key)
+            .ok_or(Error::PositionNotFound)?;
+
+        let old_shares = user_position.share_ratio;
+        let share_delta = new_shares - old_shares;
+
+        user_position.share_ratio = new_shares;
+        user_position.active = new_shares > 0;
+
+        // Adjust total shares and LP
+        let total_shares: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::VaultTotalShares(pool_id))
+            .unwrap_or(0);
+        let new_total_shares = total_shares.saturating_add(share_delta);
+
+        pool_info.total_lp_tokens = pool_info.total_lp_tokens.saturating_add(lp_delta);
+
+        env.storage().persistent().set(&pos_key, &user_position);
+        env.storage()
+            .persistent()
+            .set(&DataKey::PoolInfo(pool_id), &pool_info);
+        env.storage()
+            .persistent()
+            .set(&DataKey::VaultTotalShares(pool_id), &new_total_shares);
+
+        env.events().publish(
+            (symbol_short!("adj_pos"), user, pool_id),
+            (old_shares, new_shares, share_delta, lp_delta),
+        );
+
+        Ok(())
+    }
+
     /// Returns the current config version.
     /// Transfers admin role to a new address (e.g. multisig cold wallet).
     ///
@@ -4672,9 +4851,30 @@ impl StakingRegistry {
             token_b_client.transfer(&contract_address, &user, &refund_b);
         }
 
-        // STEP 7: Update pool's total LP tokens
-        let old_total = pool_info.total_lp_tokens;
-        pool_info.total_lp_tokens = old_total.saturating_add(lp_shares_minted as i128);
+        // STEP 7: Mint vault shares proportional to LP deposited.
+        // Vault share model: shares represent proportional ownership.
+        // When compounds add LP, total_lp grows but shares stay → each share worth more.
+        let lp_minted = lp_shares_minted as i128;
+        let old_total_lp = pool_info.total_lp_tokens;
+        let total_shares: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::VaultTotalShares(pool_id))
+            .unwrap_or(0);
+
+        let shares_to_mint = if old_total_lp == 0 || total_shares == 0 {
+            // First deposit: 1 share = 1 LP
+            lp_minted
+        } else {
+            // Proportional: new_shares = lp_minted * total_shares / total_lp
+            lp_minted
+                .checked_mul(total_shares)
+                .unwrap_or(0)
+                .checked_div(old_total_lp)
+                .unwrap_or(0)
+        };
+
+        pool_info.total_lp_tokens = old_total_lp.saturating_add(lp_minted);
 
         // STEP 8: Get or create user position
         let mut user_position: UserVaultPosition = env
@@ -4689,31 +4889,11 @@ impl StakingRegistry {
                 active: true,
             });
 
-        // STEP 9: Calculate user's new share ratio
-        // Old user LP = (pool_total_before * user_share_ratio) / 1_000_000_000_000
-        let user_old_lp = if old_total > 0 && user_position.share_ratio > 0 {
-            (old_total as i128)
-                .checked_mul(user_position.share_ratio)
-                .unwrap_or(0)
-                .checked_div(1_000_000_000_000)
-                .unwrap_or(0)
-        } else {
-            0
-        };
-
-        // New user LP = old + newly minted
-        let user_new_lp = user_old_lp.saturating_add(lp_shares_minted as i128);
-
-        // Update share ratio: (user_new_lp / pool_total_new) * 1_000_000_000_000
-        if pool_info.total_lp_tokens > 0 {
-            user_position.share_ratio = (user_new_lp as i128)
-                .checked_mul(1_000_000_000_000)
-                .unwrap_or(0)
-                .checked_div(pool_info.total_lp_tokens)
-                .unwrap_or(0);
-        }
-
+        // STEP 9: Add minted shares to user and global total
+        user_position.share_ratio = user_position.share_ratio.saturating_add(shares_to_mint);
         user_position.active = true;
+
+        let new_total_shares = total_shares.saturating_add(shares_to_mint);
 
         env.storage()
             .persistent()
@@ -4721,6 +4901,9 @@ impl StakingRegistry {
         env.storage()
             .persistent()
             .set(&DataKey::UserVaultPosition(user.clone(), pool_id), &user_position);
+        env.storage()
+            .persistent()
+            .set(&DataKey::VaultTotalShares(pool_id), &new_total_shares);
 
         // Track user's deposited LP (excludes compound gains)
         let prev_deposited: i128 = env
@@ -4730,7 +4913,7 @@ impl StakingRegistry {
             .unwrap_or(0);
         env.storage()
             .persistent()
-            .set(&DataKey::UserDepositedLp(user.clone(), pool_id), &prev_deposited.saturating_add(lp_shares_minted as i128));
+            .set(&DataKey::UserDepositedLp(user.clone(), pool_id), &prev_deposited.saturating_add(lp_minted));
 
         env.events().publish(
             (symbol_short!("vault_dep"), user.clone(), pool_id),
@@ -4843,9 +5026,26 @@ impl StakingRegistry {
             &min_shares,
         );
 
-        // STEP 6: Update pool's total LP tokens
-        let old_total = pool_info.total_lp_tokens;
-        pool_info.total_lp_tokens = old_total.saturating_add(lp_shares_minted as i128);
+        // STEP 6: Mint vault shares proportional to LP deposited
+        let lp_minted = lp_shares_minted as i128;
+        let old_total_lp = pool_info.total_lp_tokens;
+        let total_shares: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::VaultTotalShares(pool_id))
+            .unwrap_or(0);
+
+        let shares_to_mint = if old_total_lp == 0 || total_shares == 0 {
+            lp_minted
+        } else {
+            lp_minted
+                .checked_mul(total_shares)
+                .unwrap_or(0)
+                .checked_div(old_total_lp)
+                .unwrap_or(0)
+        };
+
+        pool_info.total_lp_tokens = old_total_lp.saturating_add(lp_minted);
 
         // STEP 7: Get or create user position
         let mut user_position: UserVaultPosition = env
@@ -4860,28 +5060,11 @@ impl StakingRegistry {
                 active: true,
             });
 
-        // STEP 8: Calculate user's new share ratio
-        let user_old_lp = if old_total > 0 && user_position.share_ratio > 0 {
-            (old_total as i128)
-                .checked_mul(user_position.share_ratio)
-                .unwrap_or(0)
-                .checked_div(1_000_000_000_000)
-                .unwrap_or(0)
-        } else {
-            0
-        };
-
-        let user_new_lp = user_old_lp.saturating_add(lp_shares_minted as i128);
-
-        if pool_info.total_lp_tokens > 0 {
-            user_position.share_ratio = (user_new_lp as i128)
-                .checked_mul(1_000_000_000_000)
-                .unwrap_or(0)
-                .checked_div(pool_info.total_lp_tokens)
-                .unwrap_or(0);
-        }
-
+        // STEP 8: Add minted shares to user and global total
+        user_position.share_ratio = user_position.share_ratio.saturating_add(shares_to_mint);
         user_position.active = true;
+
+        let new_total_shares = total_shares.saturating_add(shares_to_mint);
 
         env.storage()
             .persistent()
@@ -4889,6 +5072,9 @@ impl StakingRegistry {
         env.storage()
             .persistent()
             .set(&DataKey::UserVaultPosition(user.clone(), pool_id), &user_position);
+        env.storage()
+            .persistent()
+            .set(&DataKey::VaultTotalShares(pool_id), &new_total_shares);
 
         // Track user's deposited LP (excludes compound gains)
         let prev_deposited: i128 = env
@@ -4898,7 +5084,7 @@ impl StakingRegistry {
             .unwrap_or(0);
         env.storage()
             .persistent()
-            .set(&DataKey::UserDepositedLp(user.clone(), pool_id), &prev_deposited.saturating_add(lp_shares_minted as i128));
+            .set(&DataKey::UserDepositedLp(user.clone(), pool_id), &prev_deposited.saturating_add(lp_minted));
 
         env.events().publish(
             (symbol_short!("vault_dep"), user.clone(), pool_id),
@@ -4950,19 +5136,38 @@ impl StakingRegistry {
             return Err(Error::PositionNotFound);
         }
 
-        // STEP 1: Calculate user's LP share amount
-        let user_total_lp = (pool_info.total_lp_tokens as i128)
-            .checked_mul(user_position.share_ratio)
+        // STEP 1: Convert user's shares to LP amount
+        let total_shares: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::VaultTotalShares(pool_id))
+            .unwrap_or(0);
+
+        let user_shares = user_position.share_ratio;
+
+        if user_shares <= 0 || total_shares <= 0 {
+            return Err(Error::InsufficientBalance);
+        }
+
+        // User's LP = shares * total_lp / total_shares
+        let user_total_lp = user_shares
+            .checked_mul(pool_info.total_lp_tokens)
             .unwrap_or(0)
-            .checked_div(1_000_000_000_000)
+            .checked_div(total_shares)
             .unwrap_or(0);
 
         if user_total_lp <= 0 {
             return Err(Error::InsufficientBalance);
         }
 
-        // Calculate LP amount to withdraw based on percentage
-        let lp_to_withdraw = (user_total_lp as i128)
+        // Calculate LP and shares to withdraw based on percentage
+        let lp_to_withdraw = user_total_lp
+            .checked_mul(share_percent as i128)
+            .unwrap_or(0)
+            .checked_div(10000)
+            .unwrap_or(0);
+
+        let shares_to_burn = user_shares
             .checked_mul(share_percent as i128)
             .unwrap_or(0)
             .checked_div(10000)
@@ -5046,19 +5251,17 @@ impl StakingRegistry {
         // STEP 4: Update pool total LP
         pool_info.total_lp_tokens = pool_info.total_lp_tokens.saturating_sub(lp_to_withdraw);
 
-        // STEP 5: Update user share ratio
-        let remaining_user_lp = user_total_lp.saturating_sub(lp_to_withdraw);
+        // STEP 5: Burn shares and update totals
+        let remaining_shares = user_shares.saturating_sub(shares_to_burn);
 
-        if pool_info.total_lp_tokens > 0 && remaining_user_lp > 0 {
-            user_position.share_ratio = (remaining_user_lp as i128)
-                .checked_mul(1_000_000_000_000)
-                .unwrap_or(0)
-                .checked_div(pool_info.total_lp_tokens)
-                .unwrap_or(0);
+        if remaining_shares > 0 {
+            user_position.share_ratio = remaining_shares;
         } else {
             user_position.share_ratio = 0;
             user_position.active = false;
         }
+
+        let new_total_shares = total_shares.saturating_sub(shares_to_burn);
 
         env.storage()
             .persistent()
@@ -5066,6 +5269,9 @@ impl StakingRegistry {
         env.storage()
             .persistent()
             .set(&DataKey::UserVaultPosition(user.clone(), pool_id), &user_position);
+        env.storage()
+            .persistent()
+            .set(&DataKey::VaultTotalShares(pool_id), &new_total_shares);
 
         // Proportionally reduce user's deposited LP tracking
         let prev_deposited: i128 = env
@@ -5356,6 +5562,14 @@ impl StakingRegistry {
             .ok_or(Error::PoolNotFound)
     }
 
+    /// Gets total vault shares for a pool (v1.8.0+).
+    pub fn get_vault_total_shares(env: Env, pool_id: u32) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::VaultTotalShares(pool_id))
+            .unwrap_or(0)
+    }
+
     /// Gets user's vault position in a specific pool.
     pub fn get_user_vault_position(env: Env, user: Address, pool_id: u32) -> Result<UserVaultPosition, Error> {
         env.storage()
@@ -5409,11 +5623,22 @@ impl StakingRegistry {
                 active: false,
             });
 
-        let current_lp = (pool_info.total_lp_tokens as i128)
-            .checked_mul(user_position.share_ratio)
-            .unwrap_or(0)
-            .checked_div(1_000_000_000_000)
+        // Convert shares to LP: user_lp = shares * total_lp / total_shares
+        let total_shares: i128 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::VaultTotalShares(pool_id))
             .unwrap_or(0);
+
+        let current_lp = if total_shares > 0 {
+            user_position.share_ratio
+                .checked_mul(pool_info.total_lp_tokens)
+                .unwrap_or(0)
+                .checked_div(total_shares)
+                .unwrap_or(0)
+        } else {
+            0
+        };
 
         let deposited_lp: i128 = env
             .storage()

@@ -281,6 +281,38 @@ export class SorobanVaultService {
   }
 
   /**
+   * Get total vault shares for a pool (v1.8.0+)
+   */
+  async getVaultTotalShares(poolId: number): Promise<number> {
+    try {
+      const contract = new Contract(this.stakingContractId);
+      const account = await this.getDummyAccount();
+
+      const poolIdScVal = nativeToScVal(poolId, { type: "u32" });
+
+      const tx = new TransactionBuilder(account, {
+        fee: BASE_FEE,
+        networkPassphrase: this.networkPassphrase,
+      })
+        .addOperation(contract.call("get_vault_total_shares", poolIdScVal))
+        .setTimeout(30)
+        .build();
+
+      const simulated = await this.simulateTx(tx);
+
+      if (SorobanRpc.Api.isSimulationSuccess(simulated)) {
+        const result = simulated.result?.retval;
+        return result ? parseFloat(scValToNative(result)) : 0;
+      }
+
+      return 0;
+    } catch (error) {
+      console.error("Failed to get vault total shares:", error);
+      return 0;
+    }
+  }
+
+  /**
    * Get user's vault position for a specific pool
    */
   async getUserVaultPosition(
@@ -313,12 +345,14 @@ export class SorobanVaultService {
           return null;
         }
 
-        const shareRatio = parseFloat(position.share_ratio) / 1_000_000_000_000;
-        // Use provided totalLpTokens if available, otherwise fall back to fetching pool info
+        // v1.8.0+: share_ratio stores vault shares, not a ratio.
+        // user_lp = user_shares * total_lp / total_shares
+        const userShares = parseFloat(position.share_ratio);
         const rawLp = totalLpTokens ?? (await this.getPoolInfo(poolId)).total_lp_tokens;
         const totalLp = parseFloat(rawLp) / 1e7;
-        const userLpAmount = totalLp * shareRatio;
-        const percentage = shareRatio * 100;
+        const totalShares = await this.getVaultTotalShares(poolId);
+        const userLpAmount = totalShares > 0 ? (totalLp * userShares / totalShares) : 0;
+        const percentage = totalShares > 0 ? (userShares / totalShares * 100) : 0;
 
         return {
           ...position,

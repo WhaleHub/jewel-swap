@@ -15,7 +15,16 @@
       "Bash(git apply:*)",
       "WebFetch(domain:aave.com)",
       "WebFetch(domain:pro.aave.com)",
-      "Bash(curl -s http://localhost:3000)"
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(stellar contract:*)",
+      "Bash(grep:*)",
+      "Bash(stellar events:*)",
+      "Bash(curl -s -X POST https://mainnet.sorobanrpc.com -H \"Content-Type: application/json\" -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getLatestLedger\"}')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['result']['sequence']\\)\")",
+      "Read(//tmp/**)",
+      "Bash(python3:*)",
+      "Bash(cargo build:*)",
+      "Bash(npx tsc:*)"
     ]
   }
 }
