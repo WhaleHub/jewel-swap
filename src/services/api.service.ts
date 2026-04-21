@@ -78,6 +78,18 @@ export interface LiquidityPool {
   isActive: boolean;
 }
 
+// Rolling-window APY from backend indexer.
+export interface StakingApyResponse {
+  windowDays: number;
+  eventCount: number;
+  rewardsInWindow: string; // BLUB (token units, 7 decimals already scaled)
+  avgTotalStaked: string; // BLUB
+  apy: string; // percentage string, e.g. "18.25", or "--" when empty
+  oldestEventTs: number | null;
+  latestEventTs: number | null;
+  lastUpdated: number;
+}
+
 // Transaction interfaces
 export interface TransactionSummary {
   transactionHash: string;
@@ -161,6 +173,23 @@ export class ApiService {
   async healthCheck(): Promise<any> {
     const response = await this.api.get<ApiResponse>("/api/soroban/health");
     return response.data.data;
+  }
+
+  /**
+   * Rolling staking APY from backend indexer.
+   * Returns null on failure so callers can fall back to the on-chain lifetime ratio.
+   */
+  async getStakingApy(windowDays = 7): Promise<StakingApyResponse | null> {
+    try {
+      const response = await this.api.get<StakingApyResponse>(
+        "/public/staking-apy",
+        { params: { window_days: windowDays } },
+      );
+      return response.data ?? null;
+    } catch (error) {
+      console.warn("[ApiService] getStakingApy failed:", error);
+      return null;
+    }
   }
 
   async getSyncStatus(contractType?: string): Promise<any> {

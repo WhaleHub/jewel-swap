@@ -26,8 +26,8 @@ import {
   clearError,
   clearTransaction,
   fetchComprehensiveStakingData,
-  calculateAPY,
 } from "../../lib/slices/stakingSlice";
+import { useStakingApy } from "../../hooks/useStakingApy";
 import { sorobanService } from "../../services/soroban.service";
 import { apiService } from "../../services/api.service";
 import { SOROBAN_CONFIG, isFeatureEnabled } from "../../config/soroban.config";
@@ -66,8 +66,19 @@ function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const staking = useSelector((state: RootState) => state.staking);
-  const stakingAPY = useMemo(() => calculateAPY(staking.rewardState), [staking.rewardState]);
+  const { apy: stakingAPY, source: stakingAPYSource } = useStakingApy(staking.rewardState, 7);
   const blubPrice = useTokenPrice("BLUB");
+
+  // Daily BLUB rewards estimate: activeStakedBlub * apy / 100 / 365.25.
+  // Shown alongside the APY % so users can see the concrete number (like AQUA dex).
+  // Falls back to "--" when APY is unknown or the user has nothing staked.
+  const userStakedBlub = parseFloat(staking.userStats?.activeAmount ?? "0");
+  const dailyBlubEstimate = useMemo(() => {
+    if (stakingAPY === "--" || userStakedBlub <= 0) return null;
+    const rate = parseFloat(stakingAPY);
+    if (!Number.isFinite(rate) || rate <= 0) return null;
+    return (userStakedBlub * rate) / 100 / 365.25;
+  }, [stakingAPY, userStakedBlub]);
 
   const [aquaDepositAmount, setAquaDepositAmount] = useState<number | null>(0);
   const [dialogMsg, setDialogMsg] = useState<string>("");
@@ -1186,7 +1197,8 @@ const handleAddTrustline = async () => {
               </div>
             </div>
 
-            {/* Current APY — moved to top of card */}
+            {/* Current APY — rolling 7-day rate from the backend indexer, with
+                a live "~X BLUB/day" estimate based on the user's active stake. */}
             <div className="flex items-center bg-[#0E111B] px-3 sm:px-5 py-4 mt-4 rounded-[8px] justify-between gap-2">
               <div className="text-sm font-normal text-white flex items-center space-x-1 shrink-0">
                 <span>Current APY</span>
@@ -1194,21 +1206,31 @@ const handleAddTrustline = async () => {
                   className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      "APY is calculated as (total_rewards / total_staked) annualized over the reward period. Your share of rewards is proportional to your staked BLUB relative to the total staked pool.",
+                      stakingAPYSource === "indexer"
+                        ? "Rolling 7-day APY: sum of BLUB rewards distributed in the last 7 days divided by the average total staked, annualized. Your share of rewards is proportional to your staked BLUB."
+                        : "Fallback APY based on cumulative lifetime rewards — shown while the rolling-window indexer warms up. Your share of rewards is proportional to your staked BLUB.",
                       "How APY is calculated"
                     )
                   }
                 />
               </div>
-              <div className="text-base sm:text-xl font-semibold text-right truncate min-w-0">
-                {staking.isLoading ? (
-                  "..."
-                ) : (
-                  <span className="text-[#00CC99]">
-                    {stakingAPY === "--"
-                      ? "--"
-                      : `${stakingAPY}%`}
-                  </span>
+              <div className="flex flex-col items-end min-w-0">
+                <div className="text-base sm:text-xl font-semibold text-right truncate min-w-0">
+                  {staking.isLoading ? (
+                    "..."
+                  ) : (
+                    <span className="text-[#00CC99]">
+                      {stakingAPY === "--" ? "--" : `${stakingAPY}%`}
+                    </span>
+                  )}
+                </div>
+                {dailyBlubEstimate !== null && (
+                  <div className="text-[11px] text-[#6B7280] mt-0.5">
+                    ~{dailyBlubEstimate.toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB/day
+                    {blubPrice > 0 && (
+                      <span className="ml-1">{formatUsd(dailyBlubEstimate, blubPrice)}</span>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
