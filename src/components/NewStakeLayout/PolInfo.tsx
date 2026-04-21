@@ -1,11 +1,10 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useSelector } from "react-redux";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { TailSpin } from "react-loader-spinner";
 import { SorobanVaultService, TokenPriceService, IceBoostInfo } from "../../services/soroban-vault.service";
 import { useTokenPrice, formatUsd } from "../../hooks/useTokenPrice";
 import { RootState } from "../../lib/store";
-import type { PolInfo as PolInfoState } from "../../lib/slices/stakingSlice";
 
 interface PoolStats {
   // POL's share of the pool
@@ -43,11 +42,6 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
 
   const vaultService = useMemo(() => new SorobanVaultService(), []);
 
-  // Keep a ref to the latest polInfo so the 60s interval fetch reads
-  // current Redux state instead of a stale closure.
-  const polInfoRef = useRef<PolInfoState | null>(staking.polInfo);
-  polInfoRef.current = staking.polInfo;
-
   useEffect(() => {
     let cancelled = false;
 
@@ -57,7 +51,9 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
         const poolInfo = await vaultService.getPoolInfo(0);
         if (cancelled) return;
 
-        const [apyData, reservesData] = await Promise.all([
+        const stakingContractId = process.env.REACT_APP_STAKING_CONTRACT_ID || "";
+
+        const [apyData, reservesData, contractLpBalance] = await Promise.all([
           vaultService.getAquariusPoolApy(poolInfo.pool_address),
           vaultService.getPoolReserves(
             poolInfo.pool_address,
@@ -65,13 +61,18 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
             poolInfo.token_a,
             poolInfo.token_b,
           ),
+          // Contract's total LP token balance (POL + vault users).
+          // The on-chain `aqua_blub_lp_position` field is stale/under-tracked since
+          // POL has historically entered the contract via multiple paths that did not
+          // all bump the counter, so we approximate: POL = contract_lp_balance − vault_lp.
+          // This matches StakingRewardService.getPool0LpRatio on the backend.
+          vaultService.getTokenBalance(poolInfo.share_token, stakingContractId),
         ]);
         if (cancelled) return;
 
-        // POL LP is tracked on-chain in ProtocolOwnedLiquidity.aqua_blub_lp_position,
-        // written by manual_deposit_pol (and decremented on POL withdrawals).
-        // queryPolInfo() exposes it as staking.polInfo.lpPosition (already scaled to tokens).
-        const polLp = parseFloat(polInfoRef.current?.lpPosition ?? "0");
+        const vaultLp = parseFloat(poolInfo.total_lp_tokens) / 1e7;
+        const contractTotalLp = parseFloat(contractLpBalance);
+        const polLp = Math.max(0, contractTotalLp - vaultLp);
 
         // Total LP in the entire Aquarius pool
         const totalPoolLp = parseFloat(apyData.totalShare ?? reservesData.totalLpSupply);
