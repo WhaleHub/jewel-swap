@@ -24,7 +24,8 @@
       "Read(//tmp/**)",
       "Bash(python3:*)",
       "Bash(cargo build:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(curl *)"
     ]
   }
 }
