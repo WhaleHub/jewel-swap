@@ -40,7 +40,6 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { TailSpin } from "react-loader-spinner";
-import AddLiquidity from "./AddLiquidity";
 import { InformationCircleIcon } from "@heroicons/react/16/solid";
 import { walletTypes } from "../../enums";
 import { signTransaction } from "@lobstrco/signer-extension-api";
@@ -985,18 +984,6 @@ function Yield() {
         </div>
       </div>
 
-      {/* Section 3 — MAXIMIZE */}
-      <div id="Vault_section" className="max-w-[912px] mx-auto mt-16">
-        <div className="text-white text-xl md:text-4xl-custom1 font-medium text-center">
-          Provide Liquidity. Earn Extra Yield.
-        </div>
-        <div className="text-[#B1B3B8] text-base font-normal text-center max-w-[720px] mx-auto">
-          Deposit into the AQUA-BLUB pool. Earn swap fees and rewards — auto-compounded daily.
-        </div>
-      </div>
-      <div className="mt-10 max-w-[550px] mx-auto mb-10">
-        <AddLiquidity />
-      </div>
 
       <DialogC
         msg={dialogMsg}

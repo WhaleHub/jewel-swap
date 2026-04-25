@@ -2,6 +2,7 @@ import { useState } from "react";
 import STKAqua from "./STKAqua";
 import Wrapper from "./Wrapper";
 import Yield from "./Yield";
+import Vaults from "./Vaults";
 import PolInfo from "./PolInfo";
 import DialogC from "./Dialog";
 import { isFeatureEnabled } from "../../config/soroban.config";
@@ -25,6 +26,8 @@ function NewStakelayout() {
     <div className="font-inter mx-auto">
       <div className="md:w-[960px] mx-auto px-4">
         <Wrapper>
+          {/* Page order: Vaults → Stake → Compound. */}
+          <Vaults />
           <STKAqua />
           <Yield />
         </Wrapper>

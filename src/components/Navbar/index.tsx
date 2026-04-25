@@ -344,6 +344,18 @@ const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-8 xs:hidden lg:block space-x-4">
+          {/* Order matches page layout: Vaults → Stake → Compound. */}
+          <button
+            className={clsx(
+              "font-medium text-base py-2 px-5 rounded-lg border transition-all duration-200",
+              activeSection === "Vault_section"
+                ? "border-[#00CC99]/70 bg-[#00CC99]/10 text-[#00CC99]"
+                : "border-white/20 text-white hover:border-white/40"
+            )}
+            onClick={onScrollToVaults}
+          >
+            Vaults
+          </button>
           <button
             className={clsx(
               "font-medium text-base py-2 px-5 rounded-lg border transition-all duration-200",
@@ -365,17 +377,6 @@ const Navbar = () => {
             onClick={onScrollToYield}
           >
             Compound
-          </button>
-          <button
-            className={clsx(
-              "font-medium text-base py-2 px-5 rounded-lg border transition-all duration-200",
-              activeSection === "Vault_section"
-                ? "border-[#00CC99]/70 bg-[#00CC99]/10 text-[#00CC99]"
-                : "border-white/20 text-white hover:border-white/40"
-            )}
-            onClick={onScrollToVaults}
-          >
-            Vaults
           </button>
         </div>
 
