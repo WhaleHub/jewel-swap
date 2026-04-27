@@ -39,6 +39,7 @@ interface TransactionOptions {
 
 export class SorobanService {
   private server: SorobanRpc.Server;
+  private fallbackServer: SorobanRpc.Server;
   private contractConfig: ContractConfig;
 
   constructor() {
@@ -61,11 +62,89 @@ export class SorobanService {
       rpcUrl: getRequiredEnv("REACT_APP_SOROBAN_RPC_URL"),
     };
 
+    // Fallback RPC for read-path resilience. Primary `mainnet.sorobanrpc.com`
+    // shares a per-IP rate-limit bucket with every other dapp + wallet — under load
+    // it returns 429/5xx and Cloudflare strips CORS headers, surfacing as the
+    // misleading "No Access-Control-Allow-Origin" error in the browser.
+    // gateway.fm is unaffiliated and survives those bursts; SorobanVaultService
+    // already uses the same two-RPC pattern. Override via env to point at a
+    // dedicated endpoint (Validation Cloud, QuickNode, etc).
+    const fallbackRpc =
+      process.env.REACT_APP_SOROBAN_FALLBACK_RPC_URL ||
+      "https://soroban-rpc.mainnet.stellar.gateway.fm";
+
     this.server = new SorobanRpc.Server(this.contractConfig.rpcUrl);
+    this.fallbackServer = new SorobanRpc.Server(fallbackRpc);
+
+    // Monkey-patch the primary server's read-path methods to retry and then
+    // transparently fall over to the fallback. ~30 call sites in this file
+    // call `this.server.simulateTransaction(...)` / `getAccount(...)` directly,
+    // so wrapping the methods is the only way to harden them without touching
+    // every consumer. NOT applied to sendTransaction (idempotency / order of
+    // submissions matters) or getTransaction (callers already poll with their
+    // own retry loops).
+    this.installReadFailover("simulateTransaction");
+    this.installReadFailover("getAccount");
+    this.installReadFailover("getLatestLedger");
+
     console.log(
       "🔗 [SorobanService] Initialized with config:",
-      this.contractConfig
+      { ...this.contractConfig, fallbackRpc }
     );
+  }
+
+  /**
+   * Linear-backoff retry. Skips retry for HostError / Simulation failures —
+   * those are deterministic contract responses, not RPC flakes, and retrying
+   * just wastes a budget.
+   */
+  private async withRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+    let lastError: any;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (e: any) {
+        lastError = e;
+        const msg = String(e?.message || e);
+        if (msg.includes("HostError") || msg.includes("Simulation failed")) {
+          throw e;
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+        }
+      }
+    }
+    throw lastError;
+  }
+
+  /**
+   * Wrap a method on `this.server` so it retries the primary RPC, then on
+   * persistent non-deterministic failure invokes the same method on the
+   * fallback server. Bound at construction so existing call sites are
+   * unchanged.
+   */
+  private installReadFailover<K extends keyof SorobanRpc.Server>(method: K): void {
+    const primary = this.server;
+    const fallback = this.fallbackServer;
+    const primaryFn = (primary[method] as any).bind(primary);
+    const fallbackFn = (fallback[method] as any).bind(fallback);
+
+    (primary as any)[method] = async (...args: any[]): Promise<any> => {
+      try {
+        return await this.withRetry(() => primaryFn(...args));
+      } catch (primaryErr: any) {
+        const msg = String(primaryErr?.message || primaryErr);
+        // Bubble up deterministic contract errors — the fallback will return
+        // exactly the same error and cost a round-trip.
+        if (msg.includes("HostError") || msg.includes("Simulation failed")) {
+          throw primaryErr;
+        }
+        console.warn(
+          `[SorobanService] primary RPC ${String(method)} failed (${msg}); using fallback`,
+        );
+        return await this.withRetry(() => fallbackFn(...args));
+      }
+    };
   }
 
   /**
