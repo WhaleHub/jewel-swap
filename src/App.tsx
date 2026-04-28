@@ -5,6 +5,7 @@ import AppLayout from "./components/AppLayout";
 import Stake from "./pages/Stake";
 import Terms from "./pages/Terms";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import FAQ from "./pages/FAQ";
 import { Provider } from "react-redux";
 import { persistor, store } from "./lib/store";
 import { PersistGate } from "redux-persist/integration/react";
@@ -36,6 +37,7 @@ function App() {
                       <Route path="/vote" element={<Vote />} />
                       <Route path="/terms" element={<Terms />} />
                       <Route path="/privacy" element={<PrivacyPolicy />} />
+                      <Route path="/faq" element={<FAQ />} />
                     </Route>
                     <Route path="*" element={<Navigate to="/stake/aqua" />} />
                   </Routes>
