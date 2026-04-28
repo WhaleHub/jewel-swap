@@ -24,7 +24,7 @@ const TOKEN_LOGOS: Record<string, string> = {
   AQUA: aquaLogo,
   XLM: xlmLogo,
   USDC: usdcLogo,
-  BLUB: "/blub_logo.png",
+  BLUB: "/Blub_logo2.svg",
 };
 
 interface PoolInfo {

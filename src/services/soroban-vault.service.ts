@@ -750,7 +750,7 @@ export class SorobanVaultService {
     // Map token codes to logos in assets folder
     const tokenLogos: Record<string, string> = {
       AQUA: "/assets/images/aqua_logo.png",
-      BLUB: "/assets/images/blub_logo.png",
+      BLUB: "/Blub_logo2.svg",
       USDC: "/assets/images/usdc.svg",
       XLM: "/assets/images/xlm.png",
     };
