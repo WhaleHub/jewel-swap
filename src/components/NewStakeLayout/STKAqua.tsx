@@ -66,7 +66,7 @@ function STKAqua() {
   const dispatch = useAppDispatch();
   const user = useSelector((state: RootState) => state.user);
   const staking = useSelector((state: RootState) => state.staking);
-  const { apy: stakingAPY, source: stakingAPYSource } = useStakingApy(staking.rewardState, 7);
+  const { apy: stakingAPY, source: stakingAPYSource } = useStakingApy(staking.rewardState, 1);
   const blubPrice = useTokenPrice("BLUB");
 
   // Daily BLUB rewards estimate: activeStakedBlub * apy / 100 / 365.25.

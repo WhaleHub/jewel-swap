@@ -15,11 +15,16 @@ import {
  * roughly `protocol_age_days / windowDays`. Used only when the backend indexer
  * is down or still warming up (no events in the window).
  *
+ * Default window is 1 day so users see the current emission rate. Longer
+ * windows smooth gaps from missed reward distributions back into the
+ * displayed number — see staking_reward_balance_delta_bug.md for the
+ * Apr 2026 incident that motivated the shorter window.
+ *
  * Refreshes every 60s, matching the indexer's poll cadence.
  */
 export function useStakingApy(
   rewardState: RewardStateInfo | null,
-  windowDays = 7,
+  windowDays = 1,
 ): { apy: string; source: "indexer" | "fallback" } {
   const [apy, setApy] = useState<string>("--");
   const [source, setSource] = useState<"indexer" | "fallback">("fallback");

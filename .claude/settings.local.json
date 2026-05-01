@@ -28,7 +28,8 @@
       "Bash(curl *)",
       "Bash(git check-ignore *)",
       "Bash(BROWSER=none npm start *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(kill 6594)"
     ]
   }
 }
