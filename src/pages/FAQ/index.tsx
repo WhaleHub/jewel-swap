@@ -271,7 +271,7 @@ const faqData = [
       },
       {
         q: "How can I follow WhaleHub updates?",
-        a: "Telegram: t.me/whalehub\nX/Twitter: @whalehubdefi\nEmail: contact@whalehub.io",
+        a: "Telegram: t.me/whalehubdefidefi\nX/Twitter: @whalehubdefi\nEmail: contact@whalehub.io",
       },
       {
         q: "How do I propose a partnership or integration?",
@@ -301,11 +301,11 @@ const faqData = [
       },
       {
         q: "I found a bug. How do I report it?",
-        a: "Telegram is fastest: t.me/whalehub. Include:\n• What you did (step by step)\n• What you expected to happen\n• What actually happened\n• Your wallet address (if balance-related)\n• Browser, OS, and any error messages\n\nGenuine bug reports get priority, especially from power users. We'll get back to you quickly.",
+        a: "Telegram is fastest: t.me/whalehubdefi. Include:\n• What you did (step by step)\n• What you expected to happen\n• What actually happened\n• Your wallet address (if balance-related)\n• Browser, OS, and any error messages\n\nGenuine bug reports get priority, especially from power users. We'll get back to you quickly.",
       },
       {
         q: "My question isn't here.",
-        a: "Drop it in Telegram: t.me/whalehub. We add new questions to this FAQ as they come up.",
+        a: "Drop it in Telegram: t.me/whalehubdefi. We add new questions to this FAQ as they come up.",
       },
     ],
   },
@@ -364,7 +364,7 @@ const FAQ = () => {
         <p className="text-[#B1B3B8] mb-10 text-sm">
           Last updated: April 2026. If your question isn't here, ask in{" "}
           <a
-            href="https://t.me/whalehub"
+            href="https://t.me/whalehubdefi"
             target="_blank"
             rel="noopener noreferrer"
             className="text-[#00CC99] hover:underline"
