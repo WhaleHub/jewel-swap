@@ -1,0 +1,386 @@
+<div style="padding: 1rem 0;">
+
+<h2 class="sr-only">Vault simulator with deposit amount, ICE position, growth, boost, spike, and compound frequency inputs</h2>
+
+<div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem 1.25rem; margin: 0 0 1.25rem;">
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+    <div>
+      <label style="font-size: 13px; color: var(--color-text-secondary); display: block; margin-bottom: 6px;">Your deposit (USD)</label>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="font-size: 18px; color: var(--color-text-secondary);">$</span>
+        <input type="number" min="100" max="1000000" value="1000" step="100" id="deposit" style="flex: 1; font-size: 18px; font-weight: 500; padding: 6px 10px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-primary);" />
+      </div>
+    </div>
+    <div>
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px;">
+        <label style="font-size: 13px; color: var(--color-text-secondary);">Protocol ICE</label>
+        <span style="font-size: 11px; color: var(--color-text-tertiary);">Now: 266M</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <input type="range" min="266" max="5000" value="1000" step="10" id="ice" style="flex: 1;" />
+        <span style="font-size: 16px; font-weight: 500; min-width: 80px; text-align: right;" id="ice-out">1.00B</span>
+      </div>
+    </div>
+  </div>
+  <div style="display: flex; align-items: baseline; justify-content: space-between; margin-top: 10px; padding-top: 10px; border-top: 0.5px solid var(--color-border-tertiary);">
+    <span style="font-size: 12px; color: var(--color-text-secondary);">→ Derived starting pool APR</span>
+    <span style="font-size: 16px; font-weight: 500;" id="derived-apr">180%</span>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0 0 1.5rem;">
+
+  <div>
+    <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">ICE growth (per year)</label>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <input type="range" min="0" max="500" value="200" step="10" id="growth" style="flex: 1;" />
+      <span style="font-size: 14px; font-weight: 500; min-width: 44px; text-align: right;" id="growth-out">200%</span>
+    </div>
+  </div>
+
+  <div>
+    <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">ICE boost on vault LP</label>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <input type="range" min="100" max="250" value="250" step="5" id="boost" style="flex: 1;" />
+      <span style="font-size: 14px; font-weight: 500; min-width: 44px; text-align: right;" id="boost-out">2.50x</span>
+    </div>
+  </div>
+
+  <div>
+    <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Bribe spike intensity</label>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <input type="range" min="0" max="200" value="100" step="10" id="spike" style="flex: 1;" />
+      <span style="font-size: 14px; font-weight: 500; min-width: 44px; text-align: right;" id="spike-out">100%</span>
+    </div>
+  </div>
+
+  <div>
+    <label style="font-size: 12px; color: var(--color-text-secondary); display: block; margin-bottom: 4px;">Vault compound frequency</label>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <input type="range" min="0" max="5" value="5" step="1" id="freq" style="flex: 1;" />
+      <span style="font-size: 14px; font-weight: 500; min-width: 76px; text-align: right;" id="freq-out">24x/day</span>
+    </div>
+  </div>
+
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0 0 1.5rem;">
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem;">
+    <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px;">Direct LP (no compound)</p>
+    <p style="font-size: 22px; font-weight: 500; margin: 0;" id="solo-final">$2,800</p>
+    <p style="font-size: 11px; color: var(--color-text-secondary); margin: 4px 0 0;"><span id="solo-apy">180</span>% APY · +<span id="solo-gain">1,800</span></p>
+  </div>
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem;">
+    <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px;">Direct LP (manual daily)</p>
+    <p style="font-size: 22px; font-weight: 500; margin: 0;" id="manual-final">$4,000</p>
+    <p style="font-size: 11px; color: var(--color-text-secondary); margin: 4px 0 0;"><span id="manual-apy">300</span>% APY · +<span id="manual-gain">3,000</span></p>
+  </div>
+  <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem; border: 0.5px solid var(--color-border-secondary);">
+    <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px;">WhaleHub vault</p>
+    <p style="font-size: 22px; font-weight: 500; margin: 0; color: var(--color-text-success);" id="vault-final">$9,000</p>
+    <p style="font-size: 11px; color: var(--color-text-secondary); margin: 4px 0 0;"><span id="vault-apy">800</span>% APY · +<span id="vault-gain">8,000</span></p>
+  </div>
+</div>
+
+<div style="position: relative; width: 100%; height: 320px; margin: 0 0 1.5rem;">
+  <canvas id="growthChart" role="img" aria-label="Line chart of deposit growth over 12 months across three LP behaviors">12-month deposit growth comparison.</canvas>
+</div>
+
+<div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem 1.25rem; margin: 0 0 1rem;">
+  <p style="font-size: 13px; color: var(--color-text-primary); margin: 0 0 8px; font-weight: 500;">Vault advantage breakdown</p>
+  <div style="display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-size: 13px;">
+    <span style="color: var(--color-text-secondary);">From ICE boost on LP rewards</span>
+    <span style="font-weight: 500;" id="bd-boost">+0pp</span>
+    <span style="color: var(--color-text-secondary);">From rising APR (ICE accumulation)</span>
+    <span style="font-weight: 500; color: var(--color-text-secondary);">lifts all baselines</span>
+    <span style="color: var(--color-text-secondary);">From auto-compounding frequency</span>
+    <span style="font-weight: 500;" id="bd-freq">+0pp</span>
+    <span style="color: var(--color-text-secondary);">From spike capture during bribes</span>
+    <span style="font-weight: 500;" id="bd-spike">+0pp</span>
+    <span style="color: var(--color-text-primary); font-weight: 500; padding-top: 6px; border-top: 0.5px solid var(--color-border-tertiary);">Total advantage in dollars</span>
+    <span style="font-weight: 500; padding-top: 6px; border-top: 0.5px solid var(--color-border-tertiary); color: var(--color-text-success);" id="bd-dollar">+$0</span>
+  </div>
+</div>
+
+<p style="font-size: 12px; color: var(--color-text-tertiary); margin: 0; line-height: 1.5;">
+APR derived from ICE position via a square-root saturation curve (266M ICE = 48% pool APR observed today). This approximates vote-share saturation and TVL dilution and replaces a previous linear assumption that overstated returns at high ICE. Bribe spikes are applied weekly, scaled to a per-week share of the slider value. All projections are 12-month.
+</p>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+(function() {
+  const depositInput = document.getElementById('deposit');
+  const iceSlider = document.getElementById('ice');
+  const growthSlider = document.getElementById('growth');
+  const boostSlider = document.getElementById('boost');
+  const spikeSlider = document.getElementById('spike');
+  const freqSlider = document.getElementById('freq');
+
+  const iceOut = document.getElementById('ice-out');
+  const derivedApr = document.getElementById('derived-apr');
+  const growthOut = document.getElementById('growth-out');
+  const boostOut = document.getElementById('boost-out');
+  const spikeOut = document.getElementById('spike-out');
+  const freqOut = document.getElementById('freq-out');
+
+  const soloFinal = document.getElementById('solo-final');
+  const manualFinal = document.getElementById('manual-final');
+  const vaultFinal = document.getElementById('vault-final');
+  const soloApy = document.getElementById('solo-apy');
+  const manualApy = document.getElementById('manual-apy');
+  const vaultApy = document.getElementById('vault-apy');
+  const soloGain = document.getElementById('solo-gain');
+  const manualGain = document.getElementById('manual-gain');
+  const vaultGain = document.getElementById('vault-gain');
+
+  const bdBoost = document.getElementById('bd-boost');
+  const bdFreq = document.getElementById('bd-freq');
+  const bdSpike = document.getElementById('bd-spike');
+  const bdDollar = document.getElementById('bd-dollar');
+
+  // Vault compound runs every hour (24×/day) — cron schedule '0 * * * *' in
+  // whalehub-server. Previously every 30 min (48×/day); switched 2026-05-10
+  // because the math difference is < 0.1% APY but gas cost halves.
+  const freqLabels = ['Never', 'Monthly', 'Weekly', 'Daily', '3x/day', '24x/day'];
+  const freqPeriods = [1, 12, 52, 365, 1095, 8760];
+
+  const ICE_BASELINE = 266;
+  const APR_BASELINE = 48;
+
+  // Saturating ICE → APR. Linear scaling massively overstates returns because
+  // it ignores both vote-share saturation (you can't direct >100% of fixed AQUA
+  // emissions) and TVL dilution (more directed rewards attract more LPs, which
+  // grows pool TVL and shrinks per-LP APR). Square-root keeps the slider
+  // responsive while keeping a 5B-ICE projection from blowing up to 902% APR
+  // (it lands around ~208% instead).
+  function aprFromIce(iceMillions) {
+    const ratio = iceMillions / ICE_BASELINE;
+    return APR_BASELINE * Math.sqrt(ratio);
+  }
+
+  function formatIce(iceMillions) {
+    if (iceMillions >= 1000) return (iceMillions / 1000).toFixed(2) + 'B';
+    return iceMillions + 'M';
+  }
+
+  function fmt(n) {
+    return Math.round(n).toLocaleString('en-US');
+  }
+
+  function aprAtWeek(week, startApr, growthPct, spikePct) {
+    const yearFrac = week / 52;
+    const baseApr = startApr * (1 + (growthPct / 100) * yearFrac);
+    // Aquarius bribes are weekly, not monthly. The slider's "spike intensity"
+    // is interpreted as the peak-vs-baseline factor; with 4× the cadence we
+    // quarter the multiplier so the slider's 0–200% range yields a similar
+    // year-end yield contribution as the previous monthly model.
+    const spikeMultiplier = 1 + (spikePct / 100) / 4;
+    return baseApr * spikeMultiplier;
+  }
+
+  // Simulate compounded growth at `periodsPerYear` cadence. The previous
+  // implementation rounded `periodsPerYear / 52` to integer steps-per-week,
+  // which collapsed Never/Monthly/Weekly to identical behavior (all → 1
+  // step/week) and silently dropped the periodsPerYear < 52 distinction.
+  // Here we apply periods proportionally across weeks so 12, 52, 365, etc.
+  // each behave correctly.
+  function simulate(deposit, startApr, growthPct, spikePct, boostMult, periodsPerYear) {
+    let principal = deposit;
+    const series = [{ week: 0, value: deposit }];
+
+    if (periodsPerYear <= 1) {
+      // "Never" → simple-interest accumulation, no compounding.
+      let cumulative = 0;
+      for (let w = 0; w < 52; w++) {
+        const weekApr = aprAtWeek(w, startApr, growthPct, spikePct) * boostMult;
+        cumulative += (weekApr / 100) * (1 / 52) * deposit;
+        series.push({ week: w + 1, value: deposit + cumulative });
+      }
+      return series;
+    }
+
+    const dt = 1 / periodsPerYear;
+    let appliedPeriods = 0;
+    for (let w = 0; w < 52; w++) {
+      const weekApr = aprAtWeek(w, startApr, growthPct, spikePct) * boostMult;
+      const targetPeriods = Math.round(((w + 1) * periodsPerYear) / 52);
+      const stepsThisWeek = targetPeriods - appliedPeriods;
+      for (let s = 0; s < stepsThisWeek; s++) {
+        principal = principal * (1 + (weekApr / 100) * dt);
+      }
+      appliedPeriods = targetPeriods;
+      series.push({ week: w + 1, value: principal });
+    }
+    return series;
+  }
+
+  // Backwards-compatible alias used by the renderer below.
+  const simulateWeekly = simulate;
+
+  function simulateNoCompound(deposit, startApr, growthPct, spikePct) {
+    const series = [{ week: 0, value: deposit }];
+    let cumulative = 0;
+    for (let w = 0; w < 52; w++) {
+      const weekApr = aprAtWeek(w, startApr, growthPct, spikePct);
+      cumulative += (weekApr / 100) * (1 / 52) * deposit;
+      series.push({ week: w + 1, value: deposit + cumulative });
+    }
+    return series;
+  }
+
+  let chart;
+  const ctx = document.getElementById('growthChart').getContext('2d');
+
+  function render() {
+    const deposit = Math.max(100, parseInt(depositInput.value) || 1000);
+    const iceMillions = parseInt(iceSlider.value);
+    const apr = aprFromIce(iceMillions);
+    const growth = parseInt(growthSlider.value);
+    const boost = parseInt(boostSlider.value) / 100;
+    const spike = parseInt(spikeSlider.value);
+    const freqIdx = parseInt(freqSlider.value);
+    const periods = freqPeriods[freqIdx];
+
+    iceOut.textContent = formatIce(iceMillions);
+    derivedApr.textContent = apr.toFixed(0) + '%';
+    growthOut.textContent = growth + '%';
+    boostOut.textContent = boost.toFixed(2) + 'x';
+    spikeOut.textContent = spike + '%';
+    freqOut.textContent = freqLabels[freqIdx];
+
+    const soloSeries = simulateNoCompound(deposit, apr, growth, spike);
+    const manualSeries = simulateWeekly(deposit, apr, growth, spike, 1, 365);
+    const vaultSeries = simulateWeekly(deposit, apr, growth, spike, boost, periods);
+
+    const soloVal = soloSeries[52].value;
+    const manualVal = manualSeries[52].value;
+    const vaultVal = vaultSeries[52].value;
+
+    const soloApyN = ((soloVal / deposit) - 1) * 100;
+    const manualApyN = ((manualVal / deposit) - 1) * 100;
+    const vaultApyN = ((vaultVal / deposit) - 1) * 100;
+
+    soloFinal.textContent = '$' + fmt(soloVal);
+    manualFinal.textContent = '$' + fmt(manualVal);
+    vaultFinal.textContent = '$' + fmt(vaultVal);
+    soloApy.textContent = soloApyN.toFixed(0);
+    manualApy.textContent = manualApyN.toFixed(0);
+    vaultApy.textContent = vaultApyN.toFixed(0);
+    soloGain.textContent = '$' + fmt(soloVal - deposit);
+    manualGain.textContent = '$' + fmt(manualVal - deposit);
+    vaultGain.textContent = '$' + fmt(vaultVal - deposit);
+
+    // Attribution decomposed in a fixed order: A → +compounding → +spike → +boost.
+    // This guarantees the four contributions sum exactly to (vaultApy − A),
+    // unlike the previous formula which double-counted the no-compound spike
+    // effect via `(soloApyN - baseApy)`.
+    const A = ((simulateNoCompound(deposit, apr, growth, 0)[52].value / deposit) - 1) * 100;
+    const B = ((simulateWeekly(deposit, apr, growth, 0, 1, periods)[52].value / deposit) - 1) * 100;
+    const C = ((simulateWeekly(deposit, apr, growth, spike, 1, periods)[52].value / deposit) - 1) * 100;
+    const compoundContrib = B - A;
+    const spikeContrib = C - B;
+    const boostContrib = vaultApyN - C;
+
+    bdBoost.textContent = '+' + Math.max(0, boostContrib).toFixed(0) + 'pp';
+    bdFreq.textContent = '+' + Math.max(0, compoundContrib).toFixed(0) + 'pp';
+    bdSpike.textContent = '+' + Math.max(0, spikeContrib).toFixed(0) + 'pp';
+    bdDollar.textContent = '+$' + fmt(vaultVal - soloVal);
+
+    const labels = soloSeries.map(d => {
+      if (d.week === 0) return 'Now';
+      if (d.week % 4 === 0) return (d.week / 4) + 'mo';
+      return '';
+    });
+
+    if (!chart) {
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'WhaleHub vault',
+              data: vaultSeries.map(d => Math.round(d.value)),
+              borderColor: '#0F6E56',
+              backgroundColor: 'rgba(15, 110, 86, 0.08)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 0,
+              borderWidth: 2.5
+            },
+            {
+              label: 'Direct LP (manual daily)',
+              data: manualSeries.map(d => Math.round(d.value)),
+              borderColor: '#888780',
+              backgroundColor: 'transparent',
+              fill: false,
+              tension: 0.3,
+              pointRadius: 0,
+              borderWidth: 1.5,
+              borderDash: [4, 4]
+            },
+            {
+              label: 'Direct LP (no compound)',
+              data: soloSeries.map(d => Math.round(d.value)),
+              borderColor: '#B4B2A9',
+              backgroundColor: 'transparent',
+              fill: false,
+              tension: 0,
+              pointRadius: 0,
+              borderWidth: 1.5,
+              borderDash: [2, 4]
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: 'bottom',
+              labels: { boxWidth: 12, font: { size: 11 }, padding: 10 }
+            },
+            tooltip: {
+              callbacks: {
+                label: function(c) {
+                  return c.dataset.label + ': $' + c.parsed.y.toLocaleString();
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              ticks: {
+                callback: function(v) { return '$' + v.toLocaleString(); },
+                font: { size: 11 }
+              },
+              grid: { color: 'rgba(128,128,128,0.15)' }
+            },
+            x: {
+              ticks: { font: { size: 11 }, maxRotation: 0, autoSkip: false },
+              grid: { display: false }
+            }
+          }
+        }
+      });
+    } else {
+      chart.data.datasets[0].data = vaultSeries.map(d => Math.round(d.value));
+      chart.data.datasets[1].data = manualSeries.map(d => Math.round(d.value));
+      chart.data.datasets[2].data = soloSeries.map(d => Math.round(d.value));
+      chart.update('none');
+    }
+  }
+
+  depositInput.addEventListener('input', render);
+  iceSlider.addEventListener('input', render);
+  growthSlider.addEventListener('input', render);
+  boostSlider.addEventListener('input', render);
+  spikeSlider.addEventListener('input', render);
+  freqSlider.addEventListener('input', render);
+
+  render();
+})();
+</script>

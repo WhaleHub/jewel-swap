@@ -766,7 +766,7 @@ function AddLiquidity() {
                 <div className="text-xl font-bold text-[#3B82F6]">
                   {compoundApy === "--" ? "--" : `${compoundApy}%`}
                 </div>
-                <div className="text-[10px] text-[#6B7280] mt-0.5">48× daily auto-compound · <span className="text-[#3B82F6]/80">via Whalehub</span></div>
+                <div className="text-[10px] text-[#6B7280] mt-0.5">24× daily auto-compound · <span className="text-[#3B82F6]/80">via Whalehub</span></div>
               </div>
             </div>
 

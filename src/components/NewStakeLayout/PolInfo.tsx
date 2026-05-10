@@ -240,7 +240,7 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
               <div className="text-lg font-semibold text-[#3B82F6]">
                 {stats?.compoundApy === "--" ? "--" : `${stats?.compoundApy}%`}
               </div>
-              <div className="text-[10px] text-[#6B7280] mt-0.5">48x daily · via Whalehub</div>
+              <div className="text-[10px] text-[#6B7280] mt-0.5">24x daily · via Whalehub</div>
             </div>
           </div>
 

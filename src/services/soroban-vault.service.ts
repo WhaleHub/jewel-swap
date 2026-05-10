@@ -787,9 +787,11 @@ export class SorobanVaultService {
       const apyDecimal = parseFloat(rawApy);
       if (isNaN(apyDecimal)) return { poolApy: "--", compoundApy: "--", totalShare };
 
-      // Compound APY: 48 auto-compounds per day × 365 = 17 520 per year
-      // apyDecimal is already the annual rate (e.g. 0.924 for 92.4%)
-      const n = 48 * 365;
+      // Compound APY: 24 auto-compounds per day × 365 = 8,760 per year.
+      // Cadence kept in sync with whalehub-server's staking-reward cron
+      // (`'0 * * * *'` — hourly; was every 30 min until 2026-05-10).
+      // apyDecimal is already the annual rate (e.g. 0.924 for 92.4%).
+      const n = 24 * 365;
       const compoundApy = (Math.pow(1 + apyDecimal / n, n) - 1) * 100;
 
       return {
