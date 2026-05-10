@@ -88,6 +88,24 @@ function AddLiquidity() {
 
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
 
+  // Position USD value derived from pool reserves and token prices
+  const positionValueUsd = useMemo(() => {
+    const pos = userPositions[0];
+    if (!pos || !selectedPool) return null;
+    const userLp = parseFloat(pos.user_lp_amount || "0");
+    const totalLp = parseFloat(totalLpSupply);
+    if (totalLp <= 0 || userLp <= 0) return null;
+    const userShare = userLp / totalLp;
+    const resA = parseFloat(reserveA);
+    const resB = parseFloat(reserveB);
+    const priceA = selectedPool.token_a_code === "BLUB" ? blubPrice : selectedPool.token_a_code === "AQUA" ? aquaPrice : 0;
+    const priceB = selectedPool.token_b_code === "BLUB" ? blubPrice : selectedPool.token_b_code === "AQUA" ? aquaPrice : 0;
+    return userShare * (resA * priceA + resB * priceB);
+  }, [userPositions, totalLpSupply, reserveA, reserveB, selectedPool, aquaPrice, blubPrice]);
+
+  const formatPositionUsd = (n: number) =>
+    n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   // Pool APY from Aquarius
   const [poolApy, setPoolApy] = useState<string>("--");
   const [compoundApy, setCompoundApy] = useState<string>("--");
@@ -634,7 +652,7 @@ function AddLiquidity() {
               className="h-4 w-4 text-[#6B7280] cursor-pointer hover:text-white transition-colors"
               onClick={() =>
                 onDialogOpen(
-                  `Providing liquidity means depositing both AQUA and BLUB into a trading pool. You earn a share of every swap fee plus AQUA rewards from Aquarius. WhaleHub auto-compounds these back into your LP position. Use "Single asset deposit" if you only have one token.`,
+                  "You're joining a crowdfunded liquidity pool. Every backer contributes both AQUA and BLUB, and everyone earns a proportional share of what the pool generates.\n\nWhen traders swap AQUA and BLUB, the pool keeps a small fee. Your LP tokens are your backer share. The more you contribute, the bigger your slice of those fees.\n\nOn top of that, the pool earns rewards from Aquarius. Both fees and rewards are automatically reinvested into your position every hour. No buttons to press, no manual claiming.\n\nWithdraw your share anytime. No lockups.",
                   "AQUA-BLUB Liquidity Vault"
                 )
               }
@@ -673,7 +691,7 @@ function AddLiquidity() {
               <InformationCircleIcon
                 className="h-3.5 w-3.5 text-[#6B7280] cursor-pointer"
                 onClick={() => onDialogOpen(
-                  `Slippage tolerance is the maximum price difference you're willing to accept. Recommended: 0.5% for stable pairs, 1–2% for volatile pairs.`,
+                  "The maximum price difference you'll accept between when you click deposit and when the transaction completes.\n\nLower setting = more protection but higher chance the transaction fails. Higher setting = transaction succeeds more often but you might pay slightly more than expected.\n\nDefault 0.5% is fine for most deposits.",
                   "Slippage Tolerance"
                 )}
               />
@@ -734,6 +752,11 @@ function AddLiquidity() {
         {/* APY Cards + Reserves */}
         {selectedPool && (
           <div className="mt-5 space-y-3">
+            {/* Banner */}
+            <div className="bg-teal-500/10 border border-teal-500/30 rounded-lg p-3 mb-4 text-sm text-gray-200">
+              💡 You're a backer in a crowdfunded liquidity pool. Every trade and reward earns you a cut, automatically. Reinvested for you, 24x a day.
+            </div>
+
             {/* APY Row — two cards side by side */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-[#0A0D14] border border-[#00CC99]/20 rounded-[10px] p-4">
@@ -742,7 +765,7 @@ function AddLiquidity() {
                   <InformationCircleIcon
                     className="h-[13px] w-[13px] text-[#6B7280] cursor-pointer flex-shrink-0"
                     onClick={() => onDialogOpen(
-                      "The base annualized yield earned from trading fees and AQUA rewards in the Aquarius liquidity pool. Reflects real-time pool performance.",
+                      "The base earnings rate of the AQUA-BLUB pool on Aquarius. This is what you'd get providing liquidity manually, without WhaleHub.\n\nThe raw return before reinvestment.\n\nSource: trading fees from every swap, plus AQUA rewards distributed to active liquidity pools.",
                       "Pool APY"
                     )}
                   />
@@ -758,7 +781,7 @@ function AddLiquidity() {
                   <InformationCircleIcon
                     className="h-[13px] w-[13px] text-[#6B7280] cursor-pointer flex-shrink-0"
                     onClick={() => onDialogOpen(
-                      "Your boosted yield after Whalehub auto-compounds rewards 48 times per day. 70% of rewards are reinvested back into the pool, maximizing your returns through the power of compounding.",
+                      "Your actual return through WhaleHub's vault. Higher than the base Pool APY because earnings are automatically reinvested into your position 24 times a day.\n\nEach reinvestment grows your backer share a tiny bit, and those tiny bits compound into a meaningfully higher annual return.\n\nDoing this manually would mean claiming and re-depositing every hour, 24/7. The vault does it for you, automatically.",
                       "Compounded APY"
                     )}
                   />
@@ -813,10 +836,10 @@ function AddLiquidity() {
                 <span className="text-white font-medium">
                   {parseFloat(reserveA) > 0
                     ? <>
-                        {fmtNum(reserveA, 2)}
+                        {parseFloat(reserveA).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         {(() => {
                           const p = selectedPool.token_a_code === "BLUB" ? blubPrice : selectedPool.token_a_code === "AQUA" ? aquaPrice : 0;
-                          return p > 0 && parseFloat(reserveA) > 0 ? <span className="text-[#6B7280] text-xs ml-1">{formatUsd(reserveA, p)}</span> : null;
+                          return parseFloat(reserveA) > 0 ? <span className="text-[#6B7280] text-xs ml-1">{formatUsd(reserveA, p)}</span> : null;
                         })()}
                       </>
                     : <span className="text-[#6B7280]">Loading...</span>}
@@ -832,10 +855,10 @@ function AddLiquidity() {
                 <span className="text-white font-medium">
                   {parseFloat(reserveB) > 0
                     ? <>
-                        {fmtNum(reserveB, 2)}
+                        {parseFloat(reserveB).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         {(() => {
                           const p = selectedPool.token_b_code === "BLUB" ? blubPrice : selectedPool.token_b_code === "AQUA" ? aquaPrice : 0;
-                          return p > 0 && parseFloat(reserveB) > 0 ? <span className="text-[#6B7280] text-xs ml-1">{formatUsd(reserveB, p)}</span> : null;
+                          return parseFloat(reserveB) > 0 ? <span className="text-[#6B7280] text-xs ml-1">{formatUsd(reserveB, p)}</span> : null;
                         })()}
                       </>
                     : <span className="text-[#6B7280]">Loading...</span>}
@@ -848,26 +871,58 @@ function AddLiquidity() {
         {/* User Position */}
         {userPosition && userPosition.active && (
           <div className="mt-4 bg-[#0A0D14] border border-[#00CC99]/20 rounded-[10px] p-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <div className="text-xs text-[#6B7280] mb-1">Your Position</div>
-                <div className="text-base font-semibold text-white">
-                  {fmtNum(userPosition.user_lp_amount)} LP
+            {/* Header */}
+            <div className="flex items-center gap-1 mb-2">
+              <div className="text-xs text-[#6B7280]">Your Position</div>
+              <InformationCircleIcon
+                className="h-[13px] w-[13px] text-[#6B7280] cursor-pointer flex-shrink-0"
+                onClick={() => onDialogOpen(
+                  "Your share of the crowdfunded vault. The LP tokens you hold represent your contribution.\n\nBigger contribution = bigger cut of every trade fee + bigger share of AQUA rewards. All reinvested for you, every hour.\n\nWithdraw anytime. No lockups.",
+                  "Your Position"
+                )}
+              />
+            </div>
+
+            {/* LP + USD inline */}
+            <div className="text-base font-semibold text-white mb-2">
+              {parseFloat(userPosition.user_lp_amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} LP{" "}
+              <span className="text-[#6B7280] text-xs font-normal">
+                {positionValueUsd === null ? "" : positionValueUsd > 0 ? `($${formatPositionUsd(positionValueUsd)})` : "(...)"}
+              </span>
+              {" "}<span className="text-[#6B7280] text-xs font-normal">your slice of the pool</span>
+            </div>
+
+            {userCompoundGains && parseFloat(userCompoundGains.compoundGainLp) > 0 && (
+              <div className="text-xs text-[#00CC99] mb-2">
+                +{fmtNum(userCompoundGains.compoundGainLp)} LP from compounding
+              </div>
+            )}
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <div className="text-xs text-[#00CC99] font-medium">✅ Earning Boosted Rewards</div>
+                <InformationCircleIcon
+                  className="h-[13px] w-[13px] text-[#6B7280] cursor-pointer flex-shrink-0"
+                  onClick={() => onDialogOpen(
+                    "Your position is currently earning the maximum reward tier the pool qualifies for, thanks to WhaleHub's pooled ICE voting power.\n\nSolo, you'd earn the base rate. Together with every other backer in the vault, the pool unlocks higher reward tiers individuals can't reach alone.",
+                    "Earning Boosted Rewards"
+                  )}
+                />
+              </div>
+              {compoundStats && compoundStats.compoundCount > 0 && (
+                <div className="flex items-center gap-1">
+                  <div className="text-[10px] text-[#6B7280]">
+                    Auto-compounded {compoundStats.compoundCount.toLocaleString()}x since you deposited
+                  </div>
+                  <InformationCircleIcon
+                    className="h-[13px] w-[13px] text-[#6B7280] cursor-pointer flex-shrink-0"
+                    onClick={() => onDialogOpen(
+                      "Every hour, the vault takes the fees and rewards it earned and instantly puts them back into your position.\n\nEach reinvestment grows your backer share a tiny bit, and those tiny bits add up.\n\nDoing this manually would mean claiming, swapping, and re-depositing every hour, 24/7. The vault does it for you, for free.",
+                      "Auto-Compounded"
+                    )}
+                  />
                 </div>
-                {userCompoundGains && parseFloat(userCompoundGains.compoundGainLp) > 0 && (
-                  <div className="text-xs text-[#00CC99] mt-0.5">
-                    +{fmtNum(userCompoundGains.compoundGainLp)} LP from compounding
-                  </div>
-                )}
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-[#00CC99] font-medium">Earning Boosted Rewards</div>
-                {compoundStats && compoundStats.compoundCount > 0 && (
-                  <div className="text-[10px] text-[#6B7280] mt-0.5">
-                    Compounded {compoundStats.compoundCount}× total
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -902,12 +957,21 @@ function AddLiquidity() {
         {activeTab === "deposit" && selectedPool && (
           <div className="mt-5 space-y-4">
             <div className="text-xs text-[#B1B3B8] italic mb-1">
-              Auto-compounded — swap fees and rewards are reinvested into your position automatically. No manual claiming.
+              Auto-compounded every hour. Your share of pool fees and AQUA rewards are reinvested for you automatically. No claiming, no manual work.
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <span className="text-sm text-[#B1B3B8]">Single asset deposit</span>
-                <div className="text-[10px] text-[#6B7280]">Deposit only one token — AMM handles the rest</div>
+                <div className="flex items-center gap-1">
+                  <span className="text-sm text-[#B1B3B8]">Single asset deposit</span>
+                  <InformationCircleIcon
+                    className="h-[13px] w-[13px] text-[#6B7280] cursor-pointer flex-shrink-0"
+                    onClick={() => onDialogOpen(
+                      "Deposit just AQUA or just BLUB. The vault automatically splits and pairs your token to enter the pool.\n\nYou don't need both tokens to become a backer.",
+                      "Single Asset Deposit"
+                    )}
+                  />
+                </div>
+                <div className="text-[10px] text-[#6B7280]">Deposit only one token — vault handles the rest</div>
               </div>
               <button
                 onClick={() => {
@@ -1130,7 +1194,12 @@ function AddLiquidity() {
                   <div className="text-xs text-[#6B7280] uppercase tracking-wider mb-2">Your Position</div>
                   <div className="flex justify-between text-white">
                     <span className="text-[#B1B3B8]">LP Tokens</span>
-                    <span className="font-medium">{fmtNum(userPosition.user_lp_amount || "0")}</span>
+                    <span className="font-medium">
+                      {parseFloat(userPosition.user_lp_amount || "0").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <span className="text-[#6B7280] text-xs font-normal ml-1">
+                        {positionValueUsd === null ? "" : positionValueUsd > 0 ? `($${formatPositionUsd(positionValueUsd)})` : "(...)"}
+                      </span>
+                    </span>
                   </div>
                   <div className="flex justify-between text-white">
                     <span className="text-[#B1B3B8]">Pool Share</span>
@@ -1144,7 +1213,7 @@ function AddLiquidity() {
                   )}
                   {compoundStats && compoundStats.compoundCount > 0 && (
                     <div className="pt-2 border-t border-[#1C2235] text-xs text-[#6B7280]">
-                      Auto-compounded {compoundStats.compoundCount}×
+                      Auto-compounded {compoundStats.compoundCount.toLocaleString()}×
                       {compoundStats.lastCompoundTime > 0 && (
                         <span className="ml-1.5">(last: {new Date(compoundStats.lastCompoundTime * 1000).toLocaleDateString()})</span>
                       )}

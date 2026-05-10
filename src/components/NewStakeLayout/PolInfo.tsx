@@ -39,6 +39,7 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
   const [expanded, setExpanded] = useState(false);
   const staking = useSelector((state: RootState) => state.staking);
   const blubPrice = useTokenPrice("BLUB");
+  const aquaPrice = useTokenPrice("AQUA");
 
   const vaultService = useMemo(() => new SorobanVaultService(), []);
 
@@ -156,14 +157,14 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
           className="h-[15px] w-[15px] text-white cursor-pointer"
           onClick={() =>
             onDialogOpen(
-              "Unlike external liquidity that leaves when incentives drop, protocol-owned liquidity is permanent. Revenue from this position buys BLUB from the open market, creating consistent demand for all stakers.",
+              "The protocol's own permanent position in the AQUA-BLUB pool. Funded by a share of all earnings and held by WhaleHub itself, not by external liquidity providers.\n\nA crowdfunded reserve that grows over time. Earnings from this position are used to buy BLUB from the open market, creating consistent demand that benefits every backer.\n\nUnlike rented liquidity that disappears when incentives drop, this stays.",
               "Protocol Treasury"
             )
           }
         />
       </div>
       <div className="text-sm text-[#B1B3B8] font-medium mb-4">
-        Protocol-owned liquidity. Earns fees. Buys BLUB. Grows the floor.
+        Protocol-owned liquidity. Earns fees. Buys BLUB. Benefits all backers.
       </div>
 
       {loading ? (
@@ -191,13 +192,19 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
             {/* POL Token A */}
             <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
               <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenACode}</div>
-              <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveA ?? "0")}</div>
+              <div className="text-lg font-semibold text-white">
+                {fmtNum(stats?.polReserveA ?? "0")}
+                <span className="text-[#6B7280] text-xs font-normal ml-1">{formatUsd(stats?.polReserveA ?? "0", stats?.tokenACode === "BLUB" ? blubPrice : aquaPrice)}</span>
+              </div>
             </div>
 
             {/* POL Token B */}
             <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
               <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenBCode}</div>
-              <div className="text-lg font-semibold text-white">{fmtNum(stats?.polReserveB ?? "0")}</div>
+              <div className="text-lg font-semibold text-white">
+                {fmtNum(stats?.polReserveB ?? "0")}
+                <span className="text-[#6B7280] text-xs font-normal ml-1">{formatUsd(stats?.polReserveB ?? "0", stats?.tokenBCode === "BLUB" ? blubPrice : aquaPrice)}</span>
+              </div>
             </div>
 
             {/* USD Value — hidden when price unavailable */}
@@ -234,7 +241,7 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
                 <div className="text-sm text-[#B1B3B8]">Compounded APY</div>
                 <InformationCircleIcon className="h-[14px] w-[14px] text-[#6B7280] cursor-pointer flex-shrink-0" />
                 <div className="absolute bottom-full left-0 mb-2 w-64 bg-gray-800 text-white text-xs rounded px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 pointer-events-none">
-                  Your boosted yield after Whalehub auto-compounds rewards 48 times per day. 70% of rewards are reinvested back into the pool, maximizing your returns through the power of compounding.
+                  Your actual return through WhaleHub's vault. Higher than the base Pool APY because earnings are automatically reinvested into your position 24 times a day. Each reinvestment grows your backer share a tiny bit, and those tiny bits compound into a meaningfully higher annual return.
                 </div>
               </div>
               <div className="text-lg font-semibold text-[#3B82F6]">
@@ -259,16 +266,12 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
                   }
                 />
               </div>
-              <div className="flex flex-col items-end min-w-0">
+              <div className="min-w-0">
                 {staking.isLoading ? <span>...</span> : (
-                  <>
-                    <span className="text-sm sm:text-base font-normal text-[#00CC99] truncate">
-                      {(staking.rewardState?.total_rewards_added ?? 0).toFixed(2)} BLUB
-                    </span>
-                    <span className="text-[11px] text-[#6B7280]">
-                      {formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}
-                    </span>
-                  </>
+                  <span className="text-sm sm:text-base font-normal text-[#00CC99] truncate">
+                    {(staking.rewardState?.total_rewards_added ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB{" "}
+                    <span className="text-[11px] text-[#6B7280] font-normal">{formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}</span>
+                  </span>
                 )}
               </div>
             </div>
@@ -286,17 +289,13 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
                   }
                 />
               </div>
-              <div className="flex flex-col items-end min-w-0">
+              <div className="min-w-0">
                 {staking.isLoading ? <span>...</span> : (
                   staking.rewardState?.total_staked != null
-                    ? <>
-                        <span className="text-sm sm:text-base font-normal truncate">
-                          {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB
-                        </span>
-                        <span className="text-[11px] text-[#6B7280]">
-                          {formatUsd(staking.rewardState.total_staked, blubPrice)}
-                        </span>
-                      </>
+                    ? <span className="text-sm sm:text-base font-normal truncate">
+                        {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB{" "}
+                        <span className="text-[11px] text-[#6B7280] font-normal">{formatUsd(staking.rewardState.total_staked, blubPrice)}</span>
+                      </span>
                     : <span>--</span>
                 )}
               </div>

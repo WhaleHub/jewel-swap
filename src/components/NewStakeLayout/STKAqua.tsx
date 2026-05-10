@@ -68,6 +68,7 @@ function STKAqua() {
   const staking = useSelector((state: RootState) => state.staking);
   const { apy: stakingAPY, source: stakingAPYSource } = useStakingApy(staking.rewardState, 7);
   const blubPrice = useTokenPrice("BLUB");
+  const aquaPrice = useTokenPrice("AQUA");
 
   // Daily BLUB rewards estimate: activeStakedBlub * apy / 100 / 365.25.
   // Shown alongside the APY % so users can see the concrete number (like AQUA dex).
@@ -840,7 +841,7 @@ const handleAddTrustline = async () => {
                   className="h-[15px] w-[15px] text-white cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      "1 AQUA = 1 BLUB. Your BLUB represents your share of the staking pool. Rewards are distributed proportionally to all BLUB holders based on how long you hold. You're earning from the moment you deposit.",
+                      "You're joining a crowdfunded staking pool. Drop in AQUA, receive BLUB at a 1-to-1 rate. BLUB is your liquid receipt token, proving how much you contributed.\n\nWhile your AQUA is in the pool, it earns rewards for you automatically. Every backer earns a proportional share of what the pool generates.\n\n1 AQUA = 1 BLUB. Same value, but BLUB is liquid and earning. Withdraw 10 days after you request it. No fees, no penalties, no slashing.",
                       "Deposit AQUA → Get BLUB"
                     )
                   }
@@ -891,8 +892,7 @@ const handleAddTrustline = async () => {
                   </div>
                 </div>
                 <div className="text-xs text-[#B1B3B8]">
-                  The longer you hold BLUB, the larger your share of each distribution.
-                  Unstake after a 10-day cooldown. No penalties.
+                  The longer you stay a backer, the larger your share of each reward distribution. Loyalty earns you a bigger slice over time. Unstake anytime after the 10-day cooldown. No penalties for leaving.
                 </div>
               </div>
             )}
@@ -938,8 +938,9 @@ const handleAddTrustline = async () => {
               <div className="font-medium">
                 {isNaN(parseFloat(`${userAquaBalance}`))
                   ? "0.00"
-                  : parseFloat(`${userAquaBalance}`).toFixed(2)}{" "}
-                AQUA
+                  : parseFloat(`${userAquaBalance}`).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
+                AQUA{" "}
+                <span className="text-[#6B7280] text-xs font-normal">{formatUsd(isNaN(parseFloat(`${userAquaBalance}`)) ? "0" : `${userAquaBalance}`, aquaPrice)}</span>
               </div>
             </div>
 
@@ -1030,12 +1031,10 @@ const handleAddTrustline = async () => {
                           {staking.userStats?.activeAmount
                             ? parseFloat(
                                 staking.userStats?.activeAmount ?? "0"
-                              ).toFixed(2)
+                              ).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                             : "0.00"}{" "}
                           BLUB
-                          {blubPrice > 0 && parseFloat(staking.userStats?.activeAmount ?? "0") > 0 && (
-                            <span className="text-[#6B7280] text-xs ml-1">{formatUsd(staking.userStats?.activeAmount ?? "0", blubPrice)}</span>
-                          )}
+                          <span className="text-[#6B7280] text-xs ml-1">{formatUsd(staking.userStats?.activeAmount ?? "0", blubPrice)}</span>
                         </span>
                       )}
                     </div>
@@ -1065,10 +1064,8 @@ const handleAddTrustline = async () => {
                         <span className="text-[#B1B3B8]">Loading...</span>
                       ) : (
                         <span className="text-[#4169E1]">
-                          {blubBalance} BLUB
-                          {blubPrice > 0 && parseFloat(blubBalance) > 0 && (
-                            <span className="text-[#6B7280] text-xs ml-1">{formatUsd(blubBalance, blubPrice)}</span>
-                          )}
+                          {parseFloat(blubBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB
+                          <span className="text-[#6B7280] text-xs ml-1">{formatUsd(blubBalance, blubPrice)}</span>
                         </span>
                       )}
                     </div>
@@ -1085,11 +1082,9 @@ const handleAddTrustline = async () => {
                         ? "..."
                         : parseFloat(
                             staking.userStats?.unstakingAvailable || "0"
-                          ).toFixed(2)}{" "}
+                          ).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
                       BLUB
-                      {!staking.isLoading && blubPrice > 0 && parseFloat(staking.userStats?.unstakingAvailable || "0") > 0 && (
-                        <span className="text-[#6B7280] text-xs ml-1">{formatUsd(staking.userStats?.unstakingAvailable || "0", blubPrice)}</span>
-                      )}
+                      {!staking.isLoading && <span className="text-[#6B7280] text-xs ml-1">{formatUsd(staking.userStats?.unstakingAvailable || "0", blubPrice)}</span>}
                     </div>
                   </div>
                   <div>
@@ -1100,10 +1095,8 @@ const handleAddTrustline = async () => {
                       </span>
                     </div>
                     <div className="text-white font-medium">
-                      {staking.isLoading ? "..." : parseFloat(pendingRewards).toFixed(2)} BLUB
-                      {!staking.isLoading && blubPrice > 0 && parseFloat(pendingRewards) > 0 && (
-                        <span className="text-[#6B7280] text-xs ml-1">{formatUsd(pendingRewards, blubPrice)}</span>
-                      )}
+                      {staking.isLoading ? "..." : parseFloat(pendingRewards).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB
+                      {!staking.isLoading && <span className="text-[#6B7280] text-xs ml-1">{formatUsd(pendingRewards, blubPrice)}</span>}
                     </div>
                   </div>
                 </div>
@@ -1189,7 +1182,7 @@ const handleAddTrustline = async () => {
                   className="h-[15px] w-[15px] text-white cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      "Your accumulated BLUB rewards from staking. Rewards are distributed proportionally based on your staked amount and how long you've held. There is a 7-day cooldown between claims.",
+                      "The BLUB you've accrued as a backer of the staking pool. New rewards are added on a rolling schedule.\n\nClaim them anytime, or leave them in to compound by re-staking.",
                       "Your Earned Rewards"
                     )
                   }
@@ -1206,10 +1199,8 @@ const handleAddTrustline = async () => {
                   className="h-[14px] w-[14px] text-[#B1B3B8] cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      stakingAPYSource === "indexer"
-                        ? "Rolling 7-day APY: sum of BLUB rewards distributed in the last 7 days divided by the average total staked, annualized. Your share of rewards is proportional to your staked BLUB."
-                        : "Fallback APY based on cumulative lifetime rewards — shown while the rolling-window indexer warms up. Your share of rewards is proportional to your staked BLUB.",
-                      "How APY is calculated"
+                      "Your annual return rate, calculated from real BLUB rewards distributed over the last 7 days (not a marketing estimate or lifetime average).\n\nFloats with actual protocol activity. Higher when more rewards flow in, lower during quieter periods.\n\nYour share of those rewards is proportional to your staked BLUB. The bigger your stake, the bigger your slice.",
+                      "Current APY"
                     )
                   }
                 />
@@ -1239,18 +1230,12 @@ const handleAddTrustline = async () => {
               <div className="text-sm font-normal text-white shrink-0">Pending Rewards</div>
               <div className="flex flex-col items-end min-w-0">
                 <div className="flex items-center space-x-2">
-                  <img
-                    src={"/Blub_logo2.svg"}
-                    alt="BLUB"
-                    className="w-4 h-4 rounded-full shrink-0"
-                  />
+                  <img src={"/Blub_logo2.svg"} alt="BLUB" className="w-4 h-4 rounded-full shrink-0" />
                   <span className="text-sm sm:text-base font-normal truncate">
-                    {parseFloat(pendingRewards).toFixed(2)} BLUB
+                    {parseFloat(pendingRewards).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB
                   </span>
                 </div>
-                <span className="text-[11px] text-[#6B7280]">
-                  {formatUsd(pendingRewards, blubPrice)}
-                </span>
+                <span className="text-[11px] text-[#6B7280]">{formatUsd(pendingRewards, blubPrice)}</span>
               </div>
             </div>
 
@@ -1258,11 +1243,9 @@ const handleAddTrustline = async () => {
               <div className="text-sm font-normal text-white shrink-0">Total Claimed</div>
               <div className="flex flex-col items-end min-w-0">
                 <span className="text-sm sm:text-base font-normal truncate">
-                  {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toFixed(2) : "0.00"} BLUB
+                  {rewardInfo ? parseFloat(rewardInfo.total_claimed || "0").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"} BLUB
                 </span>
-                <span className="text-[11px] text-[#6B7280]">
-                  {formatUsd(rewardInfo?.total_claimed || "0", blubPrice)}
-                </span>
+                <span className="text-[11px] text-[#6B7280]">{formatUsd(rewardInfo?.total_claimed || "0", blubPrice)}</span>
               </div>
             </div>
 

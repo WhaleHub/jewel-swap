@@ -756,7 +756,7 @@ function Yield() {
                   className="h-[15px] w-[15px] text-white cursor-pointer"
                   onClick={() =>
                     onDialogOpen(
-                      "Every BLUB you re-stake increases your proportional share of the pool. Your next reward distribution will be larger. This is compounding — your earnings earn more earnings.",
+                      "Instead of withdrawing your earned BLUB, you can put it back into the pool. Now your rewards earn rewards too.\n\nEvery BLUB you re-stake increases your backer share, which means your next reward payout is bigger than your last. The earlier and more often you re-stake, the faster your position snowballs.",
                       "Re-stake & Compound"
                     )
                   }
@@ -794,8 +794,8 @@ function Yield() {
                 <div className="font-medium">
                   {`${
                     isNaN(Number(blubBalance))
-                      ? 0
-                      : Number(blubBalance).toFixed(2)
+                      ? "0.00"
+                      : Number(blubBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                   } BLUB`}
                   {blubPrice > 0 && Number(blubBalance) > 0 && (
                     <span className="text-[#6B7280] text-sm ml-1">{formatUsd(blubBalance, blubPrice)}</span>
@@ -807,7 +807,7 @@ function Yield() {
                 <div className="mt-3 bg-[#0A0D14] rounded-[8px] px-3 py-2 flex flex-col">
                   <span className="text-[11px] text-[#B1B3B8] leading-tight">Rewards to be distributed</span>
                   <span className="text-[12px] font-medium text-[#00CC99] leading-tight mt-1">
-                    {parseFloat(rewardInfo.pending_rewards).toFixed(2)} BLUB
+                    {parseFloat(rewardInfo.pending_rewards).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB
                   </span>
                   <span className="text-[11px] text-[#6B7280] leading-tight">
                     {formatUsd(rewardInfo.pending_rewards, blubPrice)}
@@ -880,7 +880,7 @@ function Yield() {
                   />
                 ) : (
                   <div className="font-medium">
-                    {`${poolAndClaimBalance.toFixed(2)} BLUB`}
+                    {`${poolAndClaimBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB`}
                     {blubPrice > 0 && poolAndClaimBalance > 0 && (
                       <span className="text-[#6B7280] text-sm ml-1">{formatUsd(poolAndClaimBalance, blubPrice)}</span>
                     )}
@@ -952,7 +952,7 @@ function Yield() {
                     const days = Math.floor(remaining / 86400);
                     const hours = Math.floor((remaining % 86400) / 3600);
                     const mins = Math.floor((remaining % 3600) / 60);
-                    return `${parseFloat(blubStakedBalance).toFixed(2)} BLUB unstakeable in ${days}d ${hours}h ${mins}m (${new Date(staking.nextUnlockTime * 1000).toLocaleDateString()})`;
+                    return `${parseFloat(blubStakedBalance).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB unstakeable in ${days}d ${hours}h ${mins}m (${new Date(staking.nextUnlockTime * 1000).toLocaleDateString()})`;
                   })() : "10-day cooldown active."}
                 </div>
               )}
