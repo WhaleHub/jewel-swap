@@ -784,13 +784,16 @@ export class SorobanVaultService {
 
       if (rawApy == null) return { poolApy: "--", compoundApy: "--", totalShare };
 
-      const apyDecimal = parseFloat(rawApy);
-      if (isNaN(apyDecimal)) return { poolApy: "--", compoundApy: "--", totalShare };
+      const rawDecimal = parseFloat(rawApy);
+      if (isNaN(rawDecimal)) return { poolApy: "--", compoundApy: "--", totalShare };
+
+      // Contract takes a 30% treasury fee on claimed rewards before they reach
+      // vault depositors, so the displayed APY is net of that cut.
+      const apyDecimal = rawDecimal * 0.7;
 
       // Compound APY: 24 auto-compounds per day × 365 = 8,760 per year.
       // Cadence kept in sync with whalehub-server's staking-reward cron
       // (`'0 * * * *'` — hourly; was every 30 min until 2026-05-10).
-      // apyDecimal is already the annual rate (e.g. 0.924 for 92.4%).
       const n = 24 * 365;
       const compoundApy = (Math.pow(1 + apyDecimal / n, n) - 1) * 100;
 
