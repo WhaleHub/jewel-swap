@@ -192,18 +192,18 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
             {/* POL Token A */}
             <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
               <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenACode}</div>
-              <div className="text-lg font-semibold text-white">
+              <div className="text-lg font-semibold text-white break-words">
                 {fmtNum(stats?.polReserveA ?? "0")}
-                <span className="text-[#6B7280] text-xs font-normal ml-1">{formatUsd(stats?.polReserveA ?? "0", stats?.tokenACode === "BLUB" ? blubPrice : aquaPrice)}</span>
+                <span className="text-[#6B7280] text-xs font-normal block sm:inline mt-1 sm:mt-0 sm:ml-1">{formatUsd(stats?.polReserveA ?? "0", stats?.tokenACode === "BLUB" ? blubPrice : aquaPrice)}</span>
               </div>
             </div>
 
             {/* POL Token B */}
             <div className="bg-[#1A1E2E] p-4 rounded-[12px]">
               <div className="text-sm text-[#B1B3B8] mb-1">POL {stats?.tokenBCode}</div>
-              <div className="text-lg font-semibold text-white">
+              <div className="text-lg font-semibold text-white break-words">
                 {fmtNum(stats?.polReserveB ?? "0")}
-                <span className="text-[#6B7280] text-xs font-normal ml-1">{formatUsd(stats?.polReserveB ?? "0", stats?.tokenBCode === "BLUB" ? blubPrice : aquaPrice)}</span>
+                <span className="text-[#6B7280] text-xs font-normal block sm:inline mt-1 sm:mt-0 sm:ml-1">{formatUsd(stats?.polReserveB ?? "0", stats?.tokenBCode === "BLUB" ? blubPrice : aquaPrice)}</span>
               </div>
             </div>
 
@@ -266,12 +266,12 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
                   }
                 />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 text-right">
                 {staking.isLoading ? <span>...</span> : (
-                  <span className="text-sm sm:text-base font-normal text-[#00CC99] truncate">
-                    {(staking.rewardState?.total_rewards_added ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB{" "}
-                    <span className="text-[11px] text-[#6B7280] font-normal">{formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}</span>
-                  </span>
+                  <div className="text-sm sm:text-base font-normal text-[#00CC99] break-words">
+                    {(staking.rewardState?.total_rewards_added ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} BLUB
+                    <span className="text-[11px] text-[#6B7280] font-normal block sm:inline mt-0.5 sm:mt-0 sm:ml-1">{formatUsd(staking.rewardState?.total_rewards_added ?? 0, blubPrice)}</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -289,13 +289,13 @@ function PolInfo({ onDialogOpen }: PolInfoProps) {
                   }
                 />
               </div>
-              <div className="min-w-0">
+              <div className="min-w-0 text-right">
                 {staking.isLoading ? <span>...</span> : (
                   staking.rewardState?.total_staked != null
-                    ? <span className="text-sm sm:text-base font-normal truncate">
-                        {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB{" "}
-                        <span className="text-[11px] text-[#6B7280] font-normal">{formatUsd(staking.rewardState.total_staked, blubPrice)}</span>
-                      </span>
+                    ? <div className="text-sm sm:text-base font-normal break-words">
+                        {Number(staking.rewardState.total_staked).toLocaleString("en-US", { maximumFractionDigits: 2 })} BLUB
+                        <span className="text-[11px] text-[#6B7280] font-normal block sm:inline mt-0.5 sm:mt-0 sm:ml-1">{formatUsd(staking.rewardState.total_staked, blubPrice)}</span>
+                      </div>
                     : <span>--</span>
                 )}
               </div>
