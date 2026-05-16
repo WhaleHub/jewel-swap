@@ -27,7 +27,7 @@ const faqData = [
       },
       {
         q: "What does WhaleHub cost?",
-        a: "70% of all earned yield goes to stakers. 30% goes to the protocol treasury and is reinvested to grow the ICE position and buy BLUB from the open market. Both of those flows ultimately benefit stakers: bigger ICE position means a larger share of future rewards, and treasury buys create ongoing demand for BLUB. There are no separate deposit fees, withdrawal fees, or subscription fees.",
+        a: "85% of all earned yield goes to stakers. 15% goes to the protocol treasury and is reinvested to grow the ICE position and buy BLUB from the open market. Both of those flows ultimately benefit stakers: bigger ICE position means a larger share of future rewards, and treasury buys create ongoing demand for BLUB. There are no separate deposit fees, withdrawal fees, or subscription fees.",
       },
     ],
   },
@@ -53,7 +53,7 @@ const faqData = [
       },
       {
         q: "What if BLUB trades below AQUA on the market?",
-        a: "Three mechanisms push the peg back toward 1:1:\n\n1. Protocol-owned liquidity in the AQUA/BLUB pool provides deep, permanent backstop liquidity. This liquidity is never pulled.\n2. Treasury earnings (30% of all earned AQUA) are used to buy BLUB from the open market, creating a constant bid.\n3. Real staking yield makes BLUB an accumulating asset, not a pass-through. Holders are incentivized to stake and earn rather than dump.",
+        a: "Three mechanisms push the peg back toward 1:1:\n\n1. Protocol-owned liquidity in the AQUA/BLUB pool provides deep, permanent backstop liquidity. This liquidity is never pulled.\n2. Treasury earnings (15% of all earned AQUA) are used to buy BLUB from the open market, creating a constant bid.\n3. Real staking yield makes BLUB an accumulating asset, not a pass-through. Holders are incentivized to stake and earn rather than dump.",
       },
       {
         q: "Is BLUB the same whether I staked AQUA or bought it on the market?",
@@ -79,7 +79,7 @@ const faqData = [
       },
       {
         q: "How is the yield split?",
-        a: "70% flows to stakers. 30% goes to the protocol treasury.",
+        a: "85% flows to stakers. 15% goes to the protocol treasury.",
       },
       {
         q: "Is the APY guaranteed?",
@@ -173,7 +173,7 @@ const faqData = [
       },
       {
         q: "Why use WhaleHub vaults instead of providing liquidity directly on Aquarius?",
-        a: "Two layers: compounding mechanics and structural advantages.\n\nCompounding math:\nThe base APY shown on Aquarius represents what you'd earn if you claimed rewards once at the end of the year. WhaleHub reinvests those rewards 24 times per day. The same pool, the same rewards — but the reinvestment frequency multiplies your effective return significantly:\n\n• 20% base APY → 22.1% with WhaleHub (manual)\n• 50% base APY → 64.8% with WhaleHub vs 50% manual (+14.8%)\n• 100% base APY → 171.5% with WhaleHub vs 100% manual (+71.5%)\n• 150% base APY → 348.3% with WhaleHub vs 150% manual (+198.3%)\n\nThe gap widens dramatically as base rates increase. On high-APY pools, WhaleHub can more than double the effective return compared to leaving rewards unclaimed.\n\nWhy you can't just compound manually:\nEach compound cycle is 3-4 Stellar transactions: claim, swap, deposit. Doing this 24 times per day would cost real transaction fees and your time. WhaleHub's pooled model makes it economical for every depositor regardless of size, because the cost is shared across all vault participants.\n\nStructural advantages:\n• Rewards don't sit unclaimed between manual sessions — they're reinvested every hour, every day, including nights and weekends.\n• Single-asset entry supported: deposit just AQUA or just BLUB and the vault handles the internal swap.\n• No operational overhead: no monitoring, no timing, no multi-step manual transactions.\n• Even after the 30% protocol fee, the compounding advantage puts you materially ahead of manual LP on active pools.",
+        a: "Two layers: compounding mechanics and structural advantages.\n\nCompounding math:\nThe base APY shown on Aquarius represents what you'd earn if you claimed rewards once at the end of the year. WhaleHub reinvests those rewards 24 times per day. The same pool, the same rewards — but the reinvestment frequency multiplies your effective return significantly:\n\n• 20% base APY → 22.1% with WhaleHub (manual)\n• 50% base APY → 64.8% with WhaleHub vs 50% manual (+14.8%)\n• 100% base APY → 171.5% with WhaleHub vs 100% manual (+71.5%)\n• 150% base APY → 348.3% with WhaleHub vs 150% manual (+198.3%)\n\nThe gap widens dramatically as base rates increase. On high-APY pools, WhaleHub can more than double the effective return compared to leaving rewards unclaimed.\n\nWhy you can't just compound manually:\nEach compound cycle is 3-4 Stellar transactions: claim, swap, deposit. Doing this 24 times per day would cost real transaction fees and your time. WhaleHub's pooled model makes it economical for every depositor regardless of size, because the cost is shared across all vault participants.\n\nStructural advantages:\n• Rewards don't sit unclaimed between manual sessions — they're reinvested every hour, every day, including nights and weekends.\n• Single-asset entry supported: deposit just AQUA or just BLUB and the vault handles the internal swap.\n• No operational overhead: no monitoring, no timing, no multi-step manual transactions.\n• Even after the 15% protocol fee, the compounding advantage puts you materially ahead of manual LP on active pools.",
       },
       {
         q: "The compounding formula, if you want the math",
