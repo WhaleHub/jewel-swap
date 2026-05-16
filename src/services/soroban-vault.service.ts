@@ -792,7 +792,8 @@ export class SorobanVaultService {
       // (`'0 * * * *'` — hourly; was every 30 min until 2026-05-10).
       // Contract takes a 15% treasury fee on claimed rewards (vault_fee_bps=1500,
       // set on-chain 2026-05-16) before they reach vault depositors, so the
-      // compounded APY is computed on the net 85%.
+      // compounded APY is computed on the net 85%. POL/staking gets an extra
+      // 17.65% deducted in the backend before BLUB distribution; vault is untouched.
       const n = 24 * 365;
       const compoundApy = (Math.pow(1 + (apyDecimal * 0.85) / n, n) - 1) * 100;
 

@@ -114,8 +114,8 @@ pub struct Config {
     pub downvote_ice_token: Address, // downvoteICE token (SAC)
     pub period_unit_minutes: u64, // Staking period unit in minutes
     // Vault settings
-    pub vault_treasury: Address, // Treasury for vault fees (15%)
-    pub vault_fee_bps: u32, // Vault fee in basis points (1500 = 15%)
+    pub vault_treasury: Address, // Treasury for vault fees (15% on-chain; POL gets extra cut in backend)
+    pub vault_fee_bps: u32, // Vault fee in basis points (1500 = 15% on-chain; POL adds 17.65% extra in backend → effective 30%)
     // Cooldown settings (v1.2.0)
     pub unstake_cooldown_seconds: u64,      // Default: 864000 (10 days)
     pub claim_reward_cooldown_seconds: u64, // Default: 604800 (7 days)
@@ -5302,6 +5302,8 @@ impl StakingRegistry {
 
     /// Claims boosted rewards from a pool and auto-compounds.
     /// Treasury cut is `config.vault_fee_bps` (default 1500 = 15%); remainder auto-compounds.
+    /// Pool 0 (POL+vault mixed): backend applies an additional cut on the POL share
+    /// in `handleStakingRewardDistribution` so POL effectively pays 30%.
     /// Backend cron calls this 4x daily using ICE balance for boost.
     ///
     /// # Arguments
