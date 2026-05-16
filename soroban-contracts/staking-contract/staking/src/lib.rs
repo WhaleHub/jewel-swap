@@ -114,8 +114,8 @@ pub struct Config {
     pub downvote_ice_token: Address, // downvoteICE token (SAC)
     pub period_unit_minutes: u64, // Staking period unit in minutes
     // Vault settings
-    pub vault_treasury: Address, // Treasury for vault fees (30%)
-    pub vault_fee_bps: u32, // Vault fee in basis points (3000 = 30%)
+    pub vault_treasury: Address, // Treasury for vault fees (15%)
+    pub vault_fee_bps: u32, // Vault fee in basis points (1500 = 15%)
     // Cooldown settings (v1.2.0)
     pub unstake_cooldown_seconds: u64,      // Default: 864000 (10 days)
     pub claim_reward_cooldown_seconds: u64, // Default: 604800 (7 days)
@@ -4422,7 +4422,7 @@ impl StakingRegistry {
     ///
     /// # Arguments
     /// * `aqua_amount` - Amount of AQUA to lock for ICE
-    /// * `duration_years` - Lock duration (1-3 years)
+    /// * `duration_years` - Lock duration (1-5 years)
     ///
     /// # Returns
     /// Lock ID for tracking
@@ -4438,7 +4438,7 @@ impl StakingRegistry {
         let config = Self::get_config(env.clone())?;
         Self::require_manager_auth(&env, &manager)?;
 
-        if aqua_amount <= 0 || duration_years == 0 || duration_years > 3 {
+        if aqua_amount <= 0 || duration_years == 0 || duration_years > 5 {
             return Err(Error::InvalidInput);
         }
 
@@ -5301,7 +5301,7 @@ impl StakingRegistry {
     }
 
     /// Claims boosted rewards from a pool and auto-compounds.
-    /// 30% to treasury, 70% auto-compound back to pool.
+    /// Treasury cut is `config.vault_fee_bps` (default 1500 = 15%); remainder auto-compounds.
     /// Backend cron calls this 4x daily using ICE balance for boost.
     ///
     /// # Arguments
@@ -5309,7 +5309,7 @@ impl StakingRegistry {
     ///
     /// # Authorization
     /// Requires admin authorization
-    /// Claims boosted rewards from a pool, sends 30% to treasury and 70% to admin.
+    /// Claims boosted rewards from a pool, sends `vault_fee_bps` to treasury and the rest to admin.
     /// The admin (backend) must then swap the AQUA to both pool tokens and call
     /// `admin_compound_deposit` to complete the compound cycle.
     ///
@@ -5342,7 +5342,7 @@ impl StakingRegistry {
             return Ok((0, 0, 0));
         }
 
-        // STEP 2: Split rewards — 30% to treasury, 70% to admin for compounding
+        // STEP 2: Split rewards — `vault_fee_bps` to treasury, remainder to admin for compounding
         let treasury_amount = (total_rewards as u128)
             .checked_mul(config.vault_fee_bps as u128)
             .unwrap_or(0)
@@ -5354,12 +5354,12 @@ impl StakingRegistry {
         use soroban_sdk::token;
         let aqua_client = token::Client::new(&env, &config.aqua_token);
 
-        // STEP 3: Transfer 30% to vault treasury
+        // STEP 3: Transfer treasury cut to vault treasury
         if treasury_amount > 0 {
             aqua_client.transfer(&contract_address, &config.vault_treasury, &(treasury_amount as i128));
         }
 
-        // STEP 4: Transfer 70% to manager wallet for off-chain swap + compound
+        // STEP 4: Transfer remainder to manager wallet for off-chain swap + compound
         if compound_amount > 0 {
             aqua_client.transfer(&contract_address, &manager, &(compound_amount as i128));
         }

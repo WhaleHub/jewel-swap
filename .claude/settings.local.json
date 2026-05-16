@@ -30,7 +30,9 @@
       "Bash(BROWSER=none npm start *)",
       "WebSearch",
       "Bash(kill 6594)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(chmod +x *)",
+      "Bash(shasum -a 256 soroban-contracts/staking-contract/target/wasm32-unknown-unknown/release/whalehub_staking.optimized.wasm)"
     ]
   }
 }
